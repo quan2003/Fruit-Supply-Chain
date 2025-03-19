@@ -1,36 +1,47 @@
+// fruit-supply-chain-frontend/src/components/common/Layout.jsx
 import React from "react";
-import Header from "./Header";
-import Footer from "./Footer";
-import Sidebar from "./Sidebar";
-import { useWeb3 } from "../../contexts/Web3Context";
-import LoadingSpinner from "./LoadingSpinner";
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Container,
+  Box,
+  Button,
+} from "@mui/material"; // Thêm Button vào import
+import { Link } from "react-router-dom";
 
 const Layout = ({ children }) => {
-  const { loading, error } = useWeb3();
-
-  if (loading) {
-    return <LoadingSpinner message="Đang kết nối với blockchain..." />;
-  }
-
-  if (error) {
-    return (
-      <div className="error-container">
-        <h1>Lỗi kết nối</h1>
-        <p>{error}</p>
-        <button onClick={() => window.location.reload()}>Thử lại</button>
-      </div>
-    );
-  }
-
   return (
-    <div className="app-container">
-      <Header />
-      <div className="main-content">
-        <Sidebar />
-        <div className="content-area">{children}</div>
-      </div>
-      <Footer />
-    </div>
+    <Box sx={{ flexGrow: 1 }}>
+      <AppBar position="static">
+        <Toolbar>
+          <Typography
+            variant="h6"
+            component={Link}
+            to="/"
+            sx={{ flexGrow: 1, textDecoration: "none", color: "inherit" }}
+          >
+            Fruit Supply Chain
+          </Typography>
+          <Button color="inherit" component={Link} to="/dashboard">
+            Dashboard
+          </Button>
+          <Button color="inherit" component={Link} to="/farms">
+            Farms
+          </Button>
+          <Button color="inherit" component={Link} to="/catalog">
+            Catalog
+          </Button>
+          <Button color="inherit" component={Link} to="/analytics">
+            Analytics
+          </Button>
+          <Button color="inherit" component={Link} to="/admin">
+            Admin
+          </Button>
+        </Toolbar>
+      </AppBar>
+      <Container sx={{ mt: 4 }}>{children}</Container>
+    </Box>
   );
 };
 

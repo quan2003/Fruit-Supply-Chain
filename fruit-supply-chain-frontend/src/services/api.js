@@ -3,33 +3,38 @@ import axios from "axios";
 
 const API_URL = "http://localhost:3000";
 
+// Tạo instance của axios
+const api = axios.create({
+  baseURL: API_URL,
+});
+
 export const getAllFruits = async () => {
-  const response = await axios.get(`${API_URL}/all-fruits`);
+  const response = await api.get("/all-fruits");
   return response.data;
 };
 
 export const getFruit = async (fruitId) => {
-  const response = await axios.get(`${API_URL}/fruit/${fruitId}`);
+  const response = await api.get(`/fruit/${fruitId}`);
   return response.data;
 };
 
 export const harvestFruit = async (data) => {
-  const response = await axios.post(`${API_URL}/harvest`, data);
+  const response = await api.post("/harvest", data);
   return response.data;
 };
 
 export const recordStep = async (data) => {
-  const response = await axios.post(`${API_URL}/record-step`, data);
+  const response = await api.post("/record-step", data);
   return response.data;
 };
 
 export const updateRegion = async (data) => {
-  const response = await axios.post(`${API_URL}/update-region`, data);
+  const response = await api.post("/update-region", data);
   return response.data;
 };
 
 export const getPopularFruit = async () => {
-  const response = await axios.get(`${API_URL}/popular`);
+  const response = await api.get("/popular");
   return response.data;
 };
 
@@ -124,4 +129,54 @@ export const getSystemStats = async () => {
       { message: "Giao dịch mới được ghi nhận", timestamp: Date.now() - 50000 },
     ],
   };
+};
+
+// Hàm lấy thống kê trái cây
+export const getFruitStatistics = async () => {
+  // Giả lập dữ liệu, bạn có thể thay bằng API thật
+  return {
+    totalFruits: 10,
+    totalFarms: 5,
+    popularFruits: ["Xoài", "Thanh Long", "Chuối"],
+  };
+};
+
+// Hàm lấy hoạt động gần đây
+export const getRecentActivities = async (account) => {
+  // Giả lập dữ liệu, bạn có thể thay bằng API thật
+  return [
+    {
+      message: `Người dùng ${account} đã thu hoạch lô trái cây mới`,
+      timestamp: Date.now() - 100000,
+    },
+    {
+      message: `Người dùng ${account} đã ghi nhận bước vận chuyển`,
+      timestamp: Date.now() - 50000,
+    },
+  ];
+};
+
+// Hàm lấy danh mục trái cây
+export const getAllFruitCatalogs = async () => {
+  // Giả lập dữ liệu, bạn có thể thay bằng API thật
+  return [
+    {
+      id: "1",
+      name: "Xoài",
+      origin: "Tiền Giang",
+      description: "Xoài ngọt, chất lượng cao",
+    },
+    {
+      id: "2",
+      name: "Thanh Long",
+      origin: "Bình Thuận",
+      description: "Thanh long đỏ, tươi ngon",
+    },
+  ];
+};
+
+// Hàm thêm khuyến nghị
+export const addRecommendation = async (data) => {
+  // Giả lập thêm khuyến nghị, bạn có thể thay bằng API thật
+  return { id: "rec1", ...data };
 };

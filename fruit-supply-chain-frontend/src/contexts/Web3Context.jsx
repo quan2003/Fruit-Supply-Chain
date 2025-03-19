@@ -32,8 +32,16 @@ export function Web3Provider({ children }) {
           });
           setAccount(accounts[0]);
 
+          // Lấy mảng ABI từ FruitSupplyChainABI
+          const abi = FruitSupplyChainABI.abi;
+
+          // Kiểm tra xem abi có phải là một mảng hợp lệ không
+          if (!Array.isArray(abi)) {
+            throw new Error("FruitSupplyChainABI.abi is not a valid ABI array");
+          }
+
           const contractInstance = new web3Instance.eth.Contract(
-            FruitSupplyChainABI,
+            abi,
             contractAddress
           );
           setContract(contractInstance);

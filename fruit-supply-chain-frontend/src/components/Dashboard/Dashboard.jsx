@@ -1,149 +1,177 @@
-import React, { useEffect, useState } from "react";
+// fruit-supply-chain-frontend/src/pages/HomePage.jsx
+import React, { useState, useEffect } from "react";
+import {
+  Container,
+  Typography,
+  Box,
+  Grid,
+  Card,
+  CardContent,
+  CardActions,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
+} from "@mui/material";
 import { Link } from "react-router-dom";
-import { useWeb3 } from "../../contexts/Web3Context";
-import DashboardStats from "./DashboardStats";
-import RecentActivities from "./RecentActivities";
-import QuickActions from "./QuickActions";
-import LoadingSpinner from "../common/LoadingSpinner";
-import { getFruitCount } from "../../services/fruitService";
-import { getAllFarms } from "../../services/farmService";
-import { getRecentEvents } from "../../services/analyticsService";
-import { getTrends } from "../../services/analyticsService";
+import Layout from "../components/common/Layout";
+import LoadingSpinner from "../components/common/LoadingSpinner";
+import { useWeb3 } from "../contexts/Web3Context"; // Sửa từ useWeb3Context thành useWeb3
+import { getFruitStatistics, getRecentActivities } from "../services/api";
 
-const Dashboard = () => {
+const HomePage = () => {
   const { account } = useWeb3();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
-    fruitCount: 0,
-    farmCount: 0,
-    inTransit: 0,
-    deliveredToday: 0,
+    totalFruits: 0,
+    totalFarms: 0,
+    popularFruits: [],
   });
   const [recentActivities, setRecentActivities] = useState([]);
-  const [trends, setTrends] = useState({
-    popularFruits: [],
-    growingRegions: {},
-    qualityTrends: {},
-    recommendations: [],
-  });
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
+        const statsData = await getFruitStatistics();
+        const activities = await getRecentActivities(account);
 
-        // Fetch fruit count
-        const fruitCount = await getFruitCount();
-
-        // Fetch farms
-        const farms = await getAllFarms();
-
-        // Fetch recent events
-        const events = await getRecentEvents(10);
-
-        // Fetch trends
-        const trendsData = await getTrends();
-
-        // Set dashboard stats
-        setStats({
-          fruitCount: fruitCount || 0,
-          farmCount: farms?.length || 0,
-          inTransit: 15, // Placeholder - should be fetched from API
-          deliveredToday: 42, // Placeholder - should be fetched from API
-        });
-
-        setRecentActivities(events || []);
-        setTrends(
-          trendsData || {
-            popularFruits: [],
-            growingRegions: {},
-            qualityTrends: {},
-            recommendations: [],
-          }
-        );
+        setStats(statsData);
+        setRecentActivities(activities);
       } catch (error) {
-        console.error("Error fetching dashboard data:", error);
+        console.error("Error fetching home page data:", error);
       } finally {
         setLoading(false);
       }
     };
 
     if (account) {
-      fetchDashboardData();
+      fetchData();
+    } else {
+      setLoading(false);
     }
   }, [account]);
 
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+
   if (!account) {
     return (
-      <div className="dashboard welcome-screen">
-        <h1>Chào mừng đến với Hệ thống Quản lý Chuỗi Cung ứng Trái cây</h1>
-        <p>Vui lòng kết nối ví MetaMask để sử dụng hệ thống</p>
-        <div className="feature-highlights">
-          <div className="feature">
-            <h3>Truy xuất nguồn gốc</h3>
-            <p>Theo dõi trái cây từ nông trại đến người tiêu dùng</p>
-          </div>
-          <div className="feature">
-            <h3>Quản lý nông trại</h3>
-            <p>
-              Cập nhật thông tin và tình trạng nông trại theo thời gian thực
-            </p>
-          </div>
-          <div className="feature">
-            <h3>Phân tích dữ liệu</h3>
-            <p>Nhận các phân tích và khuyến nghị thông minh</p>
-          </div>
-        </div>
-      </div>
+      <Layout>
+        <Container maxWidth="lg">
+          <Box sx={{ textAlign: "center", mt: 4 }}>
+            <Typography variant="h4" gutterBottom>
+              Chào mừng đến với Hệ thống Quản lý Chuỗi Cung ứng Trái cây
+            </Typography>
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              Vui lòng kết nối ví MetaMask để sử dụng hệ thống
+            </Typography>
+            <Box sx={{ mt: 4 }}>
+              <Grid container spacing={3} justifyContent="center">
+                <Grid item xs={12} sm={4}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6">Truy xuất nguồn gốc</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Theo dõi trái cây từ nông trại đến người tiêu dùng
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6">Quản lý nông trại</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Cập nhật thông tin và tình trạng nông trại theo thời
+                        gian thực
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6">Phân tích dữ liệu</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Nhận các phân tích và khuyến nghị thông minh
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            </Box>
+          </Box>
+        </Container>
+      </Layout>
     );
   }
 
-  if (loading) {
-    return <LoadingSpinner message="Đang tải dữ liệu..." />;
-  }
-
   return (
-    <div className="dashboard">
-      <h1>Bảng điều khiển</h1>
+    <Layout>
+      <Container maxWidth="lg">
+        <Box sx={{ mt: 4 }}>
+          <Typography variant="h4" gutterBottom>
+            Tổng quan hệ thống
+          </Typography>
 
-      <DashboardStats stats={stats} />
-
-      <div className="dashboard-content">
-        <div className="dashboard-main">
-          <div className="dashboard-section">
-            <h2>Xu hướng phổ biến</h2>
-            <div className="trends-container">
-              <div className="popular-fruits">
-                <h3>Trái cây phổ biến</h3>
-                <ul>
-                  {trends.popularFruits.map((fruit, index) => (
-                    <li key={index}>{fruit}</li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="recommendations">
-                <h3>Khuyến nghị</h3>
-                <ul>
-                  {trends.recommendations.map((rec, index) => (
-                    <li key={index}>{rec}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-            <div className="view-more">
-              <Link to="/analytics">Xem thêm phân tích →</Link>
-            </div>
-          </div>
-        </div>
-
-        <div className="dashboard-sidebar">
-          <RecentActivities activities={recentActivities} />
-          <QuickActions />
-        </div>
-      </div>
-    </div>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6">Tổng số trái cây</Typography>
+                  <Typography variant="h4">{stats.totalFruits}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6">Tổng số nông trại</Typography>
+                  <Typography variant="h4">{stats.totalFarms}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6">Trái cây phổ biến</Typography>
+                  <Typography variant="body1">
+                    {stats.popularFruits.join(", ")}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6">Hoạt động gần đây</Typography>
+                  <List dense>
+                    {recentActivities.slice(0, 3).map((activity, index) => (
+                      <ListItem key={index}>
+                        <ListItemText
+                          primary={activity.message}
+                          secondary={new Date(
+                            activity.timestamp
+                          ).toLocaleString()}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </CardContent>
+                <CardActions>
+                  <Button size="small" component={Link} to="/dashboard">
+                    Xem thêm
+                  </Button>
+                </CardActions>
+              </Card>
+            </Grid>
+          </Grid>
+        </Box>
+      </Container>
+    </Layout>
   );
 };
 
-export default Dashboard;
+export default HomePage;

@@ -1,95 +1,174 @@
-import React, { useEffect, useState } from "react";
-import { Container, Grid, Typography, Box } from "@mui/material";
-import { useWeb3Context } from "../contexts/Web3Context";
-import Dashboard from "../components/Dashboard/Dashboard";
-import RecentActivities from "../components/Dashboard/RecentActivities";
-import QuickActions from "../components/Dashboard/QuickActions";
-import DashboardStats from "../components/Dashboard/DashboardStats";
-import LoadingSpinner from "../components/common/LoadingSpinner";
+// fruit-supply-chain-frontend/src/pages/HomePage.jsx
+import React, { useState, useEffect } from "react";
+import {
+  Container,
+  Typography,
+  Box,
+  Grid,
+  Card,
+  CardContent,
+  CardActions,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
+} from "@mui/material";
+import { Link } from "react-router-dom";
 import Layout from "../components/common/Layout";
+import LoadingSpinner from "../components/common/LoadingSpinner";
+import { useWeb3 } from "../contexts/Web3Context"; // Sửa từ useWeb3Context thành useWeb3
 import { getFruitStatistics, getRecentActivities } from "../services/api";
 
 const HomePage = () => {
-  const { isConnected, account } = useWeb3Context();
-  const [stats, setStats] = useState(null);
-  const [activities, setActivities] = useState([]);
+  const { account } = useWeb3();
   const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState(null);
+  const [stats, setStats] = useState({
+    totalFruits: 0,
+    totalFarms: 0,
+    popularFruits: [],
+  });
+  const [recentActivities, setRecentActivities] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Fetch dashboard statistics from API
         const statsData = await getFruitStatistics();
+        const activities = await getRecentActivities(account);
+
         setStats(statsData);
-
-        // Fetch recent activities on the blockchain
-        const recentActivities = await getRecentActivities(account);
-        setActivities(recentActivities);
-
-        // Determine user role based on account or stored preferences
-        // This could be fetched from a backend service or blockchain
-        const role = localStorage.getItem("userRole") || "consumer";
-        setUserRole(role);
-
-        setLoading(false);
+        setRecentActivities(activities);
       } catch (error) {
-        console.error("Error fetching dashboard data:", error);
+        console.error("Error fetching home page data:", error);
+      } finally {
         setLoading(false);
       }
     };
 
-    if (isConnected && account) {
+    if (account) {
       fetchData();
     } else {
       setLoading(false);
     }
-  }, [isConnected, account]);
+  }, [account]);
 
   if (loading) {
     return <LoadingSpinner />;
   }
 
+  if (!account) {
+    return (
+      <Layout>
+        <Container maxWidth="lg">
+          <Box sx={{ textAlign: "center", mt: 4 }}>
+            <Typography variant="h4" gutterBottom>
+              Chào mừng đến với Hệ thống Quản lý Chuỗi Cung ứng Trái cây
+            </Typography>
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              Vui lòng kết nối ví MetaMask để sử dụng hệ thống
+            </Typography>
+            <Box sx={{ mt: 4 }}>
+              <Grid container spacing={3} justifyContent="center">
+                <Grid item xs={12} sm={4}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6">Truy xuất nguồn gốc</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Theo dõi trái cây từ nông trại đến người tiêu dùng
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6">Quản lý nông trại</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Cập nhật thông tin và tình trạng nông trại theo thời
+                        gian thực
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6">Phân tích dữ liệu</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Nhận các phân tích và khuyến nghị thông minh
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            </Box>
+          </Box>
+        </Container>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <Container maxWidth="lg">
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" component="h1" gutterBottom>
-            Quản lý chuỗi cung ứng trái cây
+        <Box sx={{ mt: 4 }}>
+          <Typography variant="h4" gutterBottom>
+            Tổng quan hệ thống
           </Typography>
-          <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-            Hệ thống truy xuất nguồn gốc trái cây trên nền tảng Blockchain
-          </Typography>
-        </Box>
 
-        {isConnected ? (
-          <>
-            <Dashboard />
-
-            <Grid container spacing={4} sx={{ mt: 2 }}>
-              <Grid item xs={12} md={8}>
-                <DashboardStats stats={stats} />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <QuickActions userRole={userRole} />
-              </Grid>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6">Tổng số trái cây</Typography>
+                  <Typography variant="h4">{stats.totalFruits}</Typography>
+                </CardContent>
+              </Card>
             </Grid>
-
-            <Box sx={{ mt: 4 }}>
-              <RecentActivities activities={activities} />
-            </Box>
-          </>
-        ) : (
-          <Box sx={{ mt: 4, textAlign: "center" }}>
-            <Typography variant="h6" gutterBottom>
-              Vui lòng kết nối ví để truy cập hệ thống
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Sử dụng nút "Kết nối ví" trên thanh công cụ để bắt đầu
-            </Typography>
-          </Box>
-        )}
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6">Tổng số nông trại</Typography>
+                  <Typography variant="h4">{stats.totalFarms}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6">Trái cây phổ biến</Typography>
+                  <Typography variant="body1">
+                    {stats.popularFruits.join(", ")}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6">Hoạt động gần đây</Typography>
+                  <List dense>
+                    {recentActivities.slice(0, 3).map((activity, index) => (
+                      <ListItem key={index}>
+                        <ListItemText
+                          primary={activity.message}
+                          secondary={new Date(
+                            activity.timestamp
+                          ).toLocaleString()}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </CardContent>
+                <CardActions>
+                  <Button size="small" component={Link} to="/dashboard">
+                    Xem thêm
+                  </Button>
+                </CardActions>
+              </Card>
+            </Grid>
+          </Grid>
+        </Box>
       </Container>
     </Layout>
   );
