@@ -1,3 +1,4 @@
+// fruit-supply-chain-frontend/src/pages/FarmPage.jsx
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
@@ -23,19 +24,19 @@ import FarmDetail from "../components/FarmManagement/FarmDetail";
 import RegisterFarmForm from "../components/FarmManagement/RegisterFarmForm";
 import UpdateFarmConditions from "../components/FarmManagement/UpdateFarmConditions";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-import { useWeb3Context } from "../contexts/Web3Context";
-import { useAuthContext } from "../contexts/AuthContext";
+import { useWeb3 } from "../contexts/Web3Context";
+import { useAuth } from "../contexts/AuthContext";
 import {
-  getAllFarms,
-  getFarmById,
-  registerFarm,
+  getAllFarmsService,
+  getFarmByIdService,
+  registerFarmService,
 } from "../services/farmService";
 
 const FarmPage = () => {
   const { farmId } = useParams();
   const navigate = useNavigate();
-  const { isConnected, account } = useWeb3Context();
-  const { user } = useAuthContext();
+  const { account } = useWeb3();
+  const { user } = useAuth();
 
   const [tabValue, setTabValue] = useState(0);
   const [farms, setFarms] = useState([]);
@@ -52,12 +53,12 @@ const FarmPage = () => {
     const loadFarms = async () => {
       try {
         setLoading(true);
-        const data = await getAllFarms();
+        const data = await getAllFarmsService();
         setFarms(data);
 
         // If farmId is provided in URL, load that specific farm
         if (farmId) {
-          const farm = await getFarmById(farmId);
+          const farm = await getFarmByIdService(farmId);
           setSelectedFarm(farm);
           setTabValue(1); // Switch to detail tab
         }
@@ -69,12 +70,12 @@ const FarmPage = () => {
       }
     };
 
-    if (isConnected) {
+    if (account) {
       loadFarms();
     } else {
       setLoading(false);
     }
-  }, [isConnected, farmId]);
+  }, [account, farmId]);
 
   useEffect(() => {
     if (selectedFarm && account) {
@@ -204,7 +205,7 @@ const FarmPage = () => {
           </Tabs>
         </Box>
 
-        {!isConnected ? (
+        {!account ? (
           <Box sx={{ textAlign: "center", mt: 4 }}>
             <Typography variant="h6">
               Vui lòng kết nối ví để xem thông tin vùng trồng

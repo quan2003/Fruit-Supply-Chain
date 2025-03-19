@@ -1,3 +1,4 @@
+// fruit-supply-chain-frontend/src/contexts/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useWeb3 } from "./Web3Context";
 
@@ -8,7 +9,7 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }) {
-  const { web3, account, contract } = useWeb3();
+  const { account } = useWeb3();
   const [isManager, setIsManager] = useState(false);
   const [isFarmer, setIsFarmer] = useState(false);
   const [userFarms, setUserFarms] = useState([]);
@@ -16,40 +17,29 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const checkUserRole = async () => {
-      if (contract && account) {
+      if (account) {
         try {
-          // Kiểm tra xem người dùng có phải là quản lý không
-          const managerStatus = await contract.methods
-            .authorizedManagers(account)
-            .call();
+          // Giả lập kiểm tra vai trò và danh sách nông trại
+          // Thay bằng API thật nếu có
+          const managerStatus = false; // Giả lập: không phải manager
           setIsManager(managerStatus);
 
-          // Lấy danh sách các nông trại
-          const farmIds = await contract.methods.getAllFarms().call();
+          const farms = [
+            {
+              id: "1",
+              location: "Tiền Giang",
+              climate: "Nhiệt đới",
+              soil: "Đất phù sa",
+              lastUpdated: Date.now(),
+              currentConditions: "Tốt",
+              owner: account,
+              fruitIds: ["1", "2"],
+            },
+          ];
 
-          // Mảng chứa các promise để lấy thông tin của từng nông trại
-          const farmPromises = farmIds.map((farmId) =>
-            contract.methods.getFarmData(farmId).call()
+          const userOwnedFarms = farms.filter(
+            (farm) => farm.owner.toLowerCase() === account.toLowerCase()
           );
-
-          // Chờ tất cả các promise hoàn thành
-          const farms = await Promise.all(farmPromises);
-
-          // Lọc ra những nông trại thuộc về người dùng hiện tại
-          const userOwnedFarms = farms
-            .filter(
-              (farm, index) => farm[5].toLowerCase() === account.toLowerCase()
-            )
-            .map((farm, index) => ({
-              id: farmIds[index],
-              location: farm[0],
-              climate: farm[1],
-              soil: farm[2],
-              lastUpdated: farm[3],
-              currentConditions: farm[4],
-              owner: farm[5],
-              fruitIds: farm[6],
-            }));
 
           setUserFarms(userOwnedFarms);
           setIsFarmer(userOwnedFarms.length > 0);
@@ -62,7 +52,7 @@ export function AuthProvider({ children }) {
     };
 
     checkUserRole();
-  }, [contract, account]);
+  }, [account]);
 
   const value = {
     isManager,

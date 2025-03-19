@@ -1,39 +1,45 @@
-import api from "./api";
+// fruit-supply-chain-frontend/src/services/farmService.js
+import {
+  getAllFarms,
+  getFarm,
+  registerFarm,
+  updateFarmConditions,
+} from "./api";
 
-export const getAllFarms = async () => {
+export const getAllFarmsService = async () => {
   try {
-    const response = await api.get("/farms");
-    return response.data.farms;
+    const farms = await getAllFarms();
+    return farms;
   } catch (error) {
     console.error("Error fetching farms:", error);
     throw error;
   }
 };
 
-export const getFarmById = async (farmId) => {
+export const getFarmByIdService = async (farmId) => {
   try {
-    const response = await api.get(`/farm/${farmId}`);
-    return response.data;
+    const farm = await getFarm(farmId);
+    return farm;
   } catch (error) {
     console.error(`Error fetching farm with ID ${farmId}:`, error);
     throw error;
   }
 };
 
-export const registerFarm = async (farmData) => {
+export const registerFarmService = async (farmData) => {
   try {
-    const response = await api.post("/farm", farmData);
-    return response.data;
+    const newFarm = await registerFarm(farmData);
+    return newFarm;
   } catch (error) {
     console.error("Error registering farm:", error);
     throw error;
   }
 };
 
-export const updateFarmConditions = async (farmId, conditions) => {
+export const updateFarmConditionsService = async (farmId, conditions) => {
   try {
-    const response = await api.put(`/farm/${farmId}`, { conditions });
-    return response.data;
+    const updatedFarm = await updateFarmConditions(farmId, conditions);
+    return updatedFarm;
   } catch (error) {
     console.error(
       `Error updating farm conditions for farm ID ${farmId}:`,

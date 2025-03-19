@@ -1,3 +1,4 @@
+// fruit-supply-chain-frontend/src/contexts/Web3Context.jsx
 import React, { createContext, useContext, useState, useEffect } from "react";
 import Web3 from "web3";
 import FruitSupplyChainABI from "../utils/FruitSupplyChainABI.json";
@@ -22,30 +23,25 @@ export function Web3Provider({ children }) {
   useEffect(() => {
     const initWeb3 = async () => {
       try {
-        // Kiểm tra xem MetaMask đã được cài đặt chưa
         if (window.ethereum) {
           const web3Instance = new Web3(window.ethereum);
           setWeb3(web3Instance);
 
-          // Yêu cầu quyền truy cập tài khoản
           const accounts = await window.ethereum.request({
             method: "eth_requestAccounts",
           });
           setAccount(accounts[0]);
 
-          // Khởi tạo contract
           const contractInstance = new web3Instance.eth.Contract(
             FruitSupplyChainABI,
             contractAddress
           );
           setContract(contractInstance);
 
-          // Lắng nghe sự kiện thay đổi tài khoản
           window.ethereum.on("accountsChanged", (accounts) => {
             setAccount(accounts[0]);
           });
 
-          // Lắng nghe sự kiện thay đổi mạng
           window.ethereum.on("chainChanged", () => {
             window.location.reload();
           });
@@ -61,7 +57,6 @@ export function Web3Provider({ children }) {
 
     initWeb3();
 
-    // Cleanup function
     return () => {
       if (window.ethereum) {
         window.ethereum.removeAllListeners();
@@ -69,12 +64,49 @@ export function Web3Provider({ children }) {
     };
   }, [contractAddress]);
 
+  const getFruit = async (fruitId) => {
+    if (!contract) {
+      throw new Error(
+        "Vui lòng kết nối ví MetaMask để thực hiện hành động này"
+      );
+    }
+    try {
+      const result = await contract.methods.getFruit(fruitId).call();
+      return {
+        fruitType: result[0],
+        origin: result[1],
+        producer: result[2],
+        history: result[3],
+      };
+    } catch (err) {
+      throw new Error(`Lỗi khi lấy thông tin trái cây: ${err.message}`);
+    }
+  };
+
+  const harvestFruit = async (fruitType, origin) => {
+    if (!contract || !account) {
+      throw new Error(
+        "Vui lòng kết nối ví MetaMask để thực hiện hành động này"
+      );
+    }
+    try {
+      const result = await contract.methods
+        .harvestFruit(fruitType, origin)
+        .send({ from: account, gas: 300000 });
+      return result;
+    } catch (err) {
+      throw new Error(`Lỗi khi thu hoạch trái cây: ${err.message}`);
+    }
+  };
+
   const value = {
     web3,
     account,
     contract,
     loading,
     error,
+    getFruit,
+    harvestFruit,
     connectWallet: async () => {
       try {
         const accounts = await window.ethereum.request({

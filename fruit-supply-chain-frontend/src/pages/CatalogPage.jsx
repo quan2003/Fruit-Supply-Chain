@@ -1,3 +1,4 @@
+// fruit-supply-chain-frontend/src/pages/CatalogPage.jsx
 import React, { useState, useEffect } from "react";
 import {
   Container,
@@ -15,13 +16,13 @@ import CatalogList from "../components/FruitCatalog/CatalogList";
 import CatalogDetail from "../components/FruitCatalog/CatalogDetail";
 import AddCatalogForm from "../components/FruitCatalog/AddCatalogForm";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-import { useWeb3Context } from "../contexts/Web3Context";
-import { useAuthContext } from "../contexts/AuthContext";
+import { useWeb3 } from "../contexts/Web3Context"; // Sửa từ useWeb3Context thành useWeb3
+import { useAuth } from "../contexts/AuthContext"; // Sửa từ useAuthContext thành useAuth
 import { getAllFruitCatalogs } from "../services/fruitService";
 
 const CatalogPage = () => {
-  const { isConnected } = useWeb3Context();
-  const { user } = useAuthContext();
+  const { account } = useWeb3(); // Sửa từ isConnected thành account
+  const { user } = useAuth();
   const [tabValue, setTabValue] = useState(0);
   const [catalogs, setCatalogs] = useState([]);
   const [selectedCatalog, setSelectedCatalog] = useState(null);
@@ -44,12 +45,12 @@ const CatalogPage = () => {
       }
     };
 
-    if (isConnected) {
+    if (account) {
       loadCatalogs();
     } else {
       setLoading(false);
     }
-  }, [isConnected]);
+  }, [account]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -140,7 +141,7 @@ const CatalogPage = () => {
           </Tabs>
         </Box>
 
-        {!isConnected ? (
+        {!account ? (
           <Box sx={{ textAlign: "center", mt: 4 }}>
             <Typography variant="h6">
               Vui lòng kết nối ví để xem danh mục trái cây

@@ -1,3 +1,4 @@
+// fruit-supply-chain-frontend/src/pages/AdminPage.jsx
 import React, { useState, useEffect } from "react";
 import {
   Container,
@@ -19,8 +20,8 @@ import Layout from "../components/common/Layout";
 import ManagersList from "../components/Admin/ManagersList";
 import AddManagerForm from "../components/Admin/AddManagerForm";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-import { useWeb3Context } from "../contexts/useWeb3";
-import { useAuthContext } from "../contexts/AuthContext";
+import { useWeb3 } from "../contexts/Web3Context";
+import { useAuth } from "../contexts/AuthContext";
 import {
   getAllManagers,
   addManager,
@@ -30,8 +31,8 @@ import {
 } from "../services/api";
 
 const AdminPage = () => {
-  const { isConnected, account } = useWeb3();
-  const { user } = useAuthContext();
+  const { account } = useWeb3();
+  const { user, isManager } = useAuth();
 
   const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -52,7 +53,7 @@ const AdminPage = () => {
       try {
         setLoading(true);
         // Check if current user is admin based on role
-        if (user && user.role === "admin") {
+        if (user && (user.role === "admin" || isManager)) {
           setIsAdmin(true);
 
           // If admin, load manager data
@@ -81,13 +82,13 @@ const AdminPage = () => {
       }
     };
 
-    if (isConnected && user) {
+    if (account && user) {
       checkAdmin();
     } else {
       setLoading(false);
       setErrorMessage("Vui lòng kết nối ví và đăng nhập để tiếp tục");
     }
-  }, [isConnected, user]);
+  }, [account, user, isManager]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -141,7 +142,7 @@ const AdminPage = () => {
     return <LoadingSpinner />;
   }
 
-  if (!isConnected) {
+  if (!account) {
     return (
       <Layout>
         <Container maxWidth="lg">

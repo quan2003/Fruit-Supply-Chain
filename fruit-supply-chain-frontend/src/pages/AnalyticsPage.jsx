@@ -1,3 +1,4 @@
+// fruit-supply-chain-frontend/src/pages/AnalyticsPage.jsx
 import React, { useState, useEffect } from "react";
 import {
   Container,
@@ -22,8 +23,8 @@ import TrendsChart from "../components/Analytics/TrendsChart";
 import QualityMap from "../components/Analytics/QualityMap";
 import Recommendations from "../components/Analytics/Recommendations";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-import { useWeb3Context } from "../contexts/useWeb3";
-import { useAuthContext } from "../contexts/AuthContext";
+import { useWeb3 } from "../contexts/Web3Context"; // Sửa từ useWeb3Context thành useWeb3
+import { useAuth } from "../contexts/AuthContext"; // Sửa từ useAuthContext thành useAuth
 import {
   getTrendsData,
   getQualityMapData,
@@ -32,8 +33,8 @@ import {
 } from "../services/analyticsService";
 
 const AnalyticsPage = () => {
-  const { isConnected, account } = useWeb3();
-  const { user } = useAuthContext();
+  const { account } = useWeb3();
+  const { user } = useAuth();
 
   const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -51,35 +52,37 @@ const AnalyticsPage = () => {
   useEffect(() => {
     const fetchFilters = async () => {
       try {
-        // Fetch available fruit types from blockchain data
-        const types = await fetch("/api/fruitTypes").then((res) => res.json());
+        // Giả lập dữ liệu, bạn có thể thay bằng API thật
+        const types = [
+          { id: "1", name: "Xoài" },
+          { id: "2", name: "Thanh Long" },
+        ];
         setFruitTypes(types);
 
-        // Fetch available regions from blockchain data
-        const regionList = await fetch("/api/regions").then((res) =>
-          res.json()
-        );
+        const regionList = [
+          { id: "1", name: "Tiền Giang" },
+          { id: "2", name: "Bình Thuận" },
+          { id: "3", name: "Đồng Tháp" },
+        ];
         setRegions(regionList);
       } catch (error) {
         console.error("Error fetching filter data:", error);
       }
     };
 
-    if (isConnected) {
+    if (account) {
       fetchFilters();
     }
-  }, [isConnected]);
+  }, [account]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
 
-        // Fetch trends data based on filters
         const trends = await getTrendsData(timeRange, fruitType, region);
         setTrendsData(trends);
 
-        // Fetch quality map data based on filters
         const qualityData = await getQualityMapData(
           timeRange,
           fruitType,
@@ -87,7 +90,6 @@ const AnalyticsPage = () => {
         );
         setQualityMapData(qualityData);
 
-        // Fetch recommendations based on user role and filters
         const userRole = user?.role || "consumer";
         const recs = await getRecommendations(
           userRole,
@@ -104,12 +106,12 @@ const AnalyticsPage = () => {
       }
     };
 
-    if (isConnected) {
+    if (account) {
       fetchData();
     } else {
       setLoading(false);
     }
-  }, [isConnected, timeRange, fruitType, region, user?.role]);
+  }, [account, timeRange, fruitType, region, user]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -127,41 +129,30 @@ const AnalyticsPage = () => {
     setRegion(event.target.value);
   };
 
-  const handleRefresh = () => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
+  const handleRefresh = async () => {
+    try {
+      setLoading(true);
 
-        // Fetch trends data based on filters
-        const trends = await getTrendsData(timeRange, fruitType, region);
-        setTrendsData(trends);
+      const trends = await getTrendsData(timeRange, fruitType, region);
+      setTrendsData(trends);
 
-        // Fetch quality map data based on filters
-        const qualityData = await getQualityMapData(
-          timeRange,
-          fruitType,
-          region
-        );
-        setQualityMapData(qualityData);
+      const qualityData = await getQualityMapData(timeRange, fruitType, region);
+      setQualityMapData(qualityData);
 
-        // Fetch recommendations based on user role and filters
-        const userRole = user?.role || "consumer";
-        const recs = await getRecommendations(
-          userRole,
-          timeRange,
-          fruitType,
-          region
-        );
-        setRecommendations(recs);
+      const userRole = user?.role || "consumer";
+      const recs = await getRecommendations(
+        userRole,
+        timeRange,
+        fruitType,
+        region
+      );
+      setRecommendations(recs);
 
-        setLoading(false);
-      } catch (error) {
-        console.error("Error refreshing analytics data:", error);
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+      setLoading(false);
+    } catch (error) {
+      console.error("Error refreshing analytics data:", error);
+      setLoading(false);
+    }
   };
 
   const handleExport = async () => {
@@ -275,7 +266,7 @@ const AnalyticsPage = () => {
           </Tabs>
         </Box>
 
-        {!isConnected ? (
+        {!account ? (
           <Box sx={{ textAlign: "center", mt: 4 }}>
             <Typography variant="h6">
               Vui lòng kết nối ví để xem phân tích dữ liệu
