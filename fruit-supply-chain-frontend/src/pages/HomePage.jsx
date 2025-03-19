@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Container, Grid, Typography, Box } from "@mui/material";
-import { useWeb3Context } from "../contexts/Web3Context";
+import { useWeb3 } from "../contexts/Web3Context"; // Sửa đổi từ useWeb3Context thành useWeb3
 import Dashboard from "../components/Dashboard/Dashboard";
 import RecentActivities from "../components/Dashboard/RecentActivities";
 import QuickActions from "../components/Dashboard/QuickActions";
@@ -10,7 +10,7 @@ import Layout from "../components/common/Layout";
 import { getFruitStatistics, getRecentActivities } from "../services/api";
 
 const HomePage = () => {
-  const { isConnected, account } = useWeb3Context();
+  const { account } = useWeb3(); // Thay đổi từ useWeb3Context thành useWeb3
   const [stats, setStats] = useState(null);
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,11 +25,12 @@ const HomePage = () => {
         setStats(statsData);
 
         // Fetch recent activities on the blockchain
-        const recentActivities = await getRecentActivities(account);
-        setActivities(recentActivities);
+        if (account) {
+          const recentActivities = await getRecentActivities(account);
+          setActivities(recentActivities);
+        }
 
-        // Determine user role based on account or stored preferences
-        // This could be fetched from a backend service or blockchain
+        // Xác định vai trò người dùng
         const role = localStorage.getItem("userRole") || "consumer";
         setUserRole(role);
 
@@ -40,12 +41,12 @@ const HomePage = () => {
       }
     };
 
-    if (isConnected && account) {
+    if (account) {
       fetchData();
     } else {
       setLoading(false);
     }
-  }, [isConnected, account]);
+  }, [account]);
 
   if (loading) {
     return <LoadingSpinner />;
@@ -63,7 +64,7 @@ const HomePage = () => {
           </Typography>
         </Box>
 
-        {isConnected ? (
+        {account ? (
           <>
             <Dashboard />
 

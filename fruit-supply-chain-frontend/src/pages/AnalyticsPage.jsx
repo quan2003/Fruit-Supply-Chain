@@ -22,7 +22,7 @@ import TrendsChart from "../components/Analytics/TrendsChart";
 import QualityMap from "../components/Analytics/QualityMap";
 import Recommendations from "../components/Analytics/Recommendations";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-import { useWeb3Context } from "../contexts/useWeb3";
+import { useWeb3 } from "../contexts/Web3Context";
 import { useAuthContext } from "../contexts/AuthContext";
 import {
   getTrendsData,

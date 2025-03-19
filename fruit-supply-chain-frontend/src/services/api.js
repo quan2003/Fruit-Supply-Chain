@@ -15,4 +15,16 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Hàm lấy thống kê trái cây
+export const getFruitStatistics = async () => {
+  const response = await api.get("/fruit-statistics");
+  return response.data;
+};
+
+// Hàm lấy hoạt động gần đây
+export const getRecentActivities = async (account) => {
+  const response = await api.get(`/recent-activities?account=${account}`);
+  return response.data;
+};
+
 export default api;

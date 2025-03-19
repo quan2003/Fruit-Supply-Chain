@@ -15,13 +15,13 @@ import CatalogList from "../components/FruitCatalog/CatalogList";
 import CatalogDetail from "../components/FruitCatalog/CatalogDetail";
 import AddCatalogForm from "../components/FruitCatalog/AddCatalogForm";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-import { useWeb3Context } from "../contexts/Web3Context";
-import { useAuthContext } from "../contexts/AuthContext";
+import { useWeb3 } from "../contexts/Web3Context"; 
+import { useAuth } from "../contexts/AuthContext"; // 🔧 Đổi từ useAuthContext thành useAuth
 import { getAllFruitCatalogs } from "../services/fruitService";
 
 const CatalogPage = () => {
-  const { isConnected } = useWeb3Context();
-  const { user } = useAuthContext();
+  const { isConnected } = useWeb3();
+  const { user } = useAuth();
   const [tabValue, setTabValue] = useState(0);
   const [catalogs, setCatalogs] = useState([]);
   const [selectedCatalog, setSelectedCatalog] = useState(null);
@@ -33,22 +33,23 @@ const CatalogPage = () => {
 
   useEffect(() => {
     const loadCatalogs = async () => {
+      if (!isConnected) {
+        setLoading(false);
+        return;
+      }
+      
       try {
         setLoading(true);
         const data = await getAllFruitCatalogs();
         setCatalogs(data);
-        setLoading(false);
       } catch (error) {
         console.error("Error loading fruit catalogs:", error);
+      } finally {
         setLoading(false);
       }
     };
 
-    if (isConnected) {
-      loadCatalogs();
-    } else {
-      setLoading(false);
-    }
+    loadCatalogs();
   }, [isConnected]);
 
   const handleTabChange = (event, newValue) => {
@@ -59,30 +60,30 @@ const CatalogPage = () => {
 
   const handleSelectCatalog = (catalog) => {
     setSelectedCatalog(catalog);
-    setTabValue(1); // Switch to detail tab
+    setTabValue(1);
   };
 
   const handleAddCatalogClick = () => {
     setShowAddForm(true);
-    setTabValue(2); // Switch to add tab
+    setTabValue(2);
   };
 
   const handleCatalogAdded = (newCatalog) => {
-    setCatalogs([...catalogs, newCatalog]);
+    setCatalogs((prev) => [...prev, newCatalog]);
     setShowAddForm(false);
-    setTabValue(0); // Switch back to list tab
+    setTabValue(0);
   };
 
   const handleSearchChange = (event) => {
     setSearchTerm(event.target.value);
   };
 
-  const filteredCatalogs = catalogs.filter(
+  const filteredCatalogs = catalogs?.filter(
     (catalog) =>
       catalog.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       catalog.origin.toLowerCase().includes(searchTerm.toLowerCase()) ||
       catalog.description.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  ) || [];
 
   if (loading) {
     return <LoadingSpinner />;
@@ -91,25 +92,13 @@ const CatalogPage = () => {
   return (
     <Layout>
       <Container maxWidth="lg">
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            mb: 3,
-          }}
-        >
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
           <Typography variant="h4" component="h1">
             Danh mục trái cây
           </Typography>
 
           {canAddCatalog && (
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={handleAddCatalogClick}
-            >
+            <Button variant="contained" color="primary" startIcon={<AddIcon />} onClick={handleAddCatalogClick}>
               Thêm loại trái cây
             </Button>
           )}
@@ -142,26 +131,13 @@ const CatalogPage = () => {
 
         {!isConnected ? (
           <Box sx={{ textAlign: "center", mt: 4 }}>
-            <Typography variant="h6">
-              Vui lòng kết nối ví để xem danh mục trái cây
-            </Typography>
+            <Typography variant="h6">Vui lòng kết nối ví để xem danh mục trái cây</Typography>
           </Box>
         ) : (
           <>
-            {tabValue === 0 && (
-              <CatalogList
-                catalogs={filteredCatalogs}
-                onSelectCatalog={handleSelectCatalog}
-              />
-            )}
-
-            {tabValue === 1 && selectedCatalog && (
-              <CatalogDetail catalog={selectedCatalog} />
-            )}
-
-            {tabValue === 2 && showAddForm && (
-              <AddCatalogForm onSuccess={handleCatalogAdded} />
-            )}
+            {tabValue === 0 && <CatalogList catalogs={filteredCatalogs} onSelectCatalog={handleSelectCatalog} />}
+            {tabValue === 1 && selectedCatalog && <CatalogDetail catalog={selectedCatalog} />}
+            {tabValue === 2 && showAddForm && <AddCatalogForm onSuccess={handleCatalogAdded} />}
           </>
         )}
       </Container>
