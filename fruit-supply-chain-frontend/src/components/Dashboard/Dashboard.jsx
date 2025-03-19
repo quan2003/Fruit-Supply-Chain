@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+// fruit-supply-chain-frontend/src/components/Dashboard/Dashboard.jsx
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useWeb3 } from "../../contexts/Web3Context";
 import DashboardStats from "./DashboardStats";
@@ -6,9 +7,11 @@ import RecentActivities from "./RecentActivities";
 import QuickActions from "./QuickActions";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { getFruitCount } from "../../services/fruitService";
-import { getAllFarms } from "../../services/farmService";
-import { getRecentEvents } from "../../services/analyticsService";
-import { getTrends } from "../../services/analyticsService";
+import { getAllFarmsService } from "../../services/farmService"; // Sửa từ getAllFarms thành getAllFarmsService
+import {
+  getRecentEvents,
+  getTrendsData,
+} from "../../services/analyticsService"; // Sửa từ getTrends thành getTrendsData
 
 const Dashboard = () => {
   const { account } = useWeb3();
@@ -36,13 +39,13 @@ const Dashboard = () => {
         const fruitCount = await getFruitCount();
 
         // Fetch farms
-        const farms = await getAllFarms();
+        const farms = await getAllFarmsService();
 
         // Fetch recent events
-        const events = await getRecentEvents(10);
+        const events = await getRecentEvents(account);
 
         // Fetch trends
-        const trendsData = await getTrends();
+        const trendsData = await getTrendsData("30", "all", "all");
 
         // Set dashboard stats
         setStats({

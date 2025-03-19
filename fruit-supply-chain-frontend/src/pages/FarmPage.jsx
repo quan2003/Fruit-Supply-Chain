@@ -23,7 +23,6 @@ import FarmDetail from "../components/FarmManagement/FarmDetail";
 import RegisterFarmForm from "../components/FarmManagement/RegisterFarmForm";
 import UpdateFarmConditions from "../components/FarmManagement/UpdateFarmConditions";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-
 import { useWeb3 } from "../contexts/Web3Context";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -32,18 +31,10 @@ import {
   registerFarmService,
 } from "../services/farmService";
 
-import { useWeb3 } from "../contexts/Web3Context"; // ✅ Sửa lỗi import
-import { useAuth } from "../contexts/AuthContext";
-import { getAllFarms, getFarmById } from "../services/farmService";
-
 const FarmPage = () => {
   const { farmId } = useParams();
   const navigate = useNavigate();
-
   const { account } = useWeb3();
-
-  const { isConnected, account } = useWeb3(); // ✅ Sửa lỗi useWeb3Context()
-
   const { user } = useAuth();
 
   const [tabValue, setTabValue] = useState(0);
@@ -101,6 +92,50 @@ const FarmPage = () => {
     }
   };
 
+  const handleSelectFarm = (farm) => {
+    setSelectedFarm(farm);
+    setTabValue(1);
+    navigate(`/farms/${farm.id}`);
+  };
+
+  const handleRegisterFarmClick = () => {
+    setShowRegisterForm(true);
+    setTabValue(2);
+  };
+
+  const handleUpdateFarmClick = () => {
+    setShowUpdateForm(true);
+    setTabValue(3);
+  };
+
+  const handleFarmRegistered = (newFarm) => {
+    setFarms([...farms, newFarm]);
+    setSelectedFarm(newFarm);
+    setShowRegisterForm(false);
+    setTabValue(1);
+    navigate(`/farms/${newFarm.id}`);
+  };
+
+  const handleFarmUpdated = (updatedFarm) => {
+    setFarms(
+      farms.map((farm) => (farm.id === updatedFarm.id ? updatedFarm : farm))
+    );
+    setSelectedFarm(updatedFarm);
+    setShowUpdateForm(false);
+    setTabValue(1);
+  };
+
+  const handleSearchChange = (event) => {
+    setSearchTerm(event.target.value);
+  };
+
+  const filteredFarms = farms.filter(
+    (farm) =>
+      farm.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      farm.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      farm.owner.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   if (loading) {
     return <LoadingSpinner />;
   }
@@ -111,11 +146,35 @@ const FarmPage = () => {
         <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
           <Typography variant="h4">Quản lý vùng trồng</Typography>
           {canRegisterFarm && (
-            <Button variant="contained" color="primary" startIcon={<AddIcon />}>
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<AddIcon />}
+              onClick={handleRegisterFarmClick}
+            >
               Đăng ký vùng trồng mới
             </Button>
           )}
         </Box>
+
+        {tabValue === 0 && (
+          <Box sx={{ mb: 3 }}>
+            <TextField
+              fullWidth
+              variant="outlined"
+              placeholder="Tìm kiếm theo tên, địa điểm hoặc chủ sở hữu..."
+              value={searchTerm}
+              onChange={handleSearchChange}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
+        )}
 
         <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 3 }}>
           <Tabs value={tabValue} onChange={handleTabChange}>

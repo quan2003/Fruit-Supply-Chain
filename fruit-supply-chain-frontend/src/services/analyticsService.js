@@ -44,3 +44,17 @@ export const exportAnalyticsReport = async (timeRange, fruitType, region) => {
     `Exporting report for timeRange: ${timeRange}, fruitType: ${fruitType}, region: ${region}`
   );
 };
+
+export const getRecentEvents = async (account) => {
+  // Giả lập dữ liệu, bạn có thể thay bằng API thật
+  return [
+    {
+      message: `Người dùng ${account} đã thu hoạch lô trái cây mới`,
+      timestamp: Date.now() - 100000,
+    },
+    {
+      message: `Người dùng ${account} đã ghi nhận bước vận chuyển`,
+      timestamp: Date.now() - 50000,
+    },
+  ];
+};
