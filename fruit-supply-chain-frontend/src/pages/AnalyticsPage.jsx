@@ -22,7 +22,7 @@ import TrendsChart from "../components/Analytics/TrendsChart";
 import QualityMap from "../components/Analytics/QualityMap";
 import Recommendations from "../components/Analytics/Recommendations";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-import { useWeb3Context } from "../contexts/Web3Context";
+import { useWeb3Context } from "../contexts/useWeb3";
 import { useAuthContext } from "../contexts/AuthContext";
 import {
   getTrendsData,
@@ -32,7 +32,7 @@ import {
 } from "../services/analyticsService";
 
 const AnalyticsPage = () => {
-  const { isConnected, account } = useWeb3Context();
+  const { isConnected, account } = useWeb3();
   const { user } = useAuthContext();
 
   const [tabValue, setTabValue] = useState(0);

@@ -1,10 +1,10 @@
+// fruit-supply-chain-frontend/src/pages/TrackerPage.jsx
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Container,
   Typography,
   Box,
-  Grid,
   Button,
   Paper,
   TextField,
@@ -14,8 +14,6 @@ import {
 } from "@mui/material";
 import {
   Search as SearchIcon,
-  Add as AddIcon,
-  LocalShipping as ShippingIcon,
   Agriculture as AgricultureIcon,
 } from "@mui/icons-material";
 import Layout from "../components/common/Layout";
@@ -24,133 +22,113 @@ import FruitDetail from "../components/SupplyChain/FruitDetail";
 import SupplyChainTimeline from "../components/SupplyChain/SupplyChainTimeline";
 import HarvestForm from "../components/SupplyChain/HarvestForm";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-import { useWeb3Context } from "../contexts/Web3Context";
-import { useAuthContext } from "../contexts/AuthContext";
-import {
-  getFruitBatchByCode,
-  getFruitBatches,
-  getFruitBatchState,
-  getSupplyChainSteps,
-  registerHarvest,
-} from "../services/web3Service";
+import { useWeb3 } from "../contexts/Web3Context"; // Sửa từ useWeb3Context thành useWeb3
+import { useAuth } from "../contexts/AuthContext"; // Sửa từ useAuthContext thành useAuth
 
 const TrackerPage = () => {
-  const { batchId } = useParams();
+  const { fruitId } = useParams(); // Sửa từ batchId thành fruitId để phù hợp với contract
   const navigate = useNavigate();
-  const { isConnected, account } = useWeb3Context();
-  const { user } = useAuthContext();
+  const { account, getFruit, harvestFruit } = useWeb3();
+  const { isFarmer } = useAuth();
 
   const [tabValue, setTabValue] = useState(0);
-  const [batches, setBatches] = useState([]);
-  const [selectedBatch, setSelectedBatch] = useState(null);
-  const [supplyChainData, setSupplyChainData] = useState(null);
-  const [currentState, setCurrentState] = useState(null);
+  const [fruits, setFruits] = useState([]);
+  const [selectedFruit, setSelectedFruit] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showHarvestForm, setShowHarvestForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchCode, setSearchCode] = useState("");
 
-  const canHarvest = user?.role === "producer" || user?.role === "admin";
-  const canUpdateSupplyChain = [
-    "producer",
-    "thirdParty",
-    "deliveryHub",
-    "admin",
-  ].includes(user?.role);
+  const canHarvest = isFarmer; // Dựa vào isFarmer từ AuthContext
 
   useEffect(() => {
-    const loadBatches = async () => {
+    const loadFruits = async () => {
       try {
         setLoading(true);
-        const data = await getFruitBatches();
-        setBatches(data);
+        // Giả lập danh sách trái cây, bạn có thể thay bằng API thật
+        const fruitData = [
+          {
+            id: "1",
+            fruitType: "Xoài",
+            origin: "Tiền Giang",
+            producer: account,
+          },
+          {
+            id: "2",
+            fruitType: "Thanh Long",
+            origin: "Bình Thuận",
+            producer: account,
+          },
+        ];
+        setFruits(fruitData);
 
-        // If batchId is provided in URL, load that specific batch
-        if (batchId) {
-          const batch = await getFruitBatchByCode(batchId);
-          setSelectedBatch(batch);
-
-          // Load supply chain data
-          const supplyChain = await getSupplyChainSteps(batchId);
-          setSupplyChainData(supplyChain);
-
-          // Get current state
-          const state = await getFruitBatchState(batchId);
-          setCurrentState(state);
-
-          setTabValue(1); // Switch to detail tab
+        // Nếu fruitId được cung cấp trong URL, load thông tin trái cây đó
+        if (fruitId) {
+          const fruit = await getFruit(fruitId);
+          setSelectedFruit(fruit);
+          setTabValue(1); // Chuyển sang tab chi tiết
         }
 
         setLoading(false);
       } catch (error) {
-        console.error("Error loading fruit batches:", error);
+        console.error("Error loading fruits:", error);
         setLoading(false);
       }
     };
 
-    if (isConnected) {
-      loadBatches();
+    if (account) {
+      loadFruits();
     } else {
       setLoading(false);
     }
-  }, [isConnected, batchId]);
+  }, [account, fruitId, getFruit]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
     if (newValue === 0) {
-      setSelectedBatch(null);
-      setSupplyChainData(null);
-      setCurrentState(null);
+      setSelectedFruit(null);
       setShowHarvestForm(false);
       navigate("/tracker");
     }
   };
 
-  const handleSelectBatch = async (batch) => {
+  const handleSelectFruit = async (fruit) => {
     try {
       setLoading(true);
-      setSelectedBatch(batch);
-
-      // Load supply chain data
-      const supplyChain = await getSupplyChainSteps(batch.id);
-      setSupplyChainData(supplyChain);
-
-      // Get current state
-      const state = await getFruitBatchState(batch.id);
-      setCurrentState(state);
-
-      setTabValue(1); // Switch to detail tab
-      navigate(`/tracker/${batch.id}`);
-      setLoading(false);
+      const fruitData = await getFruit(fruit.id);
+      setSelectedFruit(fruitData);
+      setTabValue(1); // Chuyển sang tab chi tiết
+      navigate(`/tracker/${fruit.id}`);
     } catch (error) {
-      console.error("Error loading batch details:", error);
+      console.error("Error loading fruit details:", error);
+    } finally {
       setLoading(false);
     }
   };
 
   const handleHarvestClick = () => {
     setShowHarvestForm(true);
-    setTabValue(2); // Switch to harvest tab
+    setTabValue(2); // Chuyển sang tab thu hoạch
   };
 
-  const handleHarvestRegistered = (newBatch) => {
-    setBatches([...batches, newBatch]);
-    setSelectedBatch(newBatch);
-    setShowHarvestForm(false);
-
-    // Set initial supply chain data
-    setSupplyChainData([
-      {
-        step: "Harvested",
-        timestamp: new Date().getTime(),
-        actor: account,
-        notes: "Initial harvest registered",
-      },
-    ]);
-
-    setCurrentState("Harvested");
-    setTabValue(1); // Switch to detail tab
-    navigate(`/tracker/${newBatch.id}`);
+  const handleHarvestRegistered = async (fruitData) => {
+    try {
+      const result = await harvestFruit(fruitData.fruitType, fruitData.origin);
+      const newFruitId = result.events.StepRecorded.returnValues.fruitId;
+      const newFruit = {
+        id: newFruitId,
+        fruitType: fruitData.fruitType,
+        origin: fruitData.origin,
+        producer: account,
+      };
+      setFruits([...fruits, newFruit]);
+      setSelectedFruit(newFruit);
+      setShowHarvestForm(false);
+      setTabValue(1); // Chuyển sang tab chi tiết
+      navigate(`/tracker/${newFruitId}`);
+    } catch (error) {
+      console.error("Error registering harvest:", error);
+    }
   };
 
   const handleSearchChange = (event) => {
@@ -166,25 +144,27 @@ const TrackerPage = () => {
 
     try {
       setLoading(true);
-      const batch = await getFruitBatchByCode(searchCode);
-      if (batch) {
-        await handleSelectBatch(batch);
+      const fruit = await getFruit(searchCode);
+      if (fruit) {
+        setSelectedFruit(fruit);
+        setTabValue(1);
+        navigate(`/tracker/${searchCode}`);
       } else {
-        alert("Không tìm thấy lô trái cây với mã này!");
-        setLoading(false);
+        alert("Không tìm thấy trái cây với ID này!");
       }
     } catch (error) {
-      console.error("Error finding batch by code:", error);
-      alert("Có lỗi xảy ra khi tìm kiếm mã lô trái cây!");
+      console.error("Error finding fruit by ID:", error);
+      alert("Có lỗi xảy ra khi tìm kiếm ID trái cây!");
+    } finally {
       setLoading(false);
     }
   };
 
-  const filteredBatches = batches.filter(
-    (batch) =>
-      batch.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      batch.producer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      batch.fruitType.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredFruits = fruits.filter(
+    (fruit) =>
+      fruit.fruitType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      fruit.origin.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      fruit.producer.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -220,13 +200,13 @@ const TrackerPage = () => {
 
         <Paper sx={{ p: 3, mb: 3 }}>
           <Typography variant="h6" gutterBottom>
-            Tìm kiếm nhanh theo mã lô
+            Tìm kiếm nhanh theo ID trái cây
           </Typography>
           <Box sx={{ display: "flex", gap: 2 }}>
             <TextField
               fullWidth
               variant="outlined"
-              placeholder="Nhập mã lô trái cây..."
+              placeholder="Nhập ID trái cây..."
               value={searchCode}
               onChange={handleSearchCodeChange}
               size="small"
@@ -243,8 +223,8 @@ const TrackerPage = () => {
 
         <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 3 }}>
           <Tabs value={tabValue} onChange={handleTabChange}>
-            <Tab label="Danh sách lô trái cây" />
-            <Tab label="Chi tiết & Chuỗi cung ứng" disabled={!selectedBatch} />
+            <Tab label="Danh sách trái cây" />
+            <Tab label="Chi tiết & Chuỗi cung ứng" disabled={!selectedFruit} />
             <Tab
               label="Đăng ký thu hoạch"
               disabled={!canHarvest || !showHarvestForm}
@@ -252,7 +232,7 @@ const TrackerPage = () => {
           </Tabs>
         </Box>
 
-        {!isConnected ? (
+        {!account ? (
           <Box sx={{ textAlign: "center", mt: 4 }}>
             <Typography variant="h6">
               Vui lòng kết nối ví để theo dõi chuỗi cung ứng
@@ -266,7 +246,7 @@ const TrackerPage = () => {
                   <TextField
                     fullWidth
                     variant="outlined"
-                    placeholder="Tìm kiếm theo tên, nhà sản xuất hoặc loại trái cây..."
+                    placeholder="Tìm kiếm theo loại trái cây, xuất xứ hoặc nhà sản xuất..."
                     value={searchTerm}
                     onChange={handleSearchChange}
                     InputProps={{
@@ -279,31 +259,17 @@ const TrackerPage = () => {
                   />
                 </Box>
                 <SupplyChainTracker
-                  batches={filteredBatches}
-                  onSelectBatch={handleSelectBatch}
+                  batches={filteredFruits}
+                  onSelectBatch={handleSelectFruit}
                 />
               </>
             )}
 
-            {tabValue === 1 && selectedBatch && (
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={4}>
-                  <FruitDetail
-                    batch={selectedBatch}
-                    currentState={currentState}
-                    canUpdate={canUpdateSupplyChain}
-                    onStateUpdated={(updatedState) =>
-                      setCurrentState(updatedState)
-                    }
-                  />
-                </Grid>
-                <Grid item xs={12} md={8}>
-                  <SupplyChainTimeline
-                    data={supplyChainData}
-                    currentState={currentState}
-                  />
-                </Grid>
-              </Grid>
+            {tabValue === 1 && selectedFruit && (
+              <Box>
+                <FruitDetail batch={selectedFruit} />
+                <SupplyChainTimeline data={selectedFruit.history} />
+              </Box>
             )}
 
             {tabValue === 2 && showHarvestForm && (

@@ -19,7 +19,7 @@ import Layout from "../components/common/Layout";
 import ManagersList from "../components/Admin/ManagersList";
 import AddManagerForm from "../components/Admin/AddManagerForm";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-import { useWeb3Context } from "../contexts/Web3Context";
+import { useWeb3Context } from "../contexts/useWeb3";
 import { useAuthContext } from "../contexts/AuthContext";
 import {
   getAllManagers,
@@ -30,7 +30,7 @@ import {
 } from "../services/api";
 
 const AdminPage = () => {
-  const { isConnected, account } = useWeb3Context();
+  const { isConnected, account } = useWeb3();
   const { user } = useAuthContext();
 
   const [tabValue, setTabValue] = useState(0);
