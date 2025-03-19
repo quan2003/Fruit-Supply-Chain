@@ -1,73 +1,212 @@
+// fruit-supply-chain-frontend/src/components/common/Sidebar.jsx
 import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import {
+  Box,
+  Typography,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+} from "@mui/material";
+import { motion } from "framer-motion";
+import {
+  Speed,
+  Agriculture,
+  Add,
+  ManageAccounts,
+  Help,
+  Book,
+  ContactSupport,
+} from "@mui/icons-material";
 
 const Sidebar = () => {
   const { isManager, isFarmer, userFarms } = useAuth();
 
+  const linkHover = {
+    scale: 1.05,
+    color: "#FF8E53",
+    transition: { duration: 0.3 },
+  };
+
   return (
-    <aside className="app-sidebar">
-      <div className="sidebar-section">
-        <h3>Truy cập nhanh</h3>
-        <ul>
-          <li>
-            <Link to="/tracker">Truy xuất nguồn gốc</Link>
-          </li>
+    <Box
+      component="aside"
+      sx={{
+        width: { xs: "100%", md: 250 },
+        background: "linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)",
+        color: "white",
+        p: 2,
+        minHeight: "100vh",
+        boxShadow: "2px 0 5px rgba(0,0,0,0.1)",
+      }}
+    >
+      <Box sx={{ mb: 3 }}>
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.8 }}
+        >
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: "bold",
+              background: "linear-gradient(45deg, #FFFFFF 30%, #FFD700 90%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
+            Menu
+          </Typography>
+        </motion.div>
+      </Box>
+
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: "bold", mb: 1 }}>
+          Truy cập nhanh
+        </Typography>
+        <List>
+          <motion.div whileHover={linkHover}>
+            <ListItem button component={Link} to="/tracker">
+              <ListItemIcon>
+                <Speed sx={{ color: "white" }} />
+              </ListItemIcon>
+              <ListItemText
+                primary="Truy xuất nguồn gốc"
+                primaryTypographyProps={{ color: "white" }}
+              />
+            </ListItem>
+          </motion.div>
           {isFarmer && (
-            <li>
-              <Link to="/farms/harvest">Thu hoạch mới</Link>
-            </li>
+            <motion.div whileHover={linkHover}>
+              <ListItem button component={Link} to="/farms/harvest">
+                <ListItemIcon>
+                  <Agriculture sx={{ color: "white" }} />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Thu hoạch mới"
+                  primaryTypographyProps={{ color: "white" }}
+                />
+              </ListItem>
+            </motion.div>
           )}
-        </ul>
-      </div>
+        </List>
+      </Box>
 
       {isFarmer && (
-        <div className="sidebar-section">
-          <h3>Nông trại của tôi</h3>
-          <ul>
-            {userFarms.map((farm) => (
-              <li key={farm.id}>
-                <Link to={`/farms/${farm.id}`}>{farm.location}</Link>
-              </li>
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: "bold", mb: 1 }}>
+            Nông trại của tôi
+          </Typography>
+          <List>
+            {userFarms.map((farm, index) => (
+              <motion.div
+                key={farm.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+                whileHover={linkHover}
+              >
+                <ListItem button component={Link} to={`/farms/${farm.id}`}>
+                  <ListItemIcon>
+                    <Agriculture sx={{ color: "white" }} />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={farm.location}
+                    primaryTypographyProps={{ color: "white" }}
+                  />
+                </ListItem>
+              </motion.div>
             ))}
-            <li>
-              <Link to="/farms/register" className="add-new">
-                + Đăng ký nông trại mới
-              </Link>
-            </li>
-          </ul>
-        </div>
+            <motion.div whileHover={linkHover}>
+              <ListItem button component={Link} to="/farms/register">
+                <ListItemIcon>
+                  <Add sx={{ color: "white" }} />
+                </ListItemIcon>
+                <ListItemText
+                  primary="+ Đăng ký nông trại mới"
+                  primaryTypographyProps={{ color: "white" }}
+                />
+              </ListItem>
+            </motion.div>
+          </List>
+        </Box>
       )}
 
       {isManager && (
-        <div className="sidebar-section">
-          <h3>Quản lý</h3>
-          <ul>
-            <li>
-              <Link to="/admin/managers">Quản lý người dùng</Link>
-            </li>
-            <li>
-              <Link to="/admin/catalogs">Quản lý danh mục</Link>
-            </li>
-          </ul>
-        </div>
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: "bold", mb: 1 }}>
+            Quản lý
+          </Typography>
+          <List>
+            <motion.div whileHover={linkHover}>
+              <ListItem button component={Link} to="/admin/managers">
+                <ListItemIcon>
+                  <ManageAccounts sx={{ color: "white" }} />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Quản lý người dùng"
+                  primaryTypographyProps={{ color: "white" }}
+                />
+              </ListItem>
+            </motion.div>
+            <motion.div whileHover={linkHover}>
+              <ListItem button component={Link} to="/admin/catalogs">
+                <ListItemIcon>
+                  <ManageAccounts sx={{ color: "white" }} />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Quản lý danh mục"
+                  primaryTypographyProps={{ color: "white" }}
+                />
+              </ListItem>
+            </motion.div>
+          </List>
+        </Box>
       )}
 
-      <div className="sidebar-section">
-        <h3>Hỗ trợ</h3>
-        <ul>
-          <li>
-            <a href="/guide">Hướng dẫn sử dụng</a>
-          </li>
-          <li>
-            <a href="/faq">Câu hỏi thường gặp</a>
-          </li>
-          <li>
-            <a href="/contact">Liên hệ hỗ trợ</a>
-          </li>
-        </ul>
-      </div>
-    </aside>
+      <Box>
+        <Typography variant="subtitle1" sx={{ fontWeight: "bold", mb: 1 }}>
+          Hỗ trợ
+        </Typography>
+        <List>
+          <motion.div whileHover={linkHover}>
+            <ListItem button component="a" href="/guide">
+              <ListItemIcon>
+                <Book sx={{ color: "white" }} />
+              </ListItemIcon>
+              <ListItemText
+                primary="Hướng dẫn sử dụng"
+                primaryTypographyProps={{ color: "white" }}
+              />
+            </ListItem>
+          </motion.div>
+          <motion.div whileHover={linkHover}>
+            <ListItem button component="a" href="/faq">
+              <ListItemIcon>
+                <Help sx={{ color: "white" }} />
+              </ListItemIcon>
+              <ListItemText
+                primary="Câu hỏi thường gặp"
+                primaryTypographyProps={{ color: "white" }}
+              />
+            </ListItem>
+          </motion.div>
+          <motion.div whileHover={linkHover}>
+            <ListItem button component="a" href="/contact">
+              <ListItemIcon>
+                <ContactSupport sx={{ color: "white" }} />
+              </ListItemIcon>
+              <ListItemText
+                primary="Liên hệ hỗ trợ"
+                primaryTypographyProps={{ color: "white" }}
+              />
+            </ListItem>
+          </motion.div>
+        </List>
+      </Box>
+    </Box>
   );
 };
 
