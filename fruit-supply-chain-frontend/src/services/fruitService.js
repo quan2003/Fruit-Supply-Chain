@@ -49,3 +49,13 @@ export const addRecommendation = async (recommendationData) => {
     throw error;
   }
 };
+export const getAllFruitCatalogs = async () => {
+  try {
+    const response = await api.get("/fruit-catalogs"); // Đảm bảo endpoint này đúng
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching fruit catalogs:", error);
+    throw error;
+  }
+};
+

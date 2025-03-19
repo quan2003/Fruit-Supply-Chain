@@ -5,7 +5,6 @@ import {
   Container,
   Typography,
   Box,
-  Grid,
   Button,
   Tabs,
   Tab,
@@ -24,6 +23,7 @@ import FarmDetail from "../components/FarmManagement/FarmDetail";
 import RegisterFarmForm from "../components/FarmManagement/RegisterFarmForm";
 import UpdateFarmConditions from "../components/FarmManagement/UpdateFarmConditions";
 import LoadingSpinner from "../components/common/LoadingSpinner";
+
 import { useWeb3 } from "../contexts/Web3Context";
 import { useAuth } from "../contexts/AuthContext";
 import {
@@ -32,10 +32,18 @@ import {
   registerFarmService,
 } from "../services/farmService";
 
+import { useWeb3 } from "../contexts/Web3Context"; // ✅ Sửa lỗi import
+import { useAuth } from "../contexts/AuthContext";
+import { getAllFarms, getFarmById } from "../services/farmService";
+
 const FarmPage = () => {
   const { farmId } = useParams();
   const navigate = useNavigate();
+
   const { account } = useWeb3();
+
+  const { isConnected, account } = useWeb3(); // ✅ Sửa lỗi useWeb3Context()
+
   const { user } = useAuth();
 
   const [tabValue, setTabValue] = useState(0);
@@ -56,13 +64,11 @@ const FarmPage = () => {
         const data = await getAllFarmsService();
         setFarms(data);
 
-        // If farmId is provided in URL, load that specific farm
         if (farmId) {
           const farm = await getFarmByIdService(farmId);
           setSelectedFarm(farm);
-          setTabValue(1); // Switch to detail tab
+          setTabValue(1);
         }
-
         setLoading(false);
       } catch (error) {
         console.error("Error loading farms:", error);
@@ -79,7 +85,6 @@ const FarmPage = () => {
 
   useEffect(() => {
     if (selectedFarm && account) {
-      // Check if current user is the farm owner
       setIsOwner(
         selectedFarm.ownerAddress.toLowerCase() === account.toLowerCase()
       );
@@ -96,50 +101,6 @@ const FarmPage = () => {
     }
   };
 
-  const handleSelectFarm = (farm) => {
-    setSelectedFarm(farm);
-    setTabValue(1); // Switch to detail tab
-    navigate(`/farms/${farm.id}`);
-  };
-
-  const handleRegisterFarmClick = () => {
-    setShowRegisterForm(true);
-    setTabValue(2); // Switch to register tab
-  };
-
-  const handleUpdateFarmClick = () => {
-    setShowUpdateForm(true);
-    setTabValue(3); // Switch to update tab
-  };
-
-  const handleFarmRegistered = (newFarm) => {
-    setFarms([...farms, newFarm]);
-    setSelectedFarm(newFarm);
-    setShowRegisterForm(false);
-    setTabValue(1); // Switch to detail tab
-    navigate(`/farms/${newFarm.id}`);
-  };
-
-  const handleFarmUpdated = (updatedFarm) => {
-    setFarms(
-      farms.map((farm) => (farm.id === updatedFarm.id ? updatedFarm : farm))
-    );
-    setSelectedFarm(updatedFarm);
-    setShowUpdateForm(false);
-    setTabValue(1); // Switch back to detail tab
-  };
-
-  const handleSearchChange = (event) => {
-    setSearchTerm(event.target.value);
-  };
-
-  const filteredFarms = farms.filter(
-    (farm) =>
-      farm.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      farm.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      farm.owner.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   if (loading) {
     return <LoadingSpinner />;
   }
@@ -147,48 +108,14 @@ const FarmPage = () => {
   return (
     <Layout>
       <Container maxWidth="lg">
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            mb: 3,
-          }}
-        >
-          <Typography variant="h4" component="h1">
-            Quản lý vùng trồng
-          </Typography>
-
+        <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
+          <Typography variant="h4">Quản lý vùng trồng</Typography>
           {canRegisterFarm && (
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={handleRegisterFarmClick}
-            >
+            <Button variant="contained" color="primary" startIcon={<AddIcon />}>
               Đăng ký vùng trồng mới
             </Button>
           )}
         </Box>
-
-        {tabValue === 0 && (
-          <Box sx={{ mb: 3 }}>
-            <TextField
-              fullWidth
-              variant="outlined"
-              placeholder="Tìm kiếm theo tên, địa điểm hoặc chủ sở hữu..."
-              value={searchTerm}
-              onChange={handleSearchChange}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Box>
-        )}
 
         <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 3 }}>
           <Tabs value={tabValue} onChange={handleTabChange}>

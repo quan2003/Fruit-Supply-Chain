@@ -21,7 +21,11 @@ import ManagersList from "../components/Admin/ManagersList";
 import AddManagerForm from "../components/Admin/AddManagerForm";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import { useWeb3 } from "../contexts/Web3Context";
+
 import { useAuth } from "../contexts/AuthContext";
+
+import { useAuthContext } from "../contexts/AuthContext";
+
 import {
   getAllManagers,
   addManager,
