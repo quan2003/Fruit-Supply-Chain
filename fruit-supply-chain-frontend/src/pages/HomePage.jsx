@@ -1,351 +1,157 @@
-// fruit-supply-chain-frontend/src/pages/HomePage.jsx
-import React, { useState, useEffect } from "react";
-import {
-  Container,
-  Typography,
-  Box,
-  Grid,
-  Card,
-  CardContent,
-  CardActions,
-  Button,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Fade,
-} from "@mui/material";
-import { Link } from "react-router-dom";
+// src/pages/HomePage.jsx
+import React from "react";
+import { Container, Typography, Box, Grid, Button } from "@mui/material";
 import { motion } from "framer-motion";
-import {
-  TrendingUp,
-  Agriculture,
-  LocalFlorist,
-  History,
-} from "@mui/icons-material";
+import Slider from "react-slick";
+import "slick-carousel/slick/slick.css";
+import "slick-carousel/slick/slick-theme.css";
+import "../assets/styles/Carousel.css"; // Sửa đường dẫn import
 import Layout from "../components/common/Layout";
-import Footer from "../components/common/Footer"; // Thêm Footer
-import Sidebar from "../components/common/Sidebar"; // Thêm Sidebar
-import LoadingSpinner from "../components/common/LoadingSpinner";
-import { useWeb3 } from "../contexts/Web3Context";
-import { getFruitStatistics, getRecentActivities } from "../services/api";
+import Footer from "../components/common/Footer";
+import { Link } from "react-router-dom";
+
+// Hình ảnh cho các slide
+const images = {
+  farmer:
+    "https://icdn.dantri.com.vn/k:2016/1-qua1-1465463524850/man-nhan-voi-hinh-anh-trai-cay-chin-mong-trong-mua-thu-hoach.jpg", // Hình ảnh vùng trồng
+  supplyChain:
+    "https://antinlogistics.com/wp-content/uploads/2023/07/logistics-va-quan-ly-chuoi-cung-ung-1.png", // Hình ảnh chuỗi cung ứng
+  consumer:
+    "https://www.healthyeating.org/images/default-source/home-0.0/nutrition-topics-2.0/general-nutrition-wellness/2-2-2-3foodgroups_fruits_detailfeature.jpg?sfvrsn=64942d53_4", // Hình ảnh trái cây tươi ngon
+};
 
 const HomePage = () => {
-  const { account } = useWeb3();
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalFruits: 0,
-    totalFarms: 0,
-    popularFruits: [],
-  });
-  const [recentActivities, setRecentActivities] = useState([]);
+  // Cài đặt cho carousel
+  const settings = {
+    dots: true,
+    infinite: true,
+    speed: 500,
+    slidesToShow: 1,
+    slidesToScroll: 1,
+    autoplay: true,
+    autoplaySpeed: 3000,
+    arrows: true,
+  };
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const statsData = await getFruitStatistics();
-        const activities = await getRecentActivities(account);
-
-        setStats(statsData);
-        setRecentActivities(activities);
-      } catch (error) {
-        console.error("Error fetching home page data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (account) {
-      fetchData();
-    } else {
-      setLoading(false);
-    }
-  }, [account]);
-
-  if (loading) {
-    return <LoadingSpinner />;
-  }
-
-  if (!account) {
-    return (
-      <Layout>
-        <Container maxWidth="lg">
-          <Box sx={{ textAlign: "center", mt: 4 }}>
-            <motion.div
-              initial={{ opacity: 0, y: -50 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-            >
-              <Typography
-                variant="h4"
-                gutterBottom
-                sx={{
-                  fontWeight: "bold",
-                  background:
-                    "linear-gradient(45deg, #FE6B8B 30%, #FF8E53 90%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                }}
-              >
-                Chào mừng đến với Hệ thống Quản lý Chuỗi Cung ứng Trái cây
-              </Typography>
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                Vui lòng kết nối ví MetaMask để sử dụng hệ thống
-              </Typography>
-            </motion.div>
-            <Box sx={{ mt: 4 }}>
-              <Grid container spacing={3} justifyContent="center">
-                <Grid item xs={12} sm={4}>
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Card
-                      sx={{
-                        background:
-                          "linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)",
-                        color: "white",
-                      }}
-                    >
-                      <CardContent>
-                        <Typography variant="h6">
-                          Truy xuất nguồn gốc
-                        </Typography>
-                        <Typography variant="body2">
-                          Theo dõi trái cây từ nông trại đến người tiêu dùng
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Card
-                      sx={{
-                        background:
-                          "linear-gradient(45deg, #4CAF50 30%, #8BC34A 90%)",
-                        color: "white",
-                      }}
-                    >
-                      <CardContent>
-                        <Typography variant="h6">Quản lý nông trại</Typography>
-                        <Typography variant="body2">
-                          Cập nhật thông tin và tình trạng nông trại theo thời
-                          gian thực
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Card
-                      sx={{
-                        background:
-                          "linear-gradient(45deg, #FF9800 30%, #FFC107 90%)",
-                        color: "white",
-                      }}
-                    >
-                      <CardContent>
-                        <Typography variant="h6">Phân tích dữ liệu</Typography>
-                        <Typography variant="body2">
-                          Nhận các phân tích và khuyến nghị thông minh
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                </Grid>
-              </Grid>
-            </Box>
-          </Box>
-        </Container>
-        <Footer />
-      </Layout>
-    );
-  }
+  // Dữ liệu cho các slide
+  const slides = [
+    {
+      target: "Người dân",
+      title: "Nông dân ơi, sản xuất đỉnh cao nha! 🌱",
+      description:
+        "Theo dõi vùng trồng, nhận gợi ý siêu xịn để trái cây ngon hơn, năng suất cao hơn! Đảm bảo sạch 100%, ai cũng mê! 🥦",
+      cta: "Theo dõi ngay! 🚜",
+      image: images.farmer,
+      link: "/vung-trong",
+    },
+    {
+      target: "Nhà quản lý",
+      title: "Quản lý chuỗi cung ứng dễ ẹc! 📊",
+      description:
+        "Dữ liệu minh bạch, quản lý từ A-Z, đưa ra quyết định chuẩn không cần chỉnh! Tất cả trong tầm tay bạn! 📈",
+      cta: "Quản lý ngay! 🔧",
+      image: images.supplyChain,
+      link: "/quan-ly",
+    },
+    {
+      target: "Người tiêu dùng",
+      title: "Nông sản xịn, chất lượng đỉnh cao! 🍎",
+      description:
+        "Trái cây tươi ngon, nguồn gốc rõ ràng, từ vườn đến tay bạn! Đảm bảo sạch 100%, không ngon hoàn tiền liền tay! 🥭🍋",
+      cta: "Khám phá ngay! 🚀",
+      image: images.consumer,
+      link: "/truy-xuat",
+    },
+  ];
 
   return (
     <Layout>
-      <Box sx={{ display: "flex" }}>
-        <Sidebar />
-        <Box sx={{ flexGrow: 1 }}>
-          <Container maxWidth="lg">
-            <Box sx={{ mt: 4 }}>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 1 }}
-              >
-                <Typography
-                  variant="h4"
-                  gutterBottom
-                  sx={{
-                    fontWeight: "bold",
-                    background:
-                      "linear-gradient(45deg, #FE6B8B 30%, #FF8E53 90%)",
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                  }}
-                >
-                  Tổng quan hệ thống
-                </Typography>
-              </motion.div>
+      {/* Main Section với Carousel */}
+      <Box
+        sx={{
+          minHeight: "calc(100vh - 140px)",
+          bgcolor: "#E6F4EA", // Màu nền xanh nhạt
+          display: "flex",
+          alignItems: "center",
+          py: 4,
+        }}
+      >
+        <Container maxWidth="lg">
+          <Slider {...settings}>
+            {slides.map((slide, index) => (
+              <Box key={index}>
+                <Grid container spacing={3} alignItems="center">
+                  {/* Left Section: Text and CTA */}
+                  <Grid item xs={12} md={6}>
+                    <motion.div
+                      initial={{ opacity: 0, x: -50 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.8 }}
+                    >
+                      <Typography
+                        variant="h3"
+                        sx={{
+                          fontWeight: "bold",
+                          color: "black",
+                          mb: 2,
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        {slide.title}
+                      </Typography>
+                      <Typography
+                        variant="body1"
+                        color="text.secondary"
+                        sx={{ mb: 3, lineHeight: 1.6 }}
+                      >
+                        {slide.description}
+                      </Typography>
+                      <Button
+                        variant="contained"
+                        component={Link}
+                        to={slide.link}
+                        sx={{
+                          bgcolor: "#42A5F5",
+                          color: "white",
+                          borderRadius: "50px",
+                          px: 4,
+                          py: 1.5,
+                          fontWeight: "bold",
+                          "&:hover": { bgcolor: "#1E88E5" },
+                        }}
+                      >
+                        {slide.cta}
+                      </Button>
+                    </motion.div>
+                  </Grid>
 
-              <Grid container spacing={3}>
-                <Grid item xs={12} sm={6} md={3}>
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Card
-                      sx={{
-                        background:
-                          "linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)",
-                        color: "white",
-                      }}
+                  {/* Right Section: Image */}
+                  <Grid item xs={12} md={6}>
+                    <motion.div
+                      initial={{ opacity: 0, x: 50 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.8 }}
                     >
-                      <CardContent>
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", mb: 1 }}
-                        >
-                          <TrendingUp sx={{ mr: 1 }} />
-                          <Typography variant="h6">Tổng số trái cây</Typography>
-                        </Box>
-                        <Typography variant="h4">
-                          {stats.totalFruits}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
+                      <Box
+                        component="img"
+                        src={slide.image}
+                        alt={`${slide.target} Image`}
+                        sx={{
+                          width: "100%",
+                          borderRadius: 2,
+                          boxShadow: 3,
+                        }}
+                      />
+                    </motion.div>
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Card
-                      sx={{
-                        background:
-                          "linear-gradient(45deg, #4CAF50 30%, #8BC34A 90%)",
-                        color: "white",
-                      }}
-                    >
-                      <CardContent>
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", mb: 1 }}
-                        >
-                          <Agriculture sx={{ mr: 1 }} />
-                          <Typography variant="h6">
-                            Tổng số nông trại
-                          </Typography>
-                        </Box>
-                        <Typography variant="h4">{stats.totalFarms}</Typography>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Card
-                      sx={{
-                        background:
-                          "linear-gradient(45deg, #FF9800 30%, #FFC107 90%)",
-                        color: "white",
-                      }}
-                    >
-                      <CardContent>
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", mb: 1 }}
-                        >
-                          <LocalFlorist sx={{ mr: 1 }} />
-                          <Typography variant="h6">
-                            Trái cây phổ biến
-                          </Typography>
-                        </Box>
-                        <Typography variant="body1">
-                          {stats.popularFruits.join(", ")}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Card
-                      sx={{
-                        background:
-                          "linear-gradient(45deg, #F44336 30%, #E57373 90%)",
-                        color: "white",
-                      }}
-                    >
-                      <CardContent>
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", mb: 1 }}
-                        >
-                          <History sx={{ mr: 1 }} />
-                          <Typography variant="h6">
-                            Hoạt động gần đây
-                          </Typography>
-                        </Box>
-                        <List dense>
-                          {recentActivities
-                            .slice(0, 3)
-                            .map((activity, index) => (
-                              <Fade
-                                in={true}
-                                timeout={500 * (index + 1)}
-                                key={index}
-                              >
-                                <ListItem>
-                                  <ListItemIcon>
-                                    <History sx={{ color: "white" }} />
-                                  </ListItemIcon>
-                                  <ListItemText
-                                    primary={activity.message}
-                                    secondary={new Date(
-                                      activity.timestamp
-                                    ).toLocaleString()}
-                                    primaryTypographyProps={{ color: "white" }}
-                                    secondaryTypographyProps={{
-                                      color: "rgba(255, 255, 255, 0.7)",
-                                    }}
-                                  />
-                                </ListItem>
-                              </Fade>
-                            ))}
-                        </List>
-                      </CardContent>
-                      <CardActions>
-                        <Button
-                          size="small"
-                          component={Link}
-                          to="/dashboard"
-                          sx={{ color: "white" }}
-                        >
-                          Xem thêm
-                        </Button>
-                      </CardActions>
-                    </Card>
-                  </motion.div>
-                </Grid>
-              </Grid>
-            </Box>
-          </Container>
-        </Box>
+              </Box>
+            ))}
+          </Slider>
+        </Container>
       </Box>
+
+      {/* Footer */}
       <Footer />
     </Layout>
   );

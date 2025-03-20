@@ -1,0 +1,58 @@
+/* src/assets/styles/Carousel.css */
+.slick-slide {
+  padding: 0 30px; /* Tăng padding để các slide cách xa nhau hơn */
+  margin: 0 10px; /* Thêm margin để tạo khoảng cách giữa các slide */
+}
+
+.slick-track {
+  display: flex;
+  align-items: center;
+}
+
+.slick-dots {
+  bottom: -40px; /* Đẩy chấm điều hướng xuống dưới để không che slide */
+}
+
+.slick-dots li button:before {
+  font-size: 12px;
+  color: #ff6f91;
+}
+
+.slick-dots li.slick-active button:before {
+  color: #ff6f91;
+}
+
+.slick-prev,
+.slick-next {
+  z-index: 1;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  transition: background 0.3s ease;
+}
+
+.slick-prev:hover,
+.slick-next:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.slick-prev:before,
+.slick-next:before {
+  font-size: 20px;
+  color: white;
+}
+
+.slick-prev {
+  left: -60px; /* Đẩy nút prev ra xa slide hơn */
+}
+
+.slick-next {
+  right: -60px; /* Đẩy nút next ra xa slide hơn */
+}
+
+/* Đảm bảo hình ảnh trong slide không bị tràn */
+.slick-slide img {
+  max-width: 100%;
+  height: auto;
+}
