@@ -18,7 +18,10 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "framer-motion": "^12.5.0",
     "pg": "^8.14.1",
+    "react-slick": "^0.30.3",
+    "slick-carousel": "^1.8.1",
     "web3": "^4.16.0"
   }
 }

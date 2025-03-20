@@ -9,12 +9,7 @@ import AnalyticsPage from "./pages/AnalyticsPage";
 import AdminPage from "./pages/AdminPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
-import ProtectedRoute from "./components/common/ProtectedRoute";
-import { useAuth } from "./contexts/AuthContext";
-
 function App() {
-  const { isManager } = useAuth();
-
   return (
     <Layout>
       <Routes>
@@ -25,15 +20,7 @@ function App() {
         <Route path="/farms" element={<FarmPage />} />
         <Route path="/tracker" element={<TrackerPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute isAllowed={isManager}>
-              <AdminPage />
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
+        <Route  path="/admin"  element={<AdminPage />}/></Routes>
     </Layout>
   );
 }

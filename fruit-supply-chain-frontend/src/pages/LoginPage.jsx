@@ -110,7 +110,7 @@ const LoginPage = () => {
           if (user.role === "nguoi-dan") {
             navigate("/farms"); // Điều hướng đến trang FarmPage cho Người dân
           } else if (user.role === "nha-quan-ly") {
-            navigate("/quan-ly"); // Điều hướng đến trang quản lý cho Nhà quản lý
+            navigate("/admin"); // Điều hướng đến trang quản lý cho Nhà quản lý
           } else if (user.role === "nguoi-tieu-dung") {
             navigate("/"); // Điều hướng về trang chủ cho Người tiêu dùng
           }
