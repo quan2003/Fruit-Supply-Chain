@@ -13,7 +13,7 @@ import {
   Select,
   MenuItem,
 } from "@mui/material";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom"; // Thêm useNavigate
 import { Facebook, Twitter, Google } from "@mui/icons-material";
 import Layout from "../components/common/Layout";
 import Footer from "../components/common/Footer";
@@ -24,7 +24,13 @@ const illustrationImage =
 
 const RegisterPage = () => {
   const location = useLocation();
+  const navigate = useNavigate(); // Thêm useNavigate để điều hướng
   const [role, setRole] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   // Lấy query parameter role từ URL
   useEffect(() => {
@@ -37,6 +43,48 @@ const RegisterPage = () => {
 
   const handleRoleChange = (event) => {
     setRole(event.target.value);
+    setError("");
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    // Kiểm tra dữ liệu đầu vào
+    if (!email || !password || !confirmPassword || !role) {
+      setError("Vui lòng điền đầy đủ thông tin! 😅");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Mật khẩu xác nhận không khớp! 😓");
+      return;
+    }
+
+    try {
+      // Gửi yêu cầu đăng ký đến API
+      const response = await fetch("http://localhost:3000/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password, role }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setSuccess(data.message);
+        setTimeout(() => {
+          navigate("/dang-nhap"); // Điều hướng đến trang đăng nhập sau khi đăng ký thành công
+        }, 2000);
+      } else {
+        setError(data.message);
+      }
+    } catch (error) {
+      console.error("Lỗi khi đăng ký:", error);
+      setError("Có lỗi xảy ra! Vui lòng thử lại nhé! 😓");
+    }
   };
 
   return (
@@ -100,6 +148,24 @@ const RegisterPage = () => {
                 Or
               </Typography>
 
+              {/* Hiển thị thông báo lỗi hoặc thành công */}
+              {error && (
+                <Typography
+                  variant="body2"
+                  sx={{ color: "red", textAlign: "center", mb: 2 }}
+                >
+                  {error}
+                </Typography>
+              )}
+              {success && (
+                <Typography
+                  variant="body2"
+                  sx={{ color: "green", textAlign: "center", mb: 2 }}
+                >
+                  {success}
+                </Typography>
+              )}
+
               {/* Register Form */}
               <Box component="form" sx={{ maxWidth: "400px", mx: "auto" }}>
                 <TextField
@@ -107,6 +173,8 @@ const RegisterPage = () => {
                   label="Nhập Email"
                   variant="outlined"
                   sx={{ mb: 2 }}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                 />
                 <TextField
                   fullWidth
@@ -114,6 +182,8 @@ const RegisterPage = () => {
                   type="password"
                   variant="outlined"
                   sx={{ mb: 2 }}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                 />
                 <TextField
                   fullWidth
@@ -121,6 +191,8 @@ const RegisterPage = () => {
                   type="password"
                   variant="outlined"
                   sx={{ mb: 2 }}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
                 />
 
                 {/* Dropdown chọn vai trò */}
@@ -140,6 +212,7 @@ const RegisterPage = () => {
                 <Button
                   fullWidth
                   variant="contained"
+                  onClick={handleRegister} // Thêm sự kiện onClick
                   sx={{
                     bgcolor: "#42A5F5",
                     color: "white",

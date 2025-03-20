@@ -42,7 +42,7 @@ const HomePage = () => {
         "Theo dõi vùng trồng, nhận gợi ý siêu xịn để trái cây ngon hơn, năng suất cao hơn! Đảm bảo sạch 100%, ai cũng mê! 🥦",
       cta: "Theo dõi ngay! 🚜",
       image: images.farmer,
-      link: "/vung-trong",
+      link: "/farms",
     },
     {
       target: "Nhà quản lý",

@@ -1,587 +1,311 @@
-// fruit-supply-chain-frontend/src/pages/HomePage.jsx
+// src/pages/FarmPage.jsx
 import React, { useState, useEffect } from "react";
 import {
   Container,
   Typography,
   Box,
   Grid,
-  Card,
-  CardContent,
-  CardActions,
   Button,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Fade,
-  Divider,
-  useMediaQuery,
-  useTheme,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
-import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import {
-  TrendingUp,
-  Agriculture,
-  LocalFlorist,
-  History,
-} from "@mui/icons-material";
+import Slider from "react-slick";
+import "slick-carousel/slick/slick.css";
+import "slick-carousel/slick/slick-theme.css";
+import "../assets/styles/Carousel.css";
 import Layout from "../components/common/Layout";
 import Footer from "../components/common/Footer";
-import Sidebar from "../components/common/Sidebar";
-import LoadingSpinner from "../components/common/LoadingSpinner";
 import { useWeb3 } from "../contexts/Web3Context";
-import { getFruitStatistics, getRecentActivities } from "../services/api";
+import { Link } from "react-router-dom"; // Thêm import Link
 
-const HomePage = () => {
+// Hình ảnh cho các slide
+const images = {
+  farmMonitoring:
+    "https://images.unsplash.com/photo-1500595046743-dd26eb716e7e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1350&q=80", // Hình ảnh vùng trồng
+  farmUpdate:
+    "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-4.0.3&auto=format&fit=crop&w=1350&q=80", // Hình ảnh cập nhật dữ liệu
+  recommendations:
+    "https://www.healthyeating.org/images/default-source/home-0.0/nutrition-topics-2.0/general-nutrition-wellness/2-2-2-3foodgroups_fruits_detailfeature.jpg?sfvrsn=64942d53_4", // Hình ảnh trái cây
+};
+
+const FarmPage = () => {
   const { account } = useWeb3();
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalFruits: 0,
-    totalFarms: 0,
-    popularFruits: [],
+  const [farmData, setFarmData] = useState({
+    weather: "Nắng nhẹ, 28°C",
+    yield: "500 kg",
+    quality: "Tốt",
   });
-  const [recentActivities, setRecentActivities] = useState([]);
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const [updateData, setUpdateData] = useState({
+    yield: "",
+    condition: "",
+  });
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const statsData = await getFruitStatistics();
-        const activities = await getRecentActivities(account);
+  // Lấy thông tin người dùng từ localStorage
+  const user = JSON.parse(localStorage.getItem("user")) || {};
+  const isFarmer = user.role === "nguoi-dan";
+  const isManager = user.role === "nha-quan-ly";
 
-        setStats(statsData);
-        setRecentActivities(activities);
-      } catch (error) {
-        console.error("Error fetching home page data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Cài đặt cho carousel
+  const settings = {
+    dots: true,
+    infinite: true,
+    speed: 500,
+    slidesToShow: 1,
+    slidesToScroll: 1,
+    autoplay: true,
+    autoplaySpeed: 3000,
+    arrows: true,
+    centerMode: true,
+    centerPadding: "0px",
+  };
 
-    if (account) {
-      fetchData();
-    } else {
-      setLoading(false);
+  // Dữ liệu khuyến nghị giả lập
+  const recommendations = {
+    farmer: {
+      popularFruit: "Xoài",
+      tip: "Tăng tưới nước vào buổi sáng để cải thiện chất lượng trái! 🌞",
+    },
+    manager: {
+      supportRegion: "Vùng 3",
+      forecast: "Dự báo sản lượng tăng 20% trong tháng tới! 📈",
+    },
+  };
+
+  // Xử lý cập nhật thông tin vùng trồng
+  const handleUpdateFarmData = (e) => {
+    e.preventDefault();
+    if (!updateData.yield || !updateData.condition) {
+      setError("Vui lòng điền đầy đủ thông tin! 😅");
+      return;
     }
-  }, [account]);
 
-  if (loading) {
-    return <LoadingSpinner />;
-  }
+    // Giả lập lưu dữ liệu lên Blockchain (dùng localStorage)
+    const newFarmData = {
+      weather: farmData.weather,
+      yield: updateData.yield,
+      quality: updateData.condition,
+      timestamp: new Date().toISOString(),
+    };
+    localStorage.setItem("farmData", JSON.stringify(newFarmData));
+    setFarmData(newFarmData);
+    setUpdateData({ yield: "", condition: "" });
+    setError("");
+    alert("Cập nhật thông tin vùng trồng thành công! 🎉");
+  };
 
-  // Pre-login landing page for users without MetaMask connection
-  if (!account) {
-    return (
-      <Layout>
-        <Box
-          sx={{
-            display: "flex",
-            minHeight: "calc(100vh - 140px)",
-            flexDirection: "column",
-          }}
-        >
-          <Box sx={{ flexGrow: 1 }}>
-            <Container maxWidth="lg">
-              <Box sx={{ py: { xs: 4, md: 6 } }}>
-                <motion.div
-                  initial={{ opacity: 0, y: -50 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.8 }}
-                >
+  // Lấy dữ liệu vùng trồng từ localStorage khi load trang
+  useEffect(() => {
+    const storedFarmData = JSON.parse(localStorage.getItem("farmData"));
+    if (storedFarmData) {
+      setFarmData(storedFarmData);
+    }
+  }, []);
+
+  // Các slide cho carousel
+  const slides = [
+    {
+      title: "Theo dõi vùng trồng của bạn ngay nào! 🌱",
+      description: (
+        <>
+          <Typography variant="body1" sx={{ mb: 1 }}>
+            Thời tiết: {farmData.weather}
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 1 }}>
+            Sản lượng: {farmData.yield}
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 1 }}>
+            Chất lượng: {farmData.quality}
+          </Typography>
+          <Typography variant="body1" sx={{ mb: 1 }}>
+            Dữ liệu được lưu trên Blockchain, đảm bảo minh bạch 100%! 🔒
+          </Typography>
+        </>
+      ),
+      cta: "Xem chi tiết! 📊",
+      link: "/vung-trong/chi-tiet",
+      image: images.farmMonitoring,
+    },
+    ...(isFarmer
+      ? [
+          {
+            title: "Cập nhật thông tin vùng trồng ngay nào! 🚜",
+            description: (
+              <Box component="form" sx={{ maxWidth: "400px", mx: "auto" }}>
+                {error && (
                   <Typography
-                    variant="h4"
-                    gutterBottom
-                    sx={{
-                      fontWeight: "bold",
-                      background:
-                        "linear-gradient(45deg, #FE6B8B 30%, #FF8E53 90%)",
-                      WebkitBackgroundClip: "text",
-                      WebkitTextFillColor: "transparent",
-                      textAlign: "center",
-                    }}
+                    variant="body2"
+                    sx={{ color: "red", textAlign: "center", mb: 2 }}
                   >
-                    Chào mừng đến với Hệ thống Quản lý Chuỗi Cung ứng Trái cây
+                    {error}
                   </Typography>
-                  <Typography
-                    variant="h6"
-                    color="text.secondary"
-                    gutterBottom
-                    sx={{ textAlign: "center", mb: 4 }}
+                )}
+                <TextField
+                  fullWidth
+                  label="Sản lượng (kg)"
+                  variant="outlined"
+                  sx={{ mb: 2 }}
+                  value={updateData.yield}
+                  onChange={(e) =>
+                    setUpdateData({ ...updateData, yield: e.target.value })
+                  }
+                />
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Tình trạng cây trồng 🌿</InputLabel>
+                  <Select
+                    value={updateData.condition}
+                    onChange={(e) =>
+                      setUpdateData({
+                        ...updateData,
+                        condition: e.target.value,
+                      })
+                    }
+                    label="Tình trạng cây trồng 🌿"
                   >
-                    Vui lòng kết nối ví MetaMask để sử dụng hệ thống
-                  </Typography>
-                </motion.div>
-                <Box sx={{ mt: 4 }}>
-                  <Grid container spacing={3} justifyContent="center">
-                    <Grid item xs={12} sm={6} md={4}>
-                      <motion.div
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                      >
-                        <Card
-                          sx={{
-                            background:
-                              "linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)",
-                            color: "white",
-                            borderRadius: 2,
-                            height: 140,
-                            display: "flex",
-                            flexDirection: "column",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <CardContent>
-                            <Typography
-                              variant="h6"
-                              sx={{ fontWeight: "bold" }}
-                            >
-                              Truy xuất nguồn gốc
-                            </Typography>
-                            <Typography variant="body2">
-                              Theo dõi trái cây từ nông trại đến người tiêu dùng
-                            </Typography>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={4}>
-                      <motion.div
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                      >
-                        <Card
-                          sx={{
-                            background:
-                              "linear-gradient(45deg, #4CAF50 30%, #8BC34A 90%)",
-                            color: "white",
-                            borderRadius: 2,
-                            height: 140,
-                            display: "flex",
-                            flexDirection: "column",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <CardContent>
-                            <Typography
-                              variant="h6"
-                              sx={{ fontWeight: "bold" }}
-                            >
-                              Quản lý nông trại
-                            </Typography>
-                            <Typography variant="body2">
-                              Cập nhật thông tin và tình trạng nông trại theo
-                              thời gian thực
-                            </Typography>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={4}>
-                      <motion.div
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                      >
-                        <Card
-                          sx={{
-                            background:
-                              "linear-gradient(45deg, #FF9800 30%, #FFC107 90%)",
-                            color: "white",
-                            borderRadius: 2,
-                            height: 140,
-                            display: "flex",
-                            flexDirection: "column",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <CardContent>
-                            <Typography
-                              variant="h6"
-                              sx={{ fontWeight: "bold" }}
-                            >
-                              Phân tích dữ liệu
-                            </Typography>
-                            <Typography variant="body2">
-                              Nhận các phân tích và khuyến nghị thông minh
-                            </Typography>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    </Grid>
-                  </Grid>
-                </Box>
+                    <MenuItem value="Tốt">Tốt</MenuItem>
+                    <MenuItem value="Trung bình">Trung bình</MenuItem>
+                    <MenuItem value="Kém">Kém</MenuItem>
+                  </Select>
+                </FormControl>
               </Box>
-            </Container>
-          </Box>
-          <Footer />
-        </Box>
-      </Layout>
-    );
-  }
+            ),
+            cta: "Cập nhật ngay! 🚀",
+            onClick: handleUpdateFarmData,
+            image: images.farmUpdate,
+          },
+        ]
+      : []),
+    {
+      title: isFarmer
+        ? "Khuyến nghị cho bạn đây! 🌟"
+        : "Khuyến nghị cho nhà quản lý! 📈",
+      description: (
+        <>
+          {isFarmer ? (
+            <>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                Loại trái cây đang hot: {recommendations.farmer.popularFruit} 🔥
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                Mẹo trồng trọt: {recommendations.farmer.tip}
+              </Typography>
+            </>
+          ) : (
+            <>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                Vùng cần hỗ trợ: {recommendations.manager.supportRegion} 🆘
+              </Typography>
+              <Typography variant="body1" sx={{ mb: 1 }}>
+                {recommendations.manager.forecast}
+              </Typography>
+            </>
+          )}
+          <Typography variant="body1" sx={{ mb: 1 }}>
+            Dữ liệu phân tích từ Blockchain, chính xác 100%! 🔍
+          </Typography>
+        </>
+      ),
+      cta: "Xem thêm gợi ý! 🚀",
+      link: "/khuyen-nghi",
+      image: images.recommendations,
+    },
+  ];
 
-  // Main dashboard for logged in users
   return (
     <Layout>
       <Box
         sx={{
-          display: "flex",
           minHeight: "calc(100vh - 140px)",
-          flexDirection: "column",
+          bgcolor: "#E6F4EA",
+          display: "flex",
+          alignItems: "center",
+          py: 4,
         }}
       >
-        <Box sx={{ display: "flex", flexGrow: 1 }}>
-          <Sidebar />
-          <Box
-            component="main"
-            sx={{
-              flexGrow: 1,
-              bgcolor: "#f5f5f5",
-              py: 4,
-              px: { xs: 2, md: 3 },
-              ml: { xs: 0, md: "250px" }, // Space for sidebar on larger screens
-              width: { xs: "100%", md: "calc(100% - 250px)" }, // Adjust width based on sidebar
-              minHeight: "100%",
-              pb: 8, // Ensure space for Footer
-            }}
-          >
-            <Container maxWidth="lg">
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 1 }}
-              >
-                <Typography
-                  variant="h4"
-                  gutterBottom
-                  sx={{
-                    fontWeight: "bold",
-                    background:
-                      "linear-gradient(45deg, #FE6B8B 30%, #FF8E53 90%)",
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                    textAlign: "center",
-                    mb: 3,
-                  }}
-                >
-                  Tổng quan hệ thống
-                </Typography>
-              </motion.div>
-
-              {/* Statistics Cards */}
-              <Grid container spacing={3}>
-                <Grid item xs={12} sm={6} md={4}>
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5 }}
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <Card
-                      sx={{
-                        background:
-                          "linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)",
-                        color: "white",
-                        borderRadius: 2,
-                        boxShadow: 3,
-                        height: 160,
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "center",
-                        alignItems: "center",
-                      }}
+        <Container maxWidth="lg">
+          <Slider {...settings}>
+            {slides.map((slide, index) => (
+              <Box key={index}>
+                <Grid container spacing={3} alignItems="center">
+                  {/* Left Section: Text and CTA */}
+                  <Grid item xs={12} md={6}>
+                    <motion.div
+                      initial={{ opacity: 0, x: -50 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.8 }}
                     >
-                      <CardContent>
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            mb: 2,
-                            justifyContent: "center",
-                          }}
-                        >
-                          <TrendingUp sx={{ mr: 1, fontSize: 30 }} />
-                          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                            Tổng số trái cây
-                          </Typography>
-                        </Box>
-                        <Typography variant="h4" sx={{ textAlign: "center" }}>
-                          {stats.totalFruits}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                </Grid>
-                <Grid item xs={12} sm={6} md={4}>
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.1 }}
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <Card
-                      sx={{
-                        background:
-                          "linear-gradient(45deg, #4CAF50 30%, #8BC34A 90%)",
-                        color: "white",
-                        borderRadius: 2,
-                        boxShadow: 3,
-                        height: 160,
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "center",
-                        alignItems: "center",
-                      }}
-                    >
-                      <CardContent>
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            mb: 2,
-                            justifyContent: "center",
-                          }}
-                        >
-                          <Agriculture sx={{ mr: 1, fontSize: 30 }} />
-                          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                            Tổng số nông trại
-                          </Typography>
-                        </Box>
-                        <Typography variant="h4" sx={{ textAlign: "center" }}>
-                          {stats.totalFarms}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                </Grid>
-                <Grid item xs={12} sm={6} md={4}>
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.2 }}
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <Card
-                      sx={{
-                        background:
-                          "linear-gradient(45deg, #FF9800 30%, #FFC107 90%)",
-                        color: "white",
-                        borderRadius: 2,
-                        boxShadow: 3,
-                        height: 160,
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "center",
-                        alignItems: "center",
-                      }}
-                    >
-                      <CardContent>
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            mb: 2,
-                            justifyContent: "center",
-                          }}
-                        >
-                          <LocalFlorist sx={{ mr: 1, fontSize: 30 }} />
-                          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-                            Trái cây phổ biến
-                          </Typography>
-                        </Box>
-                        <Typography
-                          variant="body1"
-                          sx={{ textAlign: "center" }}
-                        >
-                          {stats.popularFruits.join(", ")}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                </Grid>
-              </Grid>
-
-              {/* Recent Activities Section */}
-              {recentActivities.length > 0 && (
-                <Box sx={{ mt: 4 }}>
-                  <Typography
-                    variant="h5"
-                    sx={{
-                      fontWeight: "bold",
-                      background:
-                        "linear-gradient(45deg, #F44336 30%, #E57373 90%)",
-                      WebkitBackgroundClip: "text",
-                      WebkitTextFillColor: "transparent",
-                      textAlign: "center",
-                      mb: 2,
-                    }}
-                  >
-                    Hoạt động gần đây
-                  </Typography>
-                  <Card sx={{ borderRadius: 2, boxShadow: 3 }}>
-                    <CardContent>
-                      <List>
-                        {recentActivities.slice(0, 5).map((activity, index) => (
-                          <ListItem key={index} divider={index < 4}>
-                            <ListItemIcon>
-                              <History color="error" />
-                            </ListItemIcon>
-                            <ListItemText
-                              primary={activity.message}
-                              secondary={new Date(
-                                activity.timestamp
-                              ).toLocaleString()}
-                            />
-                          </ListItem>
-                        ))}
-                      </List>
-                    </CardContent>
-                    <CardActions sx={{ justifyContent: "center" }}>
+                      <Typography
+                        variant="h3"
+                        sx={{
+                          fontWeight: "bold",
+                          color: "black",
+                          mb: 2,
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        {slide.title}
+                      </Typography>
+                      <Typography
+                        variant="body1"
+                        color="text.secondary"
+                        sx={{ mb: 3, lineHeight: 1.6 }}
+                      >
+                        {slide.description}
+                      </Typography>
                       <Button
-                        size="small"
-                        component={Link}
-                        to="/dashboard"
-                        sx={{ color: "#F44336", fontWeight: "bold" }}
+                        variant="contained"
+                        component={slide.link ? Link : "button"}
+                        to={slide.link}
+                        onClick={slide.onClick}
+                        sx={{
+                          bgcolor: "#42A5F5",
+                          color: "white",
+                          borderRadius: "50px",
+                          px: 4,
+                          py: 1.5,
+                          fontWeight: "bold",
+                          "&:hover": { bgcolor: "#1E88E5" },
+                        }}
                       >
-                        Xem tất cả hoạt động
+                        {slide.cta}
                       </Button>
-                    </CardActions>
-                  </Card>
-                </Box>
-              )}
+                    </motion.div>
+                  </Grid>
 
-              {/* Why Choose Us Section */}
-              <Box sx={{ mt: 4 }}>
-                <Typography
-                  variant="h5"
-                  sx={{
-                    fontWeight: "bold",
-                    background:
-                      "linear-gradient(45deg, #FE6B8B 30%, #FF8E53 90%)",
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                    textAlign: "center",
-                    mb: 3,
-                  }}
-                >
-                  Tại sao chọn chúng tôi?
-                </Typography>
-                <Grid container spacing={3}>
-                  <Grid item xs={12} sm={6} md={4}>
+                  {/* Right Section: Image */}
+                  <Grid item xs={12} md={6}>
                     <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.5 }}
-                      whileHover={{ scale: 1.03 }}
+                      initial={{ opacity: 0, x: 50 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.8 }}
                     >
-                      <Card
+                      <Box
+                        component="img"
+                        src={slide.image}
+                        alt={`${slide.title} Image`}
                         sx={{
+                          width: "100%",
                           borderRadius: 2,
                           boxShadow: 3,
-                          height: 140,
-                          transition: "transform 0.3s ease-in-out",
-                          "&:hover": {
-                            transform: "translateY(-5px)",
-                            boxShadow: 5,
-                          },
+                          maxHeight: "400px",
+                          objectFit: "cover",
                         }}
-                      >
-                        <CardContent>
-                          <Typography
-                            variant="h6"
-                            sx={{ fontWeight: "bold", color: "#2196F3", mb: 1 }}
-                          >
-                            Minh bạch
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Theo dõi toàn bộ chuỗi cung ứng từ nông trại đến tay
-                            người tiêu dùng với công nghệ blockchain.
-                          </Typography>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={4}>
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.5, delay: 0.1 }}
-                      whileHover={{ scale: 1.03 }}
-                    >
-                      <Card
-                        sx={{
-                          borderRadius: 2,
-                          boxShadow: 3,
-                          height: 140,
-                          transition: "transform 0.3s ease-in-out",
-                          "&:hover": {
-                            transform: "translateY(-5px)",
-                            boxShadow: 5,
-                          },
-                        }}
-                      >
-                        <CardContent>
-                          <Typography
-                            variant="h6"
-                            sx={{ fontWeight: "bold", color: "#4CAF50", mb: 1 }}
-                          >
-                            Hiệu quả
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Tối ưu hóa quy trình quản lý nông trại và phân phối
-                            với dữ liệu thời gian thực.
-                          </Typography>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={4}>
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.5, delay: 0.2 }}
-                      whileHover={{ scale: 1.03 }}
-                    >
-                      <Card
-                        sx={{
-                          borderRadius: 2,
-                          boxShadow: 3,
-                          height: 140,
-                          transition: "transform 0.3s ease-in-out",
-                          "&:hover": {
-                            transform: "translateY(-5px)",
-                            boxShadow: 5,
-                          },
-                        }}
-                      >
-                        <CardContent>
-                          <Typography
-                            variant="h6"
-                            sx={{ fontWeight: "bold", color: "#FF9800", mb: 1 }}
-                          >
-                            Đáng tin cậy
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Đảm bảo chất lượng trái cây với hệ thống kiểm tra và
-                            phân tích thông minh.
-                          </Typography>
-                        </CardContent>
-                      </Card>
+                      />
                     </motion.div>
                   </Grid>
                 </Grid>
               </Box>
-            </Container>
-          </Box>
-        </Box>
-        <Footer />
+            ))}
+          </Slider>
+        </Container>
       </Box>
+      <Footer />
     </Layout>
   );
 };
 
-export default HomePage;
+export default FarmPage;

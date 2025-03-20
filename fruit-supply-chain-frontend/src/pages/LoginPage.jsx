@@ -23,28 +23,6 @@ import Footer from "../components/common/Footer";
 const illustrationImage =
   "https://images.unsplash.com/photo-1593642634315-48f5414c3ad9?ixlib=rb-4.0.3&auto=format&fit=crop&w=1350&q=80";
 
-// Danh sách người dùng giả lập với địa chỉ ví MetaMask của bạn
-const mockUsers = [
-  {
-    role: "nguoi-dan",
-    email: "nguoidan@example.com",
-    password: "password123",
-    walletAddress: "0x751F328447976e78956Cf46D339eF0D255d149eA", // Ví MetaMask của Người dân
-  },
-  {
-    role: "nha-quan-ly",
-    email: "nhquanly@example.com",
-    password: "password123",
-    walletAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", // Ví MetaMask của Nhà quản lý
-  },
-  {
-    role: "nguoi-tieu-dung",
-    email: "nguoitieudung@example.com",
-    password: "password123",
-    walletAddress: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", // Ví MetaMask của Người tiêu dùng
-  },
-];
-
 const LoginPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -70,29 +48,45 @@ const LoginPage = () => {
     setError("");
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
 
-    // Kiểm tra thông tin đăng nhập
-    const user = mockUsers.find(
-      (u) => u.email === email && u.password === password && u.role === role
-    );
+    // Kiểm tra dữ liệu đầu vào
+    if (!email || !password || !role) {
+      setError("Vui lòng điền đầy đủ thông tin! 😅");
+      return;
+    }
 
-    if (user) {
-      setIsLoggedIn(true);
-      setExpectedWallet(user.walletAddress.toLowerCase());
-      // Lưu thông tin người dùng vào localStorage (trừ mật khẩu)
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          email: user.email,
-          role: user.role,
-          walletAddress: user.walletAddress,
-        })
-      );
-    } else {
-      setError("Thông tin đăng nhập không đúng! Vui lòng thử lại nhé! 😅");
+    try {
+      // Gửi yêu cầu đăng nhập đến API
+      const response = await fetch("http://localhost:3000/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password, role }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setIsLoggedIn(true);
+        setExpectedWallet(data.user.walletAddress?.toLowerCase() || "");
+        // Lưu thông tin người dùng vào localStorage
+        localStorage.setItem(
+          "user",
+          JSON.stringify({
+            email: data.user.email,
+            role: data.user.role,
+            walletAddress: data.user.walletAddress,
+          })
+        );
+      } else {
+        setError(data.message);
+      }
+    } catch (error) {
+      console.error("Lỗi khi đăng nhập:", error);
+      setError("Có lỗi xảy ra! Vui lòng thử lại nhé! 😓");
     }
   };
 
@@ -100,14 +94,30 @@ const LoginPage = () => {
     try {
       await connectWallet();
       if (account) {
-        // Kiểm tra xem địa chỉ ví có khớp với ví được gán cho đối tượng không
-        if (account.toLowerCase() === expectedWallet) {
-          navigate("/");
+        // Kiểm tra xem địa chỉ ví có khớp với ví được gán cho đối tượng không (nếu có)
+        if (!expectedWallet || account.toLowerCase() === expectedWallet) {
+          // Cập nhật wallet address vào PostgreSQL
+          await fetch("http://localhost:3000/update-wallet", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ email, walletAddress: account }),
+          });
+
+          // Điều hướng theo vai trò
+          const user = JSON.parse(localStorage.getItem("user")) || {};
+          if (user.role === "nguoi-dan") {
+            navigate("/farms"); // Điều hướng đến trang FarmPage cho Người dân
+          } else if (user.role === "nha-quan-ly") {
+            navigate("/quan-ly"); // Điều hướng đến trang quản lý cho Nhà quản lý
+          } else if (user.role === "nguoi-tieu-dung") {
+            navigate("/"); // Điều hướng về trang chủ cho Người tiêu dùng
+          }
         } else {
           setError(
-            "Ví MetaMask không khớp với vai trò của bạn! Vui lòng chọn đúng ví nhé! 😓"
+            "Ví MetaMask không khớp với ví đã đăng ký! Vui lòng chọn đúng ví nhé! 😓"
           );
-          // Đăng xuất ví MetaMask để người dùng chọn lại
           if (window.ethereum) {
             await window.ethereum.request({
               method: "wallet_requestPermissions",

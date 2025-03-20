@@ -1,6 +1,10 @@
+// backend/index.js
 const express = require("express");
 const { Web3 } = require("web3");
 const cors = require("cors");
+const bcrypt = require("bcrypt");
+const pool = require("./db"); // Kết nối với PostgreSQL
+
 const app = express();
 
 app.use(express.json());
@@ -19,8 +23,6 @@ const account = "0x33dbE90872BbF0a67692D7B533D57A6c185F42bC";
 
 // Middleware kiểm tra quyền (simplified version)
 const checkAuth = async (req, res, next) => {
-  // Trong thực tế, bạn cần có một hệ thống xác thực đầy đủ
-  // Đây chỉ là mẫu đơn giản
   const userAddress = req.headers["x-ethereum-address"];
   if (!userAddress) {
     return res.status(401).json({ error: "Authentication required" });
@@ -40,6 +42,105 @@ const checkAuth = async (req, res, next) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+// ==== ĐĂNG KÝ VÀ ĐĂNG NHẬP ====
+
+// API endpoint để đăng ký tài khoản
+app.post("/register", async (req, res) => {
+  const { email, password, role } = req.body;
+
+  try {
+    // Kiểm tra xem email đã tồn tại chưa
+    const userExists = await pool.query(
+      "SELECT * FROM users WHERE email = $1",
+      [email]
+    );
+    if (userExists.rows.length > 0) {
+      return res.status(400).json({ message: "Email đã tồn tại! 😅" });
+    }
+
+    // Mã hóa mật khẩu
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    // Lưu tài khoản vào PostgreSQL
+    const newUser = await pool.query(
+      "INSERT INTO users (email, password, role) VALUES ($1, $2, $3) RETURNING *",
+      [email, hashedPassword, role]
+    );
+
+    res
+      .status(201)
+      .json({ message: "Đăng ký thành công! 🎉", user: newUser.rows[0] });
+  } catch (error) {
+    console.error("Lỗi khi đăng ký:", error);
+    res
+      .status(500)
+      .json({ message: "Có lỗi xảy ra! Vui lòng thử lại nhé! 😓" });
+  }
+});
+
+// API endpoint để đăng nhập
+app.post("/login", async (req, res) => {
+  const { email, password, role } = req.body;
+
+  try {
+    // Kiểm tra xem email có tồn tại không
+    const user = await pool.query(
+      "SELECT * FROM users WHERE email = $1 AND role = $2",
+      [email, role]
+    );
+    if (user.rows.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "Thông tin đăng nhập không đúng! 😅" });
+    }
+
+    // Kiểm tra mật khẩu
+    const validPassword = await bcrypt.compare(password, user.rows[0].password);
+    if (!validPassword) {
+      return res
+        .status(400)
+        .json({ message: "Thông tin đăng nhập không đúng! 😅" });
+    }
+
+    res.status(200).json({
+      message: "Đăng nhập thành công! 🎉",
+      user: {
+        email: user.rows[0].email,
+        role: user.rows[0].role,
+        walletAddress: user.rows[0].wallet_address,
+      },
+    });
+  } catch (error) {
+    console.error("Lỗi khi đăng nhập:", error);
+    res
+      .status(500)
+      .json({ message: "Có lỗi xảy ra! Vui lòng thử lại nhé! 😓" });
+  }
+});
+
+// API endpoint để cập nhật wallet address sau khi kết nối ví MetaMask
+app.post("/update-wallet", async (req, res) => {
+  const { email, walletAddress } = req.body;
+
+  try {
+    const updatedUser = await pool.query(
+      "UPDATE users SET wallet_address = $1 WHERE email = $2 RETURNING *",
+      [walletAddress, email]
+    );
+    if (updatedUser.rows.length === 0) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng! 😅" });
+    }
+
+    res.status(200).json({ message: "Cập nhật ví MetaMask thành công! 🎉" });
+  } catch (error) {
+    console.error("Lỗi khi cập nhật ví:", error);
+    res
+      .status(500)
+      .json({ message: "Có lỗi xảy ra! Vui lòng thử lại nhé! 😓" });
+  }
+});
 
 // ==== DANH MỤC TRÁI CÂY ====
 
