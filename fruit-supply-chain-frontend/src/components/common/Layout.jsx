@@ -18,14 +18,15 @@ import Drawer from "@mui/material/Drawer";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  // State cho dropdown Đăng nhập và Đăng ký
   const [loginAnchorEl, setLoginAnchorEl] = useState(null);
   const [registerAnchorEl, setRegisterAnchorEl] = useState(null);
   const loginOpen = Boolean(loginAnchorEl);
@@ -51,6 +52,16 @@ const Layout = ({ children }) => {
     setMobileOpen(!mobileOpen);
   };
 
+  const menuItems = [
+    { text: "Trang chủ", path: "/" },
+    { text: "Cửa hàng", path: "/cua-hang" },
+    { text: "Đăng nhập", path: "/dang-nhap" },
+    { text: "Đăng ký", path: "/dang-ky" },
+    { text: "Mua Token", path: "/mua-token" },
+  ];
+
+  const getBasePath = (path) => path.split("?")[0];
+
   const drawerContent = (
     <Box
       sx={{
@@ -65,47 +76,45 @@ const Layout = ({ children }) => {
         Fruit Supply Chain
       </Typography>
       <List>
-        {["Trang chủ", "Cửa hàng", "Đăng nhập", "Đăng ký", "Mua Token"].map(
-          (text) => (
-            <ListItem
-              button
-              key={text}
-              component={Link}
-              to={
-                text === "Trang chủ"
-                  ? "/"
-                  : `/${text.toLowerCase().replace(/\s+/g, "-")}`
-              }
-            >
-              <ListItemText
-                primary={text}
-                primaryTypographyProps={{ fontWeight: "bold", color: "white" }}
-              />
-            </ListItem>
-          )
-        )}
+        {menuItems.map((item) => (
+          <ListItem
+            button
+            key={item.text}
+            component={Link}
+            to={item.path}
+            sx={{
+              borderBottom:
+                getBasePath(location.pathname) === item.path
+                  ? "2px solid white"
+                  : "none",
+            }}
+          >
+            <ListItemText
+              primary={item.text}
+              primaryTypographyProps={{ fontWeight: "bold", color: "white" }}
+            />
+          </ListItem>
+        ))}
       </List>
     </Box>
   );
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-      {/* Header */}
       <AppBar position="fixed" sx={{ bgcolor: "white", boxShadow: 1 }}>
         <Toolbar>
           <Box
             sx={{
               display: "flex",
               alignItems: "center",
-              bgcolor: "#FF6F91", // Màu nền hồng
+              bgcolor: "#FF6F91",
               borderRadius: 2,
               px: 2,
               py: 1,
             }}
           >
             <IconButton edge="start" color="inherit" aria-label="logo">
-              <LocalFlorist sx={{ color: "white", fontSize: 24 }} />{" "}
-              {/* Icon bông hoa */}
+              <LocalFlorist sx={{ color: "white", fontSize: 24 }} />
             </IconButton>
             <Typography
               variant="h6"
@@ -116,132 +125,144 @@ const Layout = ({ children }) => {
           </Box>
           <Box sx={{ flexGrow: 1 }} />
           <Box sx={{ display: { xs: "none", md: "flex" } }}>
-            <Button
-              color="inherit"
-              component={Link}
-              to="/"
-              sx={{ color: "black", mx: 1, fontWeight: "bold" }}
-            >
-              Trang chủ
-            </Button>
-            <Button
-              color="inherit"
-              component={Link}
-              to="/cua-hang"
-              sx={{ color: "black", mx: 1, fontWeight: "bold" }}
-            >
-              Cửa hàng
-            </Button>
-            {/* Dropdown Đăng nhập */}
-            <Button
-              color="inherit"
-              onClick={handleLoginClick}
-              sx={{ color: "black", mx: 1, fontWeight: "bold" }}
-            >
-              Đăng nhập
-            </Button>
-            <Menu
-              anchorEl={loginAnchorEl}
-              open={loginOpen}
-              onClose={handleLoginClose}
-              PaperProps={{
-                elevation: 0,
-                sx: {
-                  overflow: "visible",
-                  filter: "drop-shadow(0px 2px 8px rgba(0,0,0,0.32))",
-                  mt: 1.5,
-                  "& .MuiMenuItem-root": {
-                    fontWeight: "bold",
-                    color: "#333",
-                    "&:hover": {
-                      backgroundColor: "#E6F4EA",
-                      color: "#FF6F91",
-                    },
-                  },
-                },
-              }}
-            >
-              <MenuItem
-                component={Link}
-                to="/dang-nhap?role=nguoi-dan"
-                onClick={handleLoginClose}
-              >
-                Người dân
-              </MenuItem>
-              <MenuItem
-                component={Link}
-                to="/dang-nhap?role=nha-quan-ly"
-                onClick={handleLoginClose}
-              >
-                Nhà quản lý
-              </MenuItem>
-              <MenuItem
-                component={Link}
-                to="/dang-nhap?role=nguoi-tieu-dung"
-                onClick={handleLoginClose}
-              >
-                Người tiêu dùng
-              </MenuItem>
-            </Menu>
-            {/* Dropdown Đăng ký */}
-            <Button
-              color="inherit"
-              onClick={handleRegisterClick}
-              sx={{ color: "black", mx: 1, fontWeight: "bold" }}
-            >
-              Đăng ký
-            </Button>
-            <Menu
-              anchorEl={registerAnchorEl}
-              open={registerOpen}
-              onClose={handleRegisterClose}
-              PaperProps={{
-                elevation: 0,
-                sx: {
-                  overflow: "visible",
-                  filter: "drop-shadow(0px 2px 8px rgba(0,0,0,0.32))",
-                  mt: 1.5,
-                  "& .MuiMenuItem-root": {
-                    fontWeight: "bold",
-                    color: "#333",
-                    "&:hover": {
-                      backgroundColor: "#E6F4EA",
-                      color: "#FF6F91",
-                    },
-                  },
-                },
-              }}
-            >
-              <MenuItem
-                component={Link}
-                to="/dang-ky?role=nguoi-dan"
-                onClick={handleRegisterClose}
-              >
-                Người dân
-              </MenuItem>
-              <MenuItem
-                component={Link}
-                to="/dang-ky?role=nha-quan-ly"
-                onClick={handleRegisterClose}
-              >
-                Nhà quản lý
-              </MenuItem>
-              <MenuItem
-                component={Link}
-                to="/dang-ky?role=nguoi-tieu-dung"
-                onClick={handleRegisterClose}
-              >
-                Người tiêu dùng
-              </MenuItem>
-            </Menu>
-            <Button
-              color="inherit"
-              component={Link}
-              to="/mua-token"
-              sx={{ color: "black", mx: 1, fontWeight: "bold" }}
-            >
-              Mua Token
-            </Button>
+            {menuItems.map((item) => (
+              <React.Fragment key={item.text}>
+                {item.text === "Đăng nhập" || item.text === "Đăng ký" ? (
+                  <Button
+                    color="inherit"
+                    onClick={
+                      item.text === "Đăng nhập"
+                        ? handleLoginClick
+                        : handleRegisterClick
+                    }
+                    sx={{
+                      color: "black",
+                      mx: 1,
+                      fontWeight: "bold",
+                      borderBottom:
+                        getBasePath(location.pathname) === item.path
+                          ? "2px solid #FF6F91"
+                          : "none",
+                    }}
+                  >
+                    {item.text}
+                  </Button>
+                ) : (
+                  <Button
+                    color="inherit"
+                    component={Link}
+                    to={item.path}
+                    sx={{
+                      color: "black",
+                      mx: 1,
+                      fontWeight: "bold",
+                      borderBottom:
+                        getBasePath(location.pathname) === item.path
+                          ? "2px solid #FF6F91"
+                          : "none",
+                    }}
+                  >
+                    {item.text}
+                  </Button>
+                )}
+                {item.text === "Đăng nhập" && (
+                  <Menu
+                    anchorEl={loginAnchorEl}
+                    open={loginOpen}
+                    onClose={handleLoginClose}
+                    PaperProps={{
+                      elevation: 0,
+                      sx: {
+                        overflow: "visible",
+                        filter: "drop-shadow(0px 2px 8px rgba(0,0,0,0.32))",
+                        mt: 1.5,
+                        "& .MuiMenuItem-root": {
+                          fontWeight: "bold",
+                          color: "#333",
+                          "&:hover": {
+                            backgroundColor: "#E6F4EA",
+                            color: "#FF6F91",
+                          },
+                        },
+                      },
+                    }}
+                  >
+                    <MenuItem
+                      onClick={() => {
+                        handleLoginClose();
+                        navigate("/dang-nhap?role=nguoi-dan");
+                      }}
+                    >
+                      Người dân
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        handleLoginClose();
+                        navigate("/dang-nhap?role=nha-quan-ly");
+                      }}
+                    >
+                      Nhà quản lý
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        handleLoginClose();
+                        navigate("/dang-nhap?role=nguoi-tieu-dung");
+                      }}
+                    >
+                      Người tiêu dùng
+                    </MenuItem>
+                  </Menu>
+                )}
+                {item.text === "Đăng ký" && (
+                  <Menu
+                    anchorEl={registerAnchorEl}
+                    open={registerOpen}
+                    onClose={handleRegisterClose}
+                    PaperProps={{
+                      elevation: 0,
+                      sx: {
+                        overflow: "visible",
+                        filter: "drop-shadow(0px 2px 8px rgba(0,0,0,0.32))",
+                        mt: 1.5,
+                        "& .MuiMenuItem-root": {
+                          fontWeight: "bold",
+                          color: "#333",
+                          "&:hover": {
+                            backgroundColor: "#E6F4EA",
+                            color: "#FF6F91",
+                          },
+                        },
+                      },
+                    }}
+                  >
+                    <MenuItem
+                      onClick={() => {
+                        handleRegisterClose();
+                        navigate("/dang-ky?role=nguoi-dan");
+                      }}
+                    >
+                      Người dân
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        handleRegisterClose();
+                        navigate("/dang-ky?role=nha-quan-ly");
+                      }}
+                    >
+                      Nhà quản lý
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        handleRegisterClose();
+                        navigate("/dang-ky?role=nguoi-tieu-dung");
+                      }}
+                    >
+                      Người tiêu dùng
+                    </MenuItem>
+                  </Menu>
+                )}
+              </React.Fragment>
+            ))}
           </Box>
           <IconButton
             color="inherit"
@@ -255,14 +276,13 @@ const Layout = ({ children }) => {
         </Toolbar>
       </AppBar>
 
-      {/* Drawer for mobile */}
       <Box component="nav">
         <Drawer
           variant="temporary"
           open={mobileOpen}
           onClose={handleDrawerToggle}
           ModalProps={{
-            keepMounted: true, // Better open performance on mobile
+            keepMounted: true,
           }}
           sx={{
             display: { xs: "block", md: "none" },
@@ -273,7 +293,6 @@ const Layout = ({ children }) => {
         </Drawer>
       </Box>
 
-      {/* Main content */}
       <Box sx={{ flexGrow: 1, mt: { xs: 7, md: 8 } }}>{children}</Box>
     </Box>
   );

@@ -7,6 +7,8 @@ import FarmPage from "./pages/FarmPage";
 import TrackerPage from "./pages/TrackerPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import AdminPage from "./pages/AdminPage";
+import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
 import ProtectedRoute from "./components/common/ProtectedRoute";
 import { useAuth } from "./contexts/AuthContext";
 
@@ -17,6 +19,8 @@ function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/dang-nhap" element={<LoginPage />} />
+        <Route path="/dang-ky" element={<RegisterPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/farms" element={<FarmPage />} />
         <Route path="/tracker" element={<TrackerPage />} />
