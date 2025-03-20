@@ -5,10 +5,10 @@ import { motion } from "framer-motion";
 import Slider from "react-slick";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
-import "../assets/styles/Carousel.css"; // Sửa đường dẫn import
+import "../assets/styles/Carousel.css";
 import Layout from "../components/common/Layout";
 import Footer from "../components/common/Footer";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 // Hình ảnh cho các slide
 const images = {
@@ -21,6 +21,8 @@ const images = {
 };
 
 const HomePage = () => {
+  const navigate = useNavigate();
+
   // Cài đặt cho carousel
   const settings = {
     dots: true,
@@ -33,6 +35,19 @@ const HomePage = () => {
     arrows: true,
   };
 
+  // Kiểm tra trạng thái đăng nhập
+  const user = JSON.parse(localStorage.getItem("user")) || {};
+  const isLoggedIn = !!user.role; // Kiểm tra xem người dùng đã đăng nhập hay chưa
+
+  // Hàm xử lý khi nhấn nút "Theo dõi ngay!"
+  const handleFarmerRedirect = () => {
+    if (isLoggedIn) {
+      navigate("/farms"); // Nếu đã đăng nhập, chuyển hướng đến trang Farms
+    } else {
+      navigate("/dang-nhap?role=nguoi-dan"); // Nếu chưa đăng nhập, chuyển hướng đến trang đăng nhập
+    }
+  };
+
   // Dữ liệu cho các slide
   const slides = [
     {
@@ -42,7 +57,8 @@ const HomePage = () => {
         "Theo dõi vùng trồng, nhận gợi ý siêu xịn để trái cây ngon hơn, năng suất cao hơn! Đảm bảo sạch 100%, ai cũng mê! 🥦",
       cta: "Theo dõi ngay! 🚜",
       image: images.farmer,
-      link: "/farms",
+      link: "/farms", // Link này sẽ được xử lý bởi handleFarmerRedirect
+      action: handleFarmerRedirect, // Thêm action để xử lý điều hướng
     },
     {
       target: "Nhà quản lý",
@@ -108,8 +124,7 @@ const HomePage = () => {
                       </Typography>
                       <Button
                         variant="contained"
-                        component={Link}
-                        to={slide.link}
+                        onClick={slide.action || (() => navigate(slide.link))} // Sử dụng action nếu có, nếu không thì dùng Link mặc định
                         sx={{
                           bgcolor: "#42A5F5",
                           color: "white",
