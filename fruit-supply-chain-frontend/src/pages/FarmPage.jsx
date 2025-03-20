@@ -17,13 +17,15 @@ import {
   Card,
   CardContent,
 } from "@mui/material";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Routes, Route, Link } from "react-router-dom";
 import { useWeb3 } from "../contexts/Web3Context";
 import MenuIcon from "@mui/icons-material/Menu";
 import LocalFloristIcon from "@mui/icons-material/LocalFlorist";
 import Footer from "../components/common/Footer";
 import FarmDetail from "../components/FarmManagement/FarmDetail";
 import UpdateFarmContent from "../components/FarmManagement/UpdateFarmConditions";
+import FarmProductList from "../components/FarmManagement/FarmProductList"; // Sửa đường dẫn
+import AddFarmProductForm from "../components/FarmManagement/AddFarmProductForm"; // Sửa đường dẫn
 import {
   LineChart,
   Line,
@@ -126,8 +128,8 @@ const FarmPage = () => {
 
   // Danh sách chức năng trong thanh bên
   const menuItems = [
-    { text: "Tổng quan", action: () => navigate("/farm") },
-    { text: "Sản phẩm", action: () => navigate("/farm/products") },
+    { text: "Tổng quan", action: () => navigate("/farms") },
+    { text: "Sản phẩm", action: () => navigate("/farms/products") },
     { text: "Đã bán", action: () => navigate("/farm/sold") },
     { text: "Danh mục", action: () => navigate("/farm/categories") },
     { text: "Đăng xuất", action: handleLogout },
@@ -177,7 +179,7 @@ const FarmPage = () => {
               "&:hover": { bgcolor: "#115293" },
               width: "100%",
             }}
-            onClick={() => navigate("/farm/register")}
+            onClick={() => navigate("/farms/register")}
           >
             Tải chương trình báo cáo
           </Button>
@@ -248,128 +250,143 @@ const FarmPage = () => {
 
         {/* Nội dung chính */}
         <Container maxWidth="lg" sx={{ mt: 10, mb: 4 }}>
-          <Typography
-            variant="h4"
-            sx={{ fontWeight: "bold", color: "#2E7D32", mb: 4 }}
-          >
-            Tổng quan
-          </Typography>
-
-          {/* Thống kê */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} sm={4}>
-              <Card
-                sx={{
-                  bgcolor: "#E8F5E9",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                }}
-              >
-                <CardContent>
-                  <Typography variant="h6" sx={{ color: "#388E3C" }}>
-                    Sản phẩm
-                  </Typography>
+          <Routes>
+            {/* Route cho trang tổng quan */}
+            <Route
+              path="/"
+              element={
+                <>
                   <Typography
                     variant="h4"
-                    sx={{ fontWeight: "bold", color: "#333" }}
+                    sx={{ fontWeight: "bold", color: "#2E7D32", mb: 4 }}
                   >
-                    15
+                    Tổng quan
                   </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <Card
-                sx={{
-                  bgcolor: "#E8F5E9",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                }}
-              >
-                <CardContent>
-                  <Typography variant="h6" sx={{ color: "#388E3C" }}>
-                    Sản phẩm đã bán
-                  </Typography>
-                  <Typography
-                    variant="h4"
-                    sx={{ fontWeight: "bold", color: "#333" }}
-                  >
-                    1
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <Card
-                sx={{
-                  bgcolor: "#E8F5E9",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                }}
-              >
-                <CardContent>
-                  <Typography variant="h6" sx={{ color: "#388E3C" }}>
-                    Tổng doanh thu
-                  </Typography>
-                  <Typography
-                    variant="h4"
-                    sx={{ fontWeight: "bold", color: "#333" }}
-                  >
-                    $80 AGT
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
 
-          {/* Biểu đồ sản lượng */}
-          <Box sx={{ mb: 4 }}>
-            <Typography
-              variant="h6"
-              sx={{ mb: 2, fontWeight: "bold", color: "#388E3C" }}
-            >
-              Sản lượng theo tháng
-            </Typography>
-            <LineChart width={600} height={300} data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="yield" stroke="#82ca9d" />
-            </LineChart>
-          </Box>
+                  {/* Thống kê */}
+                  <Grid container spacing={3} sx={{ mb: 4 }}>
+                    <Grid item xs={12} sm={4}>
+                      <Card
+                        sx={{
+                          bgcolor: "#E8F5E9",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                        }}
+                      >
+                        <CardContent>
+                          <Typography variant="h6" sx={{ color: "#388E3C" }}>
+                            Sản phẩm
+                          </Typography>
+                          <Typography
+                            variant="h4"
+                            sx={{ fontWeight: "bold", color: "#333" }}
+                          >
+                            15
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Card
+                        sx={{
+                          bgcolor: "#E8F5E9",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                        }}
+                      >
+                        <CardContent>
+                          <Typography variant="h6" sx={{ color: "#388E3C" }}>
+                            Sản phẩm đã bán
+                          </Typography>
+                          <Typography
+                            variant="h4"
+                            sx={{ fontWeight: "bold", color: "#333" }}
+                          >
+                            1
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Card
+                        sx={{
+                          bgcolor: "#E8F5E9",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                        }}
+                      >
+                        <CardContent>
+                          <Typography variant="h6" sx={{ color: "#388E3C" }}>
+                            Tổng doanh thu
+                          </Typography>
+                          <Typography
+                            variant="h4"
+                            sx={{ fontWeight: "bold", color: "#333" }}
+                          >
+                            $80 AGT
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
 
-          {/* Thông tin vùng trồng và cập nhật */}
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <FarmDetail farmData={farmData} />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <UpdateFarmContent
-                onUpdate={handleUpdateFarmData}
-                initialData={farmData}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <Box
-                sx={{
-                  p: 3,
-                  bgcolor: "#FFFFFF",
-                  borderRadius: 2,
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                  border: "1px solid #E8F5E9",
-                }}
-              >
-                <Typography
-                  variant="h6"
-                  sx={{ mb: 2, fontWeight: "bold", color: "#388E3C" }}
-                >
-                  Khuyến nghị từ hệ thống
-                </Typography>
-                <Typography sx={{ color: "#333" }}>
-                  {recommendation || "Cập nhật dữ liệu để nhận khuyến nghị."}
-                </Typography>
-              </Box>
-            </Grid>
-          </Grid>
+                  {/* Biểu đồ sản lượng */}
+                  <Box sx={{ mb: 4 }}>
+                    <Typography
+                      variant="h6"
+                      sx={{ mb: 2, fontWeight: "bold", color: "#388E3C" }}
+                    >
+                      Sản lượng theo tháng
+                    </Typography>
+                    <LineChart width={600} height={300} data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Line type="monotone" dataKey="yield" stroke="#82ca9d" />
+                    </LineChart>
+                  </Box>
+
+                  {/* Thông tin vùng trồng và cập nhật */}
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} md={6}>
+                      <FarmDetail farmData={farmData} />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <UpdateFarmContent
+                        onUpdate={handleUpdateFarmData}
+                        initialData={farmData}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Box
+                        sx={{
+                          p: 3,
+                          bgcolor: "#FFFFFF",
+                          borderRadius: 2,
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                          border: "1px solid #E8F5E9",
+                        }}
+                      >
+                        <Typography
+                          variant="h6"
+                          sx={{ mb: 2, fontWeight: "bold", color: "#388E3C" }}
+                        >
+                          Khuyến nghị từ hệ thống
+                        </Typography>
+                        <Typography sx={{ color: "#333" }}>
+                          {recommendation ||
+                            "Cập nhật dữ liệu để nhận khuyến nghị."}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </>
+              }
+            />
+            {/* Route cho danh sách sản phẩm */}
+            <Route path="/products" element={<FarmProductList />} />
+            {/* Route cho form thêm sản phẩm */}
+            <Route path="/add-product" element={<AddFarmProductForm />} />
+          </Routes>
         </Container>
       </Box>
 

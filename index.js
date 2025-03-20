@@ -3,11 +3,13 @@ const express = require("express");
 const { Web3 } = require("web3");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
-const pool = require("./db"); // Kết nối với PostgreSQL
+const pool = require("./db");
 
 const app = express();
 
-app.use(express.json());
+// Tăng giới hạn kích thước body lên 50mb (hoặc tùy chỉnh theo nhu cầu)
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cors());
 
 // Kết nối với Ganache
@@ -45,12 +47,10 @@ const checkAuth = async (req, res, next) => {
 
 // ==== ĐĂNG KÝ VÀ ĐĂNG NHẬP ====
 
-// API endpoint để đăng ký tài khoản
 app.post("/register", async (req, res) => {
   const { email, password, role } = req.body;
 
   try {
-    // Kiểm tra xem email đã tồn tại chưa
     const userExists = await pool.query(
       "SELECT * FROM users WHERE email = $1",
       [email]
@@ -59,11 +59,9 @@ app.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Email đã tồn tại! 😅" });
     }
 
-    // Mã hóa mật khẩu
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Lưu tài khoản vào PostgreSQL
     const newUser = await pool.query(
       "INSERT INTO users (email, password, role) VALUES ($1, $2, $3) RETURNING *",
       [email, hashedPassword, role]
@@ -80,12 +78,10 @@ app.post("/register", async (req, res) => {
   }
 });
 
-// API endpoint để đăng nhập
 app.post("/login", async (req, res) => {
   const { email, password, role } = req.body;
 
   try {
-    // Kiểm tra xem email có tồn tại không
     const user = await pool.query(
       "SELECT * FROM users WHERE email = $1 AND role = $2",
       [email, role]
@@ -96,7 +92,6 @@ app.post("/login", async (req, res) => {
         .json({ message: "Thông tin đăng nhập không đúng! 😅" });
     }
 
-    // Kiểm tra mật khẩu
     const validPassword = await bcrypt.compare(password, user.rows[0].password);
     if (!validPassword) {
       return res
@@ -120,7 +115,6 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// API endpoint để cập nhật wallet address sau khi kết nối ví MetaMask
 app.post("/update-wallet", async (req, res) => {
   const { email, walletAddress } = req.body;
 
@@ -144,7 +138,6 @@ app.post("/update-wallet", async (req, res) => {
 
 // ==== DANH MỤC TRÁI CÂY ====
 
-// API: Thêm danh mục trái cây
 app.post("/catalog", checkAuth, async (req, res) => {
   const {
     fruitType,
@@ -173,7 +166,6 @@ app.post("/catalog", checkAuth, async (req, res) => {
   }
 });
 
-// API: Lấy thông tin danh mục trái cây
 app.get("/catalog/:fruitType", async (req, res) => {
   const fruitType = req.params.fruitType;
 
@@ -192,7 +184,6 @@ app.get("/catalog/:fruitType", async (req, res) => {
   }
 });
 
-// API: Lấy tất cả các loại trái cây
 app.get("/catalogs", async (req, res) => {
   try {
     const fruitTypes = await contract.methods.getAllFruitTypes().call();
@@ -204,7 +195,6 @@ app.get("/catalogs", async (req, res) => {
 
 // ==== NÔNG TRẠI ====
 
-// API: Đăng ký nông trại
 app.post("/farm", async (req, res) => {
   const { farmId, location, climate, soil, currentConditions } = req.body;
   const userAddress = req.headers["x-ethereum-address"] || account;
@@ -220,7 +210,6 @@ app.post("/farm", async (req, res) => {
   }
 });
 
-// API: Cập nhật điều kiện nông trại
 app.put("/farm/:farmId", async (req, res) => {
   const farmId = req.params.farmId;
   const { conditions } = req.body;
@@ -237,7 +226,6 @@ app.put("/farm/:farmId", async (req, res) => {
   }
 });
 
-// API: Lấy thông tin nông trại
 app.get("/farm/:farmId", async (req, res) => {
   const farmId = req.params.farmId;
 
@@ -257,7 +245,6 @@ app.get("/farm/:farmId", async (req, res) => {
   }
 });
 
-// API: Lấy tất cả các nông trại
 app.get("/farms", async (req, res) => {
   try {
     const farms = await contract.methods.getAllFarms().call();
@@ -269,7 +256,6 @@ app.get("/farms", async (req, res) => {
 
 // ==== TRÁI CÂY ====
 
-// API: Thu hoạch trái cây (mở rộng)
 app.post("/harvest", async (req, res) => {
   const { fruitType, origin, farmId, quality } = req.body;
   const userAddress = req.headers["x-ethereum-address"] || account;
@@ -286,7 +272,6 @@ app.post("/harvest", async (req, res) => {
   }
 });
 
-// API: Ghi bước
 app.post("/record-step", async (req, res) => {
   const { fruitId, step } = req.body;
   const userAddress = req.headers["x-ethereum-address"] || account;
@@ -302,7 +287,6 @@ app.post("/record-step", async (req, res) => {
   }
 });
 
-// API: Thêm khuyến nghị
 app.post("/recommendation", checkAuth, async (req, res) => {
   const { fruitId, recommendation } = req.body;
 
@@ -317,7 +301,6 @@ app.post("/recommendation", checkAuth, async (req, res) => {
   }
 });
 
-// API: Tra cứu trái cây
 app.get("/fruit/:id", async (req, res) => {
   const fruitId = req.params.id;
 
@@ -339,7 +322,6 @@ app.get("/fruit/:id", async (req, res) => {
 
 // ==== QUẢN LÝ HỆ THỐNG ====
 
-// API: Thêm quản lý
 app.post("/manager", checkAuth, async (req, res) => {
   const { address } = req.body;
 
@@ -354,7 +336,6 @@ app.post("/manager", checkAuth, async (req, res) => {
   }
 });
 
-// API: Xóa quản lý
 app.delete("/manager/:address", checkAuth, async (req, res) => {
   const address = req.params.address;
 
@@ -371,13 +352,8 @@ app.delete("/manager/:address", checkAuth, async (req, res) => {
 
 // ==== PHÂN TÍCH DỮ LIỆU ====
 
-// API: Phân tích xu hướng
 app.get("/analytics/trends", async (req, res) => {
   try {
-    // Trong thực tế, bạn sẽ phải truy vấn nhiều dữ liệu từ contract
-    // và thực hiện phân tích phức tạp hơn
-
-    // Mô phỏng kết quả phân tích
     res.json({
       popularFruits: ["Xoài", "Thanh Long", "Chuối"],
       growingRegions: {
@@ -397,6 +373,66 @@ app.get("/analytics/trends", async (req, res) => {
       ],
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==== SẢN PHẨM ====
+
+app.get("/products", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM products");
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/products/:id", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM products WHERE id = $1", [
+      req.params.id,
+    ]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/products", async (req, res) => {
+  const {
+    name,
+    productcode,
+    category,
+    description,
+    price,
+    quantity,
+    imageurl,
+    productiondate,
+    expirydate,
+  } = req.body;
+
+  try {
+    const result = await pool.query(
+      "INSERT INTO products (name, productcode, category, description, price, quantity, imageurl, productiondate, expirydate) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *",
+      [
+        name,
+        productcode,
+        category,
+        description,
+        price,
+        quantity,
+        imageurl,
+        productiondate,
+        expirydate,
+      ]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error("Error saving product to database:", error);
     res.status(500).json({ error: error.message });
   }
 });

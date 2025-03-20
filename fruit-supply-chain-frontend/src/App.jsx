@@ -1,3 +1,4 @@
+// src/App.jsx
 import React from "react";
 import { Routes, Route } from "react-router-dom";
 import Layout from "./components/common/Layout";
@@ -22,7 +23,8 @@ function App() {
         <Route path="/dang-nhap" element={<LoginPage />} />
         <Route path="/dang-ky" element={<RegisterPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
-        <Route path="/farms" element={<FarmPage />} />
+        <Route path="/farms/*" element={<FarmPage />} />{" "}
+        {/* Hỗ trợ route con */}
         <Route path="/tracker" element={<TrackerPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route

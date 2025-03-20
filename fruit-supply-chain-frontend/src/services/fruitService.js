@@ -1,10 +1,13 @@
-// fruit-supply-chain-frontend/src/services/fruitService.js
+// src/services/fruitService.js
 import {
   getFruit,
   harvestFruit,
   recordStep,
   getAllFruitCatalogs,
   addRecommendation,
+  getFruitProduct,
+  getAllFruitProducts,
+  createFruitProduct,
 } from "./api";
 
 export const getFruitById = async (fruitId) => {
@@ -19,7 +22,6 @@ export const getFruitById = async (fruitId) => {
 
 export const getFruitCount = async () => {
   try {
-    // Giả lập dữ liệu, bạn có thể thay bằng API thật
     return 10;
   } catch (error) {
     console.error("Error fetching fruit count:", error);
@@ -63,6 +65,37 @@ export const addRecommendationService = async (data) => {
     return result;
   } catch (error) {
     console.error("Error adding recommendation:", error);
+    throw error;
+  }
+};
+
+export const getFruitProducts = async () => {
+  try {
+    const products = await getAllFruitProducts();
+    return products;
+  } catch (error) {
+    console.error("Error fetching fruit products:", error);
+    throw error;
+  }
+};
+
+export const getFruitProductById = async (productId) => {
+  try {
+    const product = await getFruitProduct(productId);
+    return product;
+  } catch (error) {
+    console.error(`Error fetching fruit product with ID ${productId}:`, error);
+    throw error;
+  }
+};
+
+export const addFruitProduct = async (productData) => {
+  try {
+    const result = await createFruitProduct(productData);
+    console.log("Kết quả từ API:", result); // Thêm log để kiểm tra
+    return result;
+  } catch (error) {
+    console.error("Error adding fruit product:", error);
     throw error;
   }
 };
