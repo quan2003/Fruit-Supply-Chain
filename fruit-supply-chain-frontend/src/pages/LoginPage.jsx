@@ -288,6 +288,12 @@ const LoginPage = () => {
                     Bạn đã đăng nhập thành công! Bây giờ hãy kết nối ví MetaMask
                     để tiếp tục nhé! 🌟
                   </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{ textAlign: "center", mb: 2, color: "#FF6F91" }}
+                  >
+                    Không kết nối ví MetaMask ư? 😕
+                  </Typography>
                   {error && (
                     <Typography
                       variant="body2"

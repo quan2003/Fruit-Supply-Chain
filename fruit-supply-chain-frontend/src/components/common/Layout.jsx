@@ -19,6 +19,7 @@ import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useWeb3 } from "../../contexts/Web3Context";
 
 const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -26,11 +27,30 @@ const Layout = ({ children }) => {
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const location = useLocation();
   const navigate = useNavigate();
+  const { account, connectWallet } = useWeb3();
 
+  // State cho dropdown Đăng nhập và Đăng ký
   const [loginAnchorEl, setLoginAnchorEl] = useState(null);
   const [registerAnchorEl, setRegisterAnchorEl] = useState(null);
   const loginOpen = Boolean(loginAnchorEl);
   const registerOpen = Boolean(registerAnchorEl);
+
+  // Lấy thông tin người dùng từ localStorage
+  const user = JSON.parse(localStorage.getItem("user")) || {};
+  const isLoggedIn = !!user.email && !!user.role; // Kiểm tra cả email và role để đảm bảo người dùng đã đăng nhập
+
+  // Danh sách menu và đường dẫn tương ứng
+  const menuItems = [
+    { text: "Trang chủ", path: "/" },
+    { text: "Cửa hàng", path: "/cua-hang" },
+    ...(isLoggedIn
+      ? [] // Nếu đã đăng nhập, không hiển thị "Đăng nhập" và "Đăng ký"
+      : [
+          { text: "Đăng nhập", path: "/dang-nhap" },
+          { text: "Đăng ký", path: "/dang-ky" },
+        ]),
+    { text: "Mua Token", path: "/mua-token" },
+  ];
 
   const handleLoginClick = (event) => {
     setLoginAnchorEl(event.currentTarget);
@@ -52,16 +72,34 @@ const Layout = ({ children }) => {
     setMobileOpen(!mobileOpen);
   };
 
-  const menuItems = [
-    { text: "Trang chủ", path: "/" },
-    { text: "Cửa hàng", path: "/cua-hang" },
-    { text: "Đăng nhập", path: "/dang-nhap" },
-    { text: "Đăng ký", path: "/dang-ky" },
-    { text: "Mua Token", path: "/mua-token" },
-  ];
+  // Hàm đăng xuất
+  const handleLogout = () => {
+    localStorage.removeItem("user"); // Xóa thông tin người dùng khỏi localStorage
+    navigate("/"); // Điều hướng về trang chủ
+  };
 
+  // Hàm xử lý kết nối ví
+  const handleConnectWallet = async () => {
+    try {
+      await connectWallet();
+    } catch (error) {
+      // Hiển thị thông báo lỗi cho người dùng
+      alert(
+        error.message || "Không thể kết nối ví MetaMask. Vui lòng thử lại!"
+      );
+    }
+  };
+
+  // Rút gọn địa chỉ ví MetaMask
+  const shortenAddress = (address) => {
+    if (!address) return "Chưa kết nối";
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  // Xác định menu đang chọn, bỏ qua query parameter
   const getBasePath = (path) => path.split("?")[0];
 
+  // Nội dung của Drawer cho mobile
   const drawerContent = (
     <Box
       sx={{
@@ -95,12 +133,27 @@ const Layout = ({ children }) => {
             />
           </ListItem>
         ))}
+        {isLoggedIn && (
+          <ListItem
+            button
+            onClick={handleLogout}
+            sx={{
+              borderBottom: "none",
+            }}
+          >
+            <ListItemText
+              primary="Đăng xuất"
+              primaryTypographyProps={{ fontWeight: "bold", color: "white" }}
+            />
+          </ListItem>
+        )}
       </List>
     </Box>
   );
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      {/* Header */}
       <AppBar position="fixed" sx={{ bgcolor: "white", boxShadow: 1 }}>
         <Toolbar>
           <Box
@@ -124,7 +177,9 @@ const Layout = ({ children }) => {
             </Typography>
           </Box>
           <Box sx={{ flexGrow: 1 }} />
-          <Box sx={{ display: { xs: "none", md: "flex" } }}>
+          <Box
+            sx={{ display: { xs: "none", md: "flex" }, alignItems: "center" }}
+          >
             {menuItems.map((item) => (
               <React.Fragment key={item.text}>
                 {item.text === "Đăng nhập" || item.text === "Đăng ký" ? (
@@ -263,6 +318,51 @@ const Layout = ({ children }) => {
                 )}
               </React.Fragment>
             ))}
+            {isLoggedIn && account && (
+              <>
+                <Typography
+                  sx={{
+                    color: "black",
+                    mx: 1,
+                    fontWeight: "bold",
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                >
+                  Hi,{" "}
+                  {user.role === "nguoi-dan"
+                    ? "Nông dân"
+                    : user.role === "nha-quan-ly"
+                    ? "Nhà quản lý"
+                    : "Người tiêu dùng"}{" "}
+                  xuất sắc ({shortenAddress(account)}) 🌟
+                </Typography>
+                <Button
+                  color="inherit"
+                  onClick={handleLogout}
+                  sx={{
+                    color: "black",
+                    mx: 1,
+                    fontWeight: "bold",
+                  }}
+                >
+                  Đăng xuất
+                </Button>
+              </>
+            )}
+            {!isLoggedIn && (
+              <Button
+                variant="contained"
+                onClick={handleConnectWallet}
+                sx={{
+                  bgcolor: "#1976D2",
+                  "&:hover": { bgcolor: "#115293" },
+                  fontWeight: "bold",
+                }}
+              >
+                Kết nối ví
+              </Button>
+            )}
           </Box>
           <IconButton
             color="inherit"
@@ -276,6 +376,7 @@ const Layout = ({ children }) => {
         </Toolbar>
       </AppBar>
 
+      {/* Drawer for mobile */}
       <Box component="nav">
         <Drawer
           variant="temporary"
@@ -293,6 +394,7 @@ const Layout = ({ children }) => {
         </Drawer>
       </Box>
 
+      {/* Main content */}
       <Box sx={{ flexGrow: 1, mt: { xs: 7, md: 8 } }}>{children}</Box>
     </Box>
   );
