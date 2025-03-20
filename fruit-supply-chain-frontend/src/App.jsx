@@ -7,8 +7,12 @@ import FarmPage from "./pages/FarmPage";
 import TrackerPage from "./pages/TrackerPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import AdminPage from "./pages/AdminPage";
+import ProductList from "./pages/ProductList";
+import OrderManagement from "./pages/OrderManagement";
+import OrderHistory from "./pages/OrderHistory";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
+
 function App() {
   return (
     <Layout>
@@ -20,7 +24,14 @@ function App() {
         <Route path="/farms" element={<FarmPage />} />
         <Route path="/tracker" element={<TrackerPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
-        <Route  path="/admin"  element={<AdminPage />}/></Routes>
+
+        {/* Routes cho Admin */}
+        <Route path="/admin" element={<AdminPage />}>
+          <Route path="products" element={<ProductList />} />
+          <Route path="orders" element={<OrderManagement />} />
+          <Route path="history" element={<OrderHistory />} />
+        </Route>
+      </Routes>
     </Layout>
   );
 }
