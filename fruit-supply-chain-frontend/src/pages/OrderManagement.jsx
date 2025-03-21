@@ -1,29 +1,97 @@
 import React, { useState, useEffect } from 'react';
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Button, Typography } from '@mui/material';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Button,
+  Typography,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Grid
+} from '@mui/material';
 
-const OrderManagement = () => {
-  const [orders, setOrders] = useState([]);
+const PurchasedProducts = () => {
+  const [products, setProducts] = useState([]);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [sellPrice, setSellPrice] = useState('');
+  const [sellingStatus, setSellingStatus] = useState({});
 
-  // Giả lập dữ liệu đơn hàng
   useEffect(() => {
-    const fetchedOrders = [
-      { id: 1, productName: 'Sản phẩm A', price: 100, quantity: 2, address: 'Địa chỉ 1', receiver: 'Nguyễn Văn A' },
-      { id: 2, productName: 'Sản phẩm B', price: 150, quantity: 1, address: 'Địa chỉ 2', receiver: 'Trần Thị B' },
-      { id: 3, productName: 'Sản phẩm C', price: 200, quantity: 3, address: 'Địa chỉ 3', receiver: 'Lê Văn C' },
+    const fetchedProducts = [
+      {
+        id: 1,
+        productCode: 'TAO001',
+        productName: 'Táo Fuji',
+        quantity: 50,
+        price: 30000,
+        category: 'Trái cây',
+        description: 'Táo Fuji nhập khẩu từ Nhật Bản, giòn và ngọt.',
+        productionDate: '2025-01-01',
+        expiryDate: '2025-06-01',
+        imageUrl: 'https://via.placeholder.com/200',
+      },
+      {
+        id: 2,
+        productCode: 'CAM002',
+        productName: 'Cam Sành',
+        quantity: 40,
+        price: 25000,
+        category: 'Trái cây',
+        description: 'Cam sành miền Tây, giàu vitamin C.',
+        productionDate: '2025-02-15',
+        expiryDate: '2025-07-15',
+        imageUrl: 'https://via.placeholder.com/200',
+      },
+      {
+        id: 3,
+        productCode: 'GAO003',
+        productName: 'Gạo Lứt',
+        quantity: 100,
+        price: 15000,
+        category: 'Lương thực',
+        description: 'Gạo lứt hữu cơ, tốt cho sức khỏe.',
+        productionDate: '2025-03-10',
+        expiryDate: '2026-03-10',
+        imageUrl: 'https://via.placeholder.com/200',
+      },
     ];
-    setOrders(fetchedOrders);
+    setProducts(fetchedProducts);
   }, []);
 
-  const handleDelivery = (id) => {
-    // Giả lập hành động giao hàng
-    console.log(`Giao hàng cho đơn hàng với ID: ${id}`);
-    // Cập nhật trạng thái sau khi giao hàng (có thể thêm logic tùy theo yêu cầu)
+  const handleOpenDialog = (product) => {
+    setSelectedProduct(product);
+    setSellPrice('');
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+  };
+
+  const handleConfirmSell = () => {
+    if (selectedProduct) {
+      setSellingStatus((prevStatus) => ({
+        ...prevStatus,
+        [selectedProduct.id]: true, // Đánh dấu sản phẩm này đang được đăng bán
+      }));
+      console.log(`Sản phẩm: ${selectedProduct.productName}`);
+      console.log(`Giá bán: ${sellPrice} VND`);
+    }
+    setOpenDialog(false);
   };
 
   return (
     <div>
       <Typography variant="h4" gutterBottom>
-        Quản lý đơn hàng
+        Danh sách sản phẩm đã thu mua
       </Typography>
 
       <TableContainer component={Paper}>
@@ -31,41 +99,93 @@ const OrderManagement = () => {
           <TableHead>
             <TableRow>
               <TableCell>ID</TableCell>
+              <TableCell>Mã sản phẩm</TableCell>
+              <TableCell>Hình ảnh</TableCell>
               <TableCell>Tên sản phẩm</TableCell>
-              <TableCell>Giá</TableCell>
               <TableCell>Số lượng</TableCell>
-              <TableCell>Thành tiền</TableCell>
-              <TableCell>Địa chỉ</TableCell>
-              <TableCell>Tên người nhận</TableCell>
+              <TableCell>Giá cả</TableCell>
+              <TableCell>Loại</TableCell>
+              <TableCell>Mô tả</TableCell>
+              <TableCell>Ngày sản xuất</TableCell>
+              <TableCell>Hạn sử dụng</TableCell>           
               <TableCell>Hành động</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {orders.map((order) => (
-              <TableRow key={order.id}>
-                <TableCell>{order.id}</TableCell>
-                <TableCell>{order.productName}</TableCell>
-                <TableCell>{order.price.toLocaleString()} VND</TableCell>
-                <TableCell>{order.quantity}</TableCell>
-                <TableCell>{(order.price * order.quantity).toLocaleString()} VND</TableCell>
-                <TableCell>{order.address}</TableCell>
-                <TableCell>{order.receiver}</TableCell>
+            {products.map((product) => (
+              <TableRow key={product.id}>
+                <TableCell>{product.id}</TableCell>
+                <TableCell>{product.productCode}</TableCell>
                 <TableCell>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    onClick={() => handleDelivery(order.id)}
-                  >
-                    Giao hàng
-                  </Button>
+                  <img src={product.imageUrl} alt={product.productName} width="50" height="50" />
+                </TableCell>
+                <TableCell>{product.productName}</TableCell>
+                <TableCell>{product.quantity}</TableCell>
+                <TableCell>{product.price.toLocaleString()} VND</TableCell>
+                <TableCell>{product.category}</TableCell>
+                <TableCell>{product.description}</TableCell>
+                <TableCell>{product.productionDate}</TableCell>
+                <TableCell>{product.expiryDate}</TableCell>            
+                <TableCell>
+                  {sellingStatus[product.id] ? (
+                    <Typography color="primary"><b>Đang đăng bán</b></Typography>
+                  ) : (
+                    <Button variant="contained" color="primary" onClick={() => handleOpenDialog(product)}>
+                      Đăng bán
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* Dialog Form */}
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+        <DialogTitle>Đăng bán sản phẩm</DialogTitle>
+        {selectedProduct && (
+          <DialogContent>
+            <Grid container spacing={2}>
+              {/* Hình ảnh chiếm 1/2 form bên trái */}
+              <Grid item xs={6}>
+                <img
+                  src={selectedProduct.imageUrl}
+                  alt={selectedProduct.productName}
+                  style={{ width: '100%', height: 'auto', borderRadius: '10px' }}
+                />
+              </Grid>
+
+              {/* Thông tin sản phẩm chiếm 1/2 form bên phải */}
+              <Grid item xs={6} container direction="column" spacing={2}>
+                <Grid item>
+                  <Typography variant="h6">{selectedProduct.productName}</Typography>
+                </Grid>
+                <Grid item>
+                  <TextField
+                    label="Giá bán"
+                    type="number"
+                    fullWidth
+                    value={sellPrice}
+                    onChange={(e) => setSellPrice(e.target.value)}
+                    margin="dense"
+                  />
+                </Grid>
+              </Grid>
+            </Grid>
+          </DialogContent>
+        )}
+        <DialogActions>
+          <Button onClick={handleCloseDialog} color="secondary">
+            Hủy
+          </Button>
+          <Button onClick={handleConfirmSell} color="primary" variant="contained">
+            Xác nhận
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 };
 
-export default OrderManagement;
+export default PurchasedProducts;
