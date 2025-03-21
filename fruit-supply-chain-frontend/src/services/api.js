@@ -123,14 +123,18 @@ export const getFruitProduct = async (productId) => {
   }
 };
 
-export const createFruitProduct = async (productData) => {
+export const createFruitProduct = async (formData) => {
   try {
-    const response = await api.post("/products", productData);
+    const response = await api.post("/products", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
     console.log("API response for creating product:", response.data);
     return response.data;
   } catch (error) {
     console.error("Error creating fruit product:", error);
-    return { id: Date.now().toString(), ...productData };
+    throw error; // Ném lỗi để xử lý ở fruitService.js
   }
 };
 

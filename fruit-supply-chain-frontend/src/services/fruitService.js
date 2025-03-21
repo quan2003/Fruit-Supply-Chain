@@ -89,10 +89,10 @@ export const getFruitProductById = async (productId) => {
   }
 };
 
-export const addFruitProduct = async (productData) => {
+export const addFruitProduct = async (formData) => {
   try {
-    const result = await createFruitProduct(productData);
-    console.log("Kết quả từ API:", result); // Thêm log để kiểm tra
+    const result = await createFruitProduct(formData);
+    console.log("Kết quả từ API:", result);
     return result;
   } catch (error) {
     console.error("Error adding fruit product:", error);

@@ -4,13 +4,33 @@ const { Web3 } = require("web3");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const pool = require("./db");
+const path = require("path");
+const fs = require("fs");
+const multer = require("multer");
 
 const app = express();
 
-// Tăng giới hạn kích thước body lên 50mb (hoặc tùy chỉnh theo nhu cầu)
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cors());
+
+// Tạo thư mục uploads nếu chưa tồn tại
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
+// Cấu hình multer để lưu file
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + "-" + file.originalname);
+  },
+});
+const upload = multer({ storage: storage });
 
 // Kết nối với Ganache
 const web3 = new Web3("http://127.0.0.1:7545");
@@ -23,7 +43,16 @@ const contract = new web3.eth.Contract(contractABI, contractAddress);
 // Tài khoản từ Ganache
 const account = "0x33dbE90872BbF0a67692D7B533D57A6c185F42bC";
 
-// Middleware kiểm tra quyền (simplified version)
+// Danh sách role hợp lệ dựa trên database
+const validRoles = [
+  "Producer",
+  "ThirdParty",
+  "DeliveryHub",
+  "Customer",
+  "Admin",
+];
+
+// Middleware kiểm tra quyền
 const checkAuth = async (req, res, next) => {
   const userAddress = req.headers["x-ethereum-address"];
   if (!userAddress) {
@@ -48,9 +77,19 @@ const checkAuth = async (req, res, next) => {
 // ==== ĐĂNG KÝ VÀ ĐĂNG NHẬP ====
 
 app.post("/register", async (req, res) => {
-  const { email, password, role } = req.body;
+  const { name, email, password, role } = req.body;
 
   try {
+    if (!name || !email || !password || !role) {
+      return res
+        .status(400)
+        .json({ message: "Vui lòng điền đầy đủ thông tin! 😅" });
+    }
+
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ message: "Vai trò không hợp lệ! 😅" });
+    }
+
     const userExists = await pool.query(
       "SELECT * FROM users WHERE email = $1",
       [email]
@@ -63,8 +102,8 @@ app.post("/register", async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
     const newUser = await pool.query(
-      "INSERT INTO users (email, password, role) VALUES ($1, $2, $3) RETURNING *",
-      [email, hashedPassword, role]
+      "INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING *",
+      [name, email, hashedPassword, role]
     );
 
     res
@@ -82,6 +121,10 @@ app.post("/login", async (req, res) => {
   const { email, password, role } = req.body;
 
   try {
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ message: "Vai trò không hợp lệ! 😅" });
+    }
+
     const user = await pool.query(
       "SELECT * FROM users WHERE email = $1 AND role = $2",
       [email, role]
@@ -102,6 +145,7 @@ app.post("/login", async (req, res) => {
     res.status(200).json({
       message: "Đăng nhập thành công! 🎉",
       user: {
+        name: user.rows[0].name,
         email: user.rows[0].email,
         role: user.rows[0].role,
         walletAddress: user.rows[0].wallet_address,
@@ -119,6 +163,22 @@ app.post("/update-wallet", async (req, res) => {
   const { email, walletAddress } = req.body;
 
   try {
+    if (!walletAddress) {
+      return res
+        .status(400)
+        .json({ message: "Vui lòng cung cấp địa chỉ ví! 😅" });
+    }
+
+    const walletExists = await pool.query(
+      "SELECT * FROM users WHERE wallet_address = $1 AND email != $2",
+      [walletAddress, email]
+    );
+    if (walletExists.rows.length > 0) {
+      return res
+        .status(400)
+        .json({ message: "Địa chỉ ví đã được sử dụng! 😅" });
+    }
+
     const updatedUser = await pool.query(
       "UPDATE users SET wallet_address = $1 WHERE email = $2 RETURNING *",
       [walletAddress, email]
@@ -130,6 +190,39 @@ app.post("/update-wallet", async (req, res) => {
     res.status(200).json({ message: "Cập nhật ví MetaMask thành công! 🎉" });
   } catch (error) {
     console.error("Lỗi khi cập nhật ví:", error);
+    res
+      .status(500)
+      .json({ message: "Có lỗi xảy ra! Vui lòng thử lại nhé! 😓" });
+  }
+});
+
+// ==== LẤY FARM CỦA PRODUCER ====
+
+app.get("/farms/user", async (req, res) => {
+  const { email } = req.query;
+
+  try {
+    if (!email) {
+      return res.status(400).json({ message: "Vui lòng cung cấp email! 😅" });
+    }
+
+    const user = await pool.query(
+      "SELECT id FROM users WHERE email = $1 AND role = 'Producer'",
+      [email]
+    );
+    if (user.rows.length === 0) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng! 😅" });
+    }
+
+    const producerId = user.rows[0].id;
+    const farms = await pool.query(
+      "SELECT * FROM farms WHERE producer_id = $1",
+      [producerId]
+    );
+
+    res.json(farms.rows);
+  } catch (error) {
+    console.error("Lỗi khi lấy farm:", error);
     res
       .status(500)
       .json({ message: "Có lỗi xảy ra! Vui lòng thử lại nhé! 😓" });
@@ -196,17 +289,65 @@ app.get("/catalogs", async (req, res) => {
 // ==== NÔNG TRẠI ====
 
 app.post("/farm", async (req, res) => {
-  const { farmId, location, climate, soil, currentConditions } = req.body;
+  const { farmId, location, climate, soil, currentConditions, email } =
+    req.body;
   const userAddress = req.headers["x-ethereum-address"] || account;
 
   try {
-    await contract.methods
-      .registerFarm(farmId, location, climate, soil, currentConditions)
-      .send({ from: userAddress, gas: 500000 });
+    // Kiểm tra các trường bắt buộc
+    if (
+      !farmId ||
+      !location ||
+      !climate ||
+      !soil ||
+      !currentConditions ||
+      !email
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Vui lòng điền đầy đủ thông tin! 😅" });
+    }
 
-    res.json({ message: "Farm registered", farmId });
+    // Lấy producer_id từ email
+    const user = await pool.query(
+      "SELECT id FROM users WHERE email = $1 AND role = 'Producer'",
+      [email]
+    );
+    if (user.rows.length === 0) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng! 😅" });
+    }
+
+    const producerId = user.rows[0].id;
+
+    // Ánh xạ currentConditions thành giá trị hợp lệ của ENUM fruit_quality
+    const validQualities = [
+      "Nắng",
+      "Mưa",
+      "Khô hanh",
+      "Ẩm ướt",
+      "Sương mù",
+      "Gió mạnh",
+    ];
+    let quality = "Nắng"; // Giá trị mặc định nếu không tìm thấy giá trị hợp lệ
+    for (const validQuality of validQualities) {
+      if (currentConditions.includes(validQuality)) {
+        quality = validQuality;
+        break;
+      }
+    }
+
+    // Lưu farm vào database
+    const newFarm = await pool.query(
+      "INSERT INTO farms (producer_id, farm_name, location, weather_condition, yield, quality, current_conditions) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
+      [producerId, farmId, location, climate, 0, quality, currentConditions]
+    );
+
+    res.json({ message: "Farm registered", farmId: newFarm.rows[0].id });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Lỗi khi tạo farm:", error);
+    res
+      .status(500)
+      .json({ message: "Có lỗi xảy ra! Vui lòng thử lại nhé! 😓" });
   }
 });
 
@@ -388,6 +529,27 @@ app.get("/products", async (req, res) => {
   }
 });
 
+app.get("/products/farm", async (req, res) => {
+  const { farm_id } = req.query;
+
+  try {
+    if (!farm_id) {
+      return res.status(400).json({ message: "Vui lòng cung cấp farm_id! 😅" });
+    }
+
+    const result = await pool.query(
+      "SELECT * FROM products WHERE farm_id = $1",
+      [farm_id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Lỗi khi lấy sản phẩm:", error);
+    res
+      .status(500)
+      .json({ message: "Có lỗi xảy ra! Vui lòng thử lại nhé! 😓" });
+  }
+});
+
 app.get("/products/:id", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM products WHERE id = $1", [
@@ -402,7 +564,9 @@ app.get("/products/:id", async (req, res) => {
   }
 });
 
-app.post("/products", async (req, res) => {
+app.post("/products", upload.single("image"), async (req, res) => {
+  console.log("Dữ liệu nhận được từ frontend:", req.body, req.file); // Thêm log để debug
+
   const {
     name,
     productcode,
@@ -410,14 +574,42 @@ app.post("/products", async (req, res) => {
     description,
     price,
     quantity,
-    imageurl,
-    productiondate,
+    productdate,
     expirydate,
+    farm_id,
   } = req.body;
+  const image = req.file;
 
   try {
+    if (
+      !name ||
+      !productcode ||
+      !category ||
+      !description ||
+      !price ||
+      !quantity ||
+      !productdate ||
+      !expirydate ||
+      !farm_id ||
+      !image
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Vui lòng điền đầy đủ thông tin! 😅" });
+    }
+
+    const farmExists = await pool.query("SELECT * FROM farms WHERE id = $1", [
+      farm_id,
+    ]);
+    if (farmExists.rows.length === 0) {
+      return res.status(400).json({ message: "Farm không tồn tại! 😅" });
+    }
+
+    // Lưu URL của hình ảnh
+    const imageUrl = `/uploads/${image.filename}`;
+
     const result = await pool.query(
-      "INSERT INTO products (name, productcode, category, description, price, quantity, imageurl, productiondate, expirydate) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *",
+      "INSERT INTO products (name, productcode, category, description, price, quantity, imageurl, productdate, expirydate, farm_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *",
       [
         name,
         productcode,
@@ -425,9 +617,10 @@ app.post("/products", async (req, res) => {
         description,
         price,
         quantity,
-        imageurl,
-        productiondate,
+        imageUrl,
+        productdate,
         expirydate,
+        farm_id,
       ]
     );
     res.status(201).json(result.rows[0]);
@@ -436,6 +629,9 @@ app.post("/products", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Phục vụ file tĩnh từ thư mục uploads
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.listen(3000, () => {
   console.log("Server running on port 3000");

@@ -1,3 +1,4 @@
+// src/components/FarmManagement/AddFarmProductForm.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { addFruitProduct } from "../../services/fruitService";
@@ -14,9 +15,7 @@ import {
   Paper,
   CircularProgress,
   Alert,
-  Snackbar,
 } from "@mui/material";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import "../FruitCatalog/CatalogStyles.css";
 
 const AddFarmProductForm = () => {
@@ -24,28 +23,19 @@ const AddFarmProductForm = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [redirectCountdown, setRedirectCountdown] = useState(3);
-  const [snackOpen, setSnackOpen] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
+  const [imageFile, setImageFile] = useState(null); // Lưu file hình ảnh
+  const [imagePreview, setImagePreview] = useState(null); // Lưu URL preview
 
-  // Xử lý countdown và chuyển hướng
   useEffect(() => {
     if (success) {
-      setSnackOpen(true);
-
-      const countdownInterval = setInterval(() => {
-        setRedirectCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(countdownInterval);
-            navigate("/farms");
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      return () => {
-        clearInterval(countdownInterval);
-      };
+      console.log("State success đã được cập nhật:", success);
+      setRedirecting(true);
+      const timer = setTimeout(() => {
+        console.log("Chuyển hướng về /farms");
+        navigate("/farms");
+      }, 3000);
+      return () => clearTimeout(timer);
     }
   }, [success, navigate]);
 
@@ -55,9 +45,9 @@ const AddFarmProductForm = () => {
     description: "",
     price: "",
     quantity: "",
-    imageurl: "",
     productiondate: "",
     expirydate: "",
+    farm_id: "1", // Giả sử farm_id là 1, bạn có thể lấy từ context hoặc form
   });
 
   const handleChange = (e) => {
@@ -75,15 +65,8 @@ const AddFarmProductForm = () => {
         setError("Hình ảnh quá lớn! Vui lòng chọn hình ảnh dưới 5MB.");
         return;
       }
-
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProduct({
-          ...product,
-          imageurl: reader.result,
-        });
-      };
-      reader.readAsDataURL(file);
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file)); // Tạo URL để preview hình ảnh
     }
   };
 
@@ -109,24 +92,31 @@ const AddFarmProductForm = () => {
 
     try {
       const productCode = generateProductCode(product.name);
-      const productWithCode = {
-        ...product,
-        productcode: productCode,
-      };
 
-      await addFruitProduct(productWithCode);
+      // Tạo FormData để gửi file
+      const formData = new FormData();
+      formData.append("name", product.name);
+      formData.append("productcode", productCode);
+      formData.append("category", product.category);
+      formData.append("description", product.description);
+      formData.append("price", product.price);
+      formData.append("quantity", product.quantity);
+      formData.append("image", imageFile); // Gửi file hình ảnh
+      formData.append("productdate", product.productiondate);
+      formData.append("expirydate", product.expirydate);
+      formData.append("farm_id", product.farm_id);
+
+      console.log("Dữ liệu gửi lên API:", formData);
+
+      await addFruitProduct(formData);
       setLoading(false);
       setSuccess("Thêm sản phẩm thành công!");
-      setRedirectCountdown(3);
+      console.log("Thông báo thành công đã được thiết lập");
     } catch (err) {
       console.error("Lỗi khi thêm sản phẩm:", err);
       setError(err.message || "Không thể thêm sản phẩm. Vui lòng thử lại sau.");
       setLoading(false);
     }
-  };
-
-  const handleCloseSnack = () => {
-    setSnackOpen(false);
   };
 
   return (
@@ -147,43 +137,9 @@ const AddFarmProductForm = () => {
             {error}
           </Alert>
         )}
-
         {success && (
-          <Alert
-            severity="success"
-            sx={{
-              mb: 3,
-              display: "flex",
-              alignItems: "center",
-              backgroundColor: "#e8f5e9",
-              border: "1px solid #81c784",
-            }}
-            icon={<CheckCircleIcon fontSize="inherit" />}
-          >
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                width: "100%",
-              }}
-            >
-              <Typography variant="body1">
-                {success} Bạn sẽ được chuyển hướng sau {redirectCountdown}{" "}
-                giây...
-              </Typography>
-              {loading ? (
-                <CircularProgress size={20} thickness={5} sx={{ ml: 2 }} />
-              ) : (
-                <Button
-                  size="small"
-                  onClick={() => navigate("/farms")}
-                  sx={{ ml: 2 }}
-                >
-                  Đi ngay
-                </Button>
-              )}
-            </Box>
+          <Alert severity="success" sx={{ mb: 3 }}>
+            {success}
           </Alert>
         )}
 
@@ -276,10 +232,10 @@ const AddFarmProductForm = () => {
                 variant="standard"
                 sx={{ mb: 2 }}
               />
-              {product.imageurl && (
+              {imagePreview && (
                 <Box sx={{ mt: 2 }}>
                   <img
-                    src={product.imageurl}
+                    src={imagePreview}
                     alt="Product preview"
                     style={{ maxWidth: "200px", borderRadius: "5px" }}
                   />
@@ -323,7 +279,7 @@ const AddFarmProductForm = () => {
                   type="submit"
                   variant="contained"
                   color="primary"
-                  disabled={loading || success}
+                  disabled={loading}
                   sx={{
                     textTransform: "none",
                     fontWeight: "bold",
@@ -338,14 +294,6 @@ const AddFarmProductForm = () => {
           </Grid>
         </form>
       </Paper>
-
-      <Snackbar
-        open={snackOpen}
-        autoHideDuration={6000}
-        onClose={handleCloseSnack}
-        message={success}
-        anchorOrigin={{ vertical: "top", horizontal: "right" }}
-      />
     </Box>
   );
 };

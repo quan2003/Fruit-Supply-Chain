@@ -1,4 +1,3 @@
-// src/pages/LoginPage.jsx
 import React, { useState, useEffect } from "react";
 import {
   Container,
@@ -19,7 +18,6 @@ import { useWeb3 } from "../contexts/Web3Context";
 import Layout from "../components/common/Layout";
 import Footer from "../components/common/Footer";
 
-// Hình minh họa bên trái
 const illustrationImage =
   "https://images.unsplash.com/photo-1593642634315-48f5414c3ad9?ixlib=rb-4.0.3&auto=format&fit=crop&w=1350&q=80";
 
@@ -34,7 +32,6 @@ const LoginPage = () => {
   const [error, setError] = useState("");
   const [expectedWallet, setExpectedWallet] = useState("");
 
-  // Lấy query parameter role từ URL
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const roleFromQuery = params.get("role");
@@ -52,14 +49,12 @@ const LoginPage = () => {
     e.preventDefault();
     setError("");
 
-    // Kiểm tra dữ liệu đầu vào
     if (!email || !password || !role) {
       setError("Vui lòng điền đầy đủ thông tin! 😅");
       return;
     }
 
     try {
-      // Gửi yêu cầu đăng nhập đến API
       const response = await fetch("http://localhost:3000/login", {
         method: "POST",
         headers: {
@@ -72,10 +67,10 @@ const LoginPage = () => {
       if (response.ok) {
         setIsLoggedIn(true);
         setExpectedWallet(data.user.walletAddress?.toLowerCase() || "");
-        // Lưu thông tin người dùng vào localStorage
         localStorage.setItem(
           "user",
           JSON.stringify({
+            name: data.user.name, // Thêm name vào localStorage
             email: data.user.email,
             role: data.user.role,
             walletAddress: data.user.walletAddress,
@@ -94,9 +89,7 @@ const LoginPage = () => {
     try {
       await connectWallet();
       if (account) {
-        // Kiểm tra xem địa chỉ ví có khớp với ví được gán cho đối tượng không (nếu có)
         if (!expectedWallet || account.toLowerCase() === expectedWallet) {
-          // Cập nhật wallet address vào PostgreSQL
           await fetch("http://localhost:3000/update-wallet", {
             method: "POST",
             headers: {
@@ -105,14 +98,17 @@ const LoginPage = () => {
             body: JSON.stringify({ email, walletAddress: account }),
           });
 
-          // Điều hướng theo vai trò
           const user = JSON.parse(localStorage.getItem("user")) || {};
-          if (user.role === "nguoi-dan") {
-            navigate("/farms"); // Điều hướng đến trang FarmPage cho Người dân
-          } else if (user.role === "nha-quan-ly") {
-            navigate("/quan-ly"); // Điều hướng đến trang quản lý cho Nhà quản lý
-          } else if (user.role === "nguoi-tieu-dung") {
-            navigate("/"); // Điều hướng về trang chủ cho Người tiêu dùng
+          if (user.role === "Producer") {
+            navigate("/farms");
+          } else if (user.role === "Admin") {
+            navigate("/quan-ly");
+          } else if (user.role === "Customer") {
+            navigate("/");
+          } else if (user.role === "ThirdParty") {
+            navigate("/third-party");
+          } else if (user.role === "DeliveryHub") {
+            navigate("/delivery-hub");
           }
         } else {
           setError(
@@ -144,7 +140,6 @@ const LoginPage = () => {
       >
         <Container maxWidth="lg">
           <Grid container spacing={3} alignItems="center">
-            {/* Left Section: Illustration */}
             <Grid item xs={12} md={6}>
               <Box
                 component="img"
@@ -159,7 +154,6 @@ const LoginPage = () => {
               />
             </Grid>
 
-            {/* Right Section: Login Form hoặc Kết nối ví */}
             <Grid item xs={12} md={6}>
               {!isLoggedIn ? (
                 <>
@@ -175,7 +169,6 @@ const LoginPage = () => {
                     Đăng nhập nhanh đi nào! 😍
                   </Typography>
 
-                  {/* Social Login Buttons */}
                   <Box
                     sx={{ display: "flex", justifyContent: "center", mb: 2 }}
                   >
@@ -197,7 +190,6 @@ const LoginPage = () => {
                     Or
                   </Typography>
 
-                  {/* Hiển thị thông báo lỗi nếu có */}
                   {error && (
                     <Typography
                       variant="body2"
@@ -207,7 +199,6 @@ const LoginPage = () => {
                     </Typography>
                   )}
 
-                  {/* Login Form */}
                   <Box component="form" sx={{ maxWidth: "400px", mx: "auto" }}>
                     <TextField
                       fullWidth
@@ -227,7 +218,6 @@ const LoginPage = () => {
                       onChange={(e) => setPassword(e.target.value)}
                     />
 
-                    {/* Dropdown chọn vai trò */}
                     <FormControl fullWidth sx={{ mb: 2 }}>
                       <InputLabel>Bạn là ai? 🌟</InputLabel>
                       <Select
@@ -235,10 +225,12 @@ const LoginPage = () => {
                         onChange={handleRoleChange}
                         label="Bạn là ai? 🌟"
                       >
-                        <MenuItem value="nguoi-dan">Người dân</MenuItem>
-                        <MenuItem value="nha-quan-ly">Nhà quản lý</MenuItem>
-                        <MenuItem value="nguoi-tieu-dung">
-                          Người tiêu dùng
+                        <MenuItem value="Producer">Người dân</MenuItem>
+                        <MenuItem value="Admin">Nhà quản lý</MenuItem>
+                        <MenuItem value="Customer">Người tiêu dùng</MenuItem>
+                        <MenuItem value="ThirdParty">Nhà vận chuyển</MenuItem>
+                        <MenuItem value="DeliveryHub">
+                          Trung tâm phân phối
                         </MenuItem>
                       </Select>
                     </FormControl>

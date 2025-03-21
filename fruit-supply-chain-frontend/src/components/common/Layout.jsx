@@ -1,4 +1,3 @@
-// src/components/common/Layout.jsx
 import React, { useState } from "react";
 import {
   Container,
@@ -29,22 +28,19 @@ const Layout = ({ children }) => {
   const navigate = useNavigate();
   const { account, connectWallet } = useWeb3();
 
-  // State cho dropdown Đăng nhập và Đăng ký
   const [loginAnchorEl, setLoginAnchorEl] = useState(null);
   const [registerAnchorEl, setRegisterAnchorEl] = useState(null);
   const loginOpen = Boolean(loginAnchorEl);
   const registerOpen = Boolean(registerAnchorEl);
 
-  // Lấy thông tin người dùng từ localStorage
   const user = JSON.parse(localStorage.getItem("user")) || {};
-  const isLoggedIn = !!user.email && !!user.role; // Kiểm tra cả email và role để đảm bảo người dùng đã đăng nhập
+  const isLoggedIn = !!user.email && !!user.role;
 
-  // Danh sách menu và đường dẫn tương ứng
   const menuItems = [
     { text: "Trang chủ", path: "/" },
     { text: "Cửa hàng", path: "/cua-hang" },
     ...(isLoggedIn
-      ? [] // Nếu đã đăng nhập, không hiển thị "Đăng nhập" và "Đăng ký"
+      ? []
       : [
           { text: "Đăng nhập", path: "/dang-nhap" },
           { text: "Đăng ký", path: "/dang-ky" },
@@ -72,34 +68,45 @@ const Layout = ({ children }) => {
     setMobileOpen(!mobileOpen);
   };
 
-  // Hàm đăng xuất
   const handleLogout = () => {
-    localStorage.removeItem("user"); // Xóa thông tin người dùng khỏi localStorage
-    navigate("/"); // Điều hướng về trang chủ
+    localStorage.removeItem("user");
+    navigate("/");
   };
 
-  // Hàm xử lý kết nối ví
   const handleConnectWallet = async () => {
     try {
       await connectWallet();
     } catch (error) {
-      // Hiển thị thông báo lỗi cho người dùng
       alert(
         error.message || "Không thể kết nối ví MetaMask. Vui lòng thử lại!"
       );
     }
   };
 
-  // Rút gọn địa chỉ ví MetaMask
   const shortenAddress = (address) => {
     if (!address) return "Chưa kết nối";
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
-  // Xác định menu đang chọn, bỏ qua query parameter
+  const getRoleDisplayName = (role) => {
+    switch (role) {
+      case "Producer":
+        return "Nông dân";
+      case "Admin":
+        return "Nhà quản lý";
+      case "Customer":
+        return "Người tiêu dùng";
+      case "ThirdParty":
+        return "Nhà vận chuyển";
+      case "DeliveryHub":
+        return "Trung tâm phân phối";
+      default:
+        return "Người dùng";
+    }
+  };
+
   const getBasePath = (path) => path.split("?")[0];
 
-  // Nội dung của Drawer cho mobile
   const drawerContent = (
     <Box
       sx={{
@@ -153,7 +160,6 @@ const Layout = ({ children }) => {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-      {/* Header */}
       <AppBar position="fixed" sx={{ bgcolor: "white", boxShadow: 1 }}>
         <Toolbar>
           <Box
@@ -245,7 +251,7 @@ const Layout = ({ children }) => {
                     <MenuItem
                       onClick={() => {
                         handleLoginClose();
-                        navigate("/dang-nhap?role=nguoi-dan");
+                        navigate("/dang-nhap?role=Producer");
                       }}
                     >
                       Người dân
@@ -253,7 +259,7 @@ const Layout = ({ children }) => {
                     <MenuItem
                       onClick={() => {
                         handleLoginClose();
-                        navigate("/dang-nhap?role=nha-quan-ly");
+                        navigate("/dang-nhap?role=Admin");
                       }}
                     >
                       Nhà quản lý
@@ -261,10 +267,26 @@ const Layout = ({ children }) => {
                     <MenuItem
                       onClick={() => {
                         handleLoginClose();
-                        navigate("/dang-nhap?role=nguoi-tieu-dung");
+                        navigate("/dang-nhap?role=Customer");
                       }}
                     >
                       Người tiêu dùng
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        handleLoginClose();
+                        navigate("/dang-nhap?role=ThirdParty");
+                      }}
+                    >
+                      Nhà vận chuyển
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        handleLoginClose();
+                        navigate("/dang-nhap?role=DeliveryHub");
+                      }}
+                    >
+                      Trung tâm phân phối
                     </MenuItem>
                   </Menu>
                 )}
@@ -293,7 +315,7 @@ const Layout = ({ children }) => {
                     <MenuItem
                       onClick={() => {
                         handleRegisterClose();
-                        navigate("/dang-ky?role=nguoi-dan");
+                        navigate("/dang-ky?role=Producer");
                       }}
                     >
                       Người dân
@@ -301,7 +323,7 @@ const Layout = ({ children }) => {
                     <MenuItem
                       onClick={() => {
                         handleRegisterClose();
-                        navigate("/dang-ky?role=nha-quan-ly");
+                        navigate("/dang-ky?role=Admin");
                       }}
                     >
                       Nhà quản lý
@@ -309,10 +331,26 @@ const Layout = ({ children }) => {
                     <MenuItem
                       onClick={() => {
                         handleRegisterClose();
-                        navigate("/dang-ky?role=nguoi-tieu-dung");
+                        navigate("/dang-ky?role=Customer");
                       }}
                     >
                       Người tiêu dùng
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        handleRegisterClose();
+                        navigate("/dang-ky?role=ThirdParty");
+                      }}
+                    >
+                      Nhà vận chuyển
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        handleRegisterClose();
+                        navigate("/dang-ky?role=DeliveryHub");
+                      }}
+                    >
+                      Trung tâm phân phối
                     </MenuItem>
                   </Menu>
                 )}
@@ -329,13 +367,8 @@ const Layout = ({ children }) => {
                     alignItems: "center",
                   }}
                 >
-                  Hi,{" "}
-                  {user.role === "nguoi-dan"
-                    ? "Nông dân"
-                    : user.role === "nha-quan-ly"
-                    ? "Nhà quản lý"
-                    : "Người tiêu dùng"}{" "}
-                  xuất sắc ({shortenAddress(account)}) 🌟
+                  Hi, {user.name} ({getRoleDisplayName(user.role)} xuất sắc) (
+                  {shortenAddress(account)}) 🌟
                 </Typography>
                 <Button
                   color="inherit"
@@ -376,7 +409,6 @@ const Layout = ({ children }) => {
         </Toolbar>
       </AppBar>
 
-      {/* Drawer for mobile */}
       <Box component="nav">
         <Drawer
           variant="temporary"
@@ -394,7 +426,6 @@ const Layout = ({ children }) => {
         </Drawer>
       </Box>
 
-      {/* Main content */}
       <Box sx={{ flexGrow: 1, mt: { xs: 7, md: 8 } }}>{children}</Box>
     </Box>
   );
