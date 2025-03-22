@@ -15,6 +15,7 @@ import {
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Facebook, Twitter, Google } from "@mui/icons-material";
 import { useWeb3 } from "../contexts/Web3Context";
+import { useAuth } from "../contexts/AuthContext"; // Import useAuth
 import Layout from "../components/common/Layout";
 import Footer from "../components/common/Footer";
 
@@ -25,6 +26,7 @@ const LoginPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { connectWallet, account } = useWeb3();
+  const { login } = useAuth(); // Lấy hàm login từ useAuth
   const [role, setRole] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -67,10 +69,14 @@ const LoginPage = () => {
       if (response.ok) {
         setIsLoggedIn(true);
         setExpectedWallet(data.user.walletAddress?.toLowerCase() || "");
+        // Lưu thông tin user vào AuthContext
+        login(data.user);
+        // Đồng bộ với localStorage
         localStorage.setItem(
           "user",
           JSON.stringify({
-            name: data.user.name, // Thêm name vào localStorage
+            id: data.user.id, // Thêm id vào localStorage
+            name: data.user.name,
             email: data.user.email,
             role: data.user.role,
             walletAddress: data.user.walletAddress,

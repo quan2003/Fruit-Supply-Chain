@@ -1,4 +1,3 @@
-// fruit-supply-chain-frontend/src/contexts/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useWeb3 } from "./Web3Context";
 
@@ -14,13 +13,16 @@ export function AuthProvider({ children }) {
   const [isFarmer, setIsFarmer] = useState(false);
   const [userFarms, setUserFarms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(() => {
+    // Khôi phục user từ localStorage khi khởi động
+    const savedUser = localStorage.getItem("user");
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
 
   useEffect(() => {
     const checkUserRole = async () => {
       if (account) {
         try {
-          // Giả lập kiểm tra vai trò và danh sách nông trại
-          // Thay bằng API thật nếu có
           const managerStatus = false; // Giả lập: không phải manager
           setIsManager(managerStatus);
 
@@ -54,11 +56,29 @@ export function AuthProvider({ children }) {
     checkUserRole();
   }, [account]);
 
+  const login = (userData) => {
+    setUser(userData);
+    // Đồng bộ với localStorage
+    localStorage.setItem("user", JSON.stringify(userData));
+  };
+
+  const logout = () => {
+    setUser(null);
+    setUserFarms([]);
+    setIsFarmer(false);
+    setIsManager(false);
+    // Xóa localStorage
+    localStorage.removeItem("user");
+  };
+
   const value = {
+    user,
     isManager,
     isFarmer,
     userFarms,
     loading,
+    login,
+    logout,
     checkFarmOwnership: (farmId) => {
       return userFarms.some((farm) => farm.id === farmId);
     },

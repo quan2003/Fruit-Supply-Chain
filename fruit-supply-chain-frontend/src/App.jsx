@@ -9,13 +9,15 @@ import AnalyticsPage from "./pages/AnalyticsPage";
 import AdminPage from "./pages/AdminPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
+import DeliveryHubPage from "./pages/DeliveryHubPage";
+import UnauthorizedPage from "./pages/UnauthorizedPage";
 import FarmProductList from "./components/FarmManagement/FarmProductList";
 import AddFarmProductForm from "./components/FarmManagement/AddFarmProductForm";
 import RegisterFarmForm from "./components/FarmManagement/RegisterFarmForm";
 import FarmOverview from "./components/FarmManagement/FarmOverview";
 import ProtectedRoute from "./components/common/ProtectedRoute";
 import { useAuth } from "./contexts/AuthContext";
-import { Typography } from "@mui/material"; // Thêm import Typography
+import { Typography } from "@mui/material";
 
 function App() {
   const { isManager } = useAuth();
@@ -29,6 +31,7 @@ function App() {
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/tracker" element={<TrackerPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/unauthorized" element={<UnauthorizedPage />} />
         <Route
           path="/admin"
           element={
@@ -37,6 +40,8 @@ function App() {
             </ProtectedRoute>
           }
         />
+        {/* Tạm thời bỏ qua kiểm tra quyền */}
+        <Route path="/delivery-hub" element={<DeliveryHubPage />} />
         {/* Route cha cho các trang liên quan đến farm */}
         <Route path="/farms" element={<FarmPage />}>
           <Route

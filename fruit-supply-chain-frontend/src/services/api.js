@@ -141,36 +141,26 @@ export const createFruitProduct = async (formData) => {
 // === Quản lý nông trại ===
 export const getAllFarms = async () => {
   try {
-    return [
-      {
-        id: "1",
-        name: "Nông trại Tiền Giang",
-        location: "Tiền Giang",
-        owner: "0x33dbE90872BbF0a67692D7B533D57A6c185F42bC",
-        ownerAddress: "0x33dbE90872BbF0a67692D7B533D57A6c185F42bC",
-      },
-      {
-        id: "2",
-        name: "Nông trại Bình Thuận",
-        location: "Bình Thuận",
-        owner: "0x1234567890abcdef1234567890abcdef12345678",
-        ownerAddress: "0x1234567890abcdef1234567890abcdef12345678",
-      },
-    ];
+    // Gọi API thực tế để lấy danh sách farms từ database
+    const response = await api.get("/farms");
+    return response.data;
   } catch (error) {
     console.error("Error fetching all farms:", error);
-    throw error;
+    return [];
   }
 };
 
 export const getFarm = async (farmId) => {
   try {
-    const farms = await getAllFarms();
-    const farm = farms.find((f) => f.id === farmId);
-    if (!farm) throw new Error(`Farm with ID ${farmId} not found`);
-    return farm;
+    // Gọi API thực tế để lấy thông tin farm theo ID
+    const response = await api.get(`/farms/${farmId}`);
+    return response.data;
   } catch (error) {
-    console.error(`Error fetching farm with ID ${farmId}:`, error);
+    if (error.response && error.response.status === 404) {
+      console.error(`Farm with ID ${farmId} not found in database`);
+    } else {
+      console.error(`Error fetching farm with ID ${farmId}:`, error);
+    }
     throw error;
   }
 };
