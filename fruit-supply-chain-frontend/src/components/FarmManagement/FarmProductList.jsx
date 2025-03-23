@@ -1,5 +1,7 @@
+// src/components/FarmManagement/FarmProductList.jsx
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { getFruitProducts } from "../../services/fruitService"; // Sử dụng service đã sửa
 import LoadingSpinner from "../common/LoadingSpinner";
 import {
   Table,
@@ -25,52 +27,20 @@ const FarmProductList = () => {
   const [error, setError] = useState(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
-  const [farmId, setFarmId] = useState(null);
-
-  useEffect(() => {
-    const fetchFarmId = async () => {
-      try {
-        const user = JSON.parse(localStorage.getItem("user")) || {};
-        if (!user.email) {
-          setError("Vui lòng đăng nhập để xem danh sách sản phẩm!");
-          setLoading(false);
-          return;
-        }
-
-        const response = await fetch(
-          `http://localhost:3000/farms/user?email=${user.email}`
-        );
-        const data = await response.json();
-        if (response.ok && data.length > 0) {
-          setFarmId(data[0].id);
-        } else {
-          setError("Không tìm thấy farm của bạn! Vui lòng tạo farm trước.");
-          setLoading(false);
-        }
-      } catch (err) {
-        setError("Không thể lấy thông tin farm. Vui lòng thử lại sau.");
-        setLoading(false);
-      }
-    };
-
-    fetchFarmId();
-  }, []);
+  const user = JSON.parse(localStorage.getItem("user")) || {};
 
   useEffect(() => {
     const fetchProducts = async () => {
-      if (!farmId) return;
+      if (!user.email) {
+        setError("Vui lòng đăng nhập để xem danh sách sản phẩm!");
+        setLoading(false);
+        return;
+      }
 
       try {
         setLoading(true);
-        const response = await fetch(
-          `http://localhost:3000/products/farm?farm_id=${farmId}`
-        );
-        const data = await response.json();
-        if (response.ok) {
-          setProducts(data || []);
-        } else {
-          setError("Không thể tải danh sách sản phẩm. Vui lòng thử lại sau.");
-        }
+        const data = await getFruitProducts(user.email); // Sử dụng API /products với email
+        setProducts(data || []);
         setLoading(false);
       } catch (err) {
         setError("Không thể tải danh sách sản phẩm. Vui lòng thử lại sau.");
@@ -79,7 +49,7 @@ const FarmProductList = () => {
     };
 
     fetchProducts();
-  }, [farmId]);
+  }, [user.email]);
 
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
@@ -221,7 +191,7 @@ const FarmProductList = () => {
                             borderRadius: "5px",
                           }}
                           onError={(e) => {
-                            e.target.src = "https://via.placeholder.com/150"; // Fallback nếu hình ảnh không tải được
+                            e.target.src = "https://via.placeholder.com/150";
                           }}
                         />
                       </TableCell>

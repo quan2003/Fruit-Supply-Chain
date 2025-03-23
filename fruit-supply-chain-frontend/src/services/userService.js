@@ -1,4 +1,3 @@
-// fruit-supply-chain-frontend/src/services/userService.js
 import axios from "axios";
 
 const API_URL = "http://localhost:3000";

@@ -24,20 +24,10 @@ const AddFarmProductForm = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [redirecting, setRedirecting] = useState(false);
-  const [imageFile, setImageFile] = useState(null); // Lưu file hình ảnh
-  const [imagePreview, setImagePreview] = useState(null); // Lưu URL preview
-
-  useEffect(() => {
-    if (success) {
-      console.log("State success đã được cập nhật:", success);
-      setRedirecting(true);
-      const timer = setTimeout(() => {
-        console.log("Chuyển hướng về /farms");
-        navigate("/farms");
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [success, navigate]);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [farms, setFarms] = useState([]); // Danh sách farm của producer
+  const user = JSON.parse(localStorage.getItem("user")) || {};
 
   const [product, setProduct] = useState({
     name: "",
@@ -47,8 +37,43 @@ const AddFarmProductForm = () => {
     quantity: "",
     productiondate: "",
     expirydate: "",
-    farm_id: "1", // Giả sử farm_id là 1, bạn có thể lấy từ context hoặc form
+    farm_id: "", // Sẽ được cập nhật sau khi lấy danh sách farm
   });
+
+  useEffect(() => {
+    const fetchFarms = async () => {
+      try {
+        const response = await fetch(
+          `http://localhost:3000/farms/user?email=${user.email}`
+        );
+        const data = await response.json();
+        if (response.ok && data.length > 0) {
+          setFarms(data);
+          setProduct((prev) => ({ ...prev, farm_id: data[0].id })); // Chọn farm đầu tiên mặc định
+        } else {
+          setError("Không tìm thấy farm của bạn! Vui lòng tạo farm trước.");
+        }
+      } catch (err) {
+        setError("Không thể lấy danh sách farm. Vui lòng thử lại sau.");
+      }
+    };
+
+    if (user.email) {
+      fetchFarms();
+    } else {
+      setError("Vui lòng đăng nhập để thêm sản phẩm!");
+    }
+  }, [user.email]);
+
+  useEffect(() => {
+    if (success) {
+      setRedirecting(true);
+      const timer = setTimeout(() => {
+        navigate("/farms/products");
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success, navigate]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -66,7 +91,7 @@ const AddFarmProductForm = () => {
         return;
       }
       setImageFile(file);
-      setImagePreview(URL.createObjectURL(file)); // Tạo URL để preview hình ảnh
+      setImagePreview(URL.createObjectURL(file));
     }
   };
 
@@ -93,7 +118,6 @@ const AddFarmProductForm = () => {
     try {
       const productCode = generateProductCode(product.name);
 
-      // Tạo FormData để gửi file
       const formData = new FormData();
       formData.append("name", product.name);
       formData.append("productcode", productCode);
@@ -101,17 +125,15 @@ const AddFarmProductForm = () => {
       formData.append("description", product.description);
       formData.append("price", product.price);
       formData.append("quantity", product.quantity);
-      formData.append("image", imageFile); // Gửi file hình ảnh
+      formData.append("image", imageFile);
       formData.append("productdate", product.productiondate);
       formData.append("expirydate", product.expirydate);
       formData.append("farm_id", product.farm_id);
-
-      console.log("Dữ liệu gửi lên API:", formData);
+      formData.append("email", user.email); // Truyền email để backend kiểm tra
 
       await addFruitProduct(formData);
       setLoading(false);
       setSuccess("Thêm sản phẩm thành công!");
-      console.log("Thông báo thành công đã được thiết lập");
     } catch (err) {
       console.error("Lỗi khi thêm sản phẩm:", err);
       setError(err.message || "Không thể thêm sản phẩm. Vui lòng thử lại sau.");
@@ -271,6 +293,24 @@ const AddFarmProductForm = () => {
                 variant="standard"
                 sx={{ mb: 2 }}
               />
+            </Grid>
+
+            <Grid item xs={12}>
+              <FormControl fullWidth variant="standard" sx={{ mb: 2 }}>
+                <InputLabel shrink>Farm</InputLabel>
+                <Select
+                  name="farm_id"
+                  value={product.farm_id}
+                  onChange={handleChange}
+                  required
+                >
+                  {farms.map((farm) => (
+                    <MenuItem key={farm.id} value={farm.id}>
+                      {farm.farm_name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
 
             <Grid item xs={12}>

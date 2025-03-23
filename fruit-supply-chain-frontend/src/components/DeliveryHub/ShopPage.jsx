@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+// src/components/DeliveryHub/ShopPage.jsx
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Grid,
@@ -32,13 +33,12 @@ import {
 } from "@mui/icons-material";
 import { useWeb3 } from "../../contexts/Web3Context";
 import { useAuth } from "../../contexts/AuthContext";
+import { useOutletContext } from "react-router-dom";
 import {
   getFruitProducts,
   purchaseProduct,
   addToInventory,
   getInventory,
-  getFruitProductById,
-  addFruitProduct,
 } from "../../services/fruitService";
 import {
   getFarmByIdService,
@@ -47,10 +47,15 @@ import {
 import { getAllUsersService } from "../../services/userService";
 
 const ShopPage = () => {
+  const {
+    inventory,
+    setInventory,
+    handleMenuClick,
+    formatImageUrl: formatImageUrlFromContext,
+  } = useOutletContext();
   const { account, web3, connectWallet } = useWeb3();
   const { user } = useAuth();
   const [products, setProducts] = useState([]);
-  const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -60,15 +65,13 @@ const ShopPage = () => {
   const [farmInfo, setFarmInfo] = useState(null);
   const [loadingFarmInfo, setLoadingFarmInfo] = useState(false);
   const [apiErrorInfo, setApiErrorInfo] = useState(null);
-  const [showCatalog, setShowCatalog] = useState(false);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
-  const catalogRef = useRef(null); // Thêm ref để cuộn đến catalog
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         setLoading(true);
-        const data = await getFruitProducts();
+        const data = await getFruitProducts(); // Không truyền email để lấy tất cả sản phẩm
         setProducts(data);
         setLoading(false);
       } catch (err) {
@@ -82,10 +85,8 @@ const ShopPage = () => {
       try {
         if (user?.id) {
           const data = await getInventory(user.id);
+          console.log("ShopPage initial inventory:", data);
           setInventory(data);
-          if (data.length > 0) {
-            setShowCatalog(true);
-          }
         } else {
           console.warn("User is not logged in or user.id is undefined");
         }
@@ -97,13 +98,12 @@ const ShopPage = () => {
 
     fetchProducts();
     fetchInventory();
-  }, [user]);
+  }, [user, setInventory]);
 
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value);
   };
 
-  // Filter products based on search term
   const filteredProducts = products.filter(
     (product) =>
       product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -189,7 +189,6 @@ const ShopPage = () => {
     }
   };
 
-  // Helper function to format wallet address
   const formatWalletAddress = (address) => {
     if (!address) return null;
     if (address.includes("...")) return address;
@@ -205,9 +204,6 @@ const ShopPage = () => {
   };
 
   const handlePurchase = async (product) => {
-    console.log("Starting purchase with account:", account, "web3:", web3);
-
-    // Kiểm tra đăng nhập ngay từ đầu
     if (!user || !user.id) {
       alert("Vui lòng đăng nhập để thực hiện giao dịch!");
       return;
@@ -221,24 +217,10 @@ const ShopPage = () => {
     setPurchaseLoading(true);
     try {
       const quantity = 2;
-      console.log("Calling purchaseProduct API with:", {
-        productId: product.id,
-        buyerAddress: account,
-        quantity,
-      });
-
       const purchaseInfo = await purchaseProduct(product.id, account, quantity);
-      console.log("Purchase info received:", purchaseInfo);
 
-      // Kiểm tra nếu API trả về lỗi (chỉ ném lỗi nếu có thông báo lỗi thực sự)
       if (!purchaseInfo || purchaseInfo.error) {
         throw new Error(purchaseInfo.error || "Không thể thực hiện giao dịch!");
-      }
-
-      // Thông báo "Thông tin giao dịch đã được xác nhận..." là thông báo thành công, không phải lỗi
-      if (purchaseInfo.message) {
-        console.log("API message:", purchaseInfo.message);
-        // Tiếp tục giao dịch, không ném lỗi
       }
 
       const {
@@ -250,23 +232,13 @@ const ShopPage = () => {
         price,
       } = purchaseInfo;
 
-      // Kiểm tra các giá trị cần thiết trước khi gửi giao dịch
       if (!totalPriceInWei || !producerAddress || !deliveryHubId) {
         throw new Error("Thông tin giao dịch không đầy đủ!");
       }
 
-      // Récupérer le nonce actuel du compte
       const nonce = await web3.eth.getTransactionCount(account, "pending");
-      console.log("Current nonce for account:", nonce);
-
-      console.log("Sending transaction with web3:", {
-        from: account,
-        to: producerAddress,
-        value: totalPriceInWei,
-        nonce,
-      });
       const gasPrice = await web3.eth.getGasPrice();
-      const transaction = await web3.eth.sendTransaction({
+      await web3.eth.sendTransaction({
         from: account,
         to: producerAddress,
         value: totalPriceInWei,
@@ -275,30 +247,26 @@ const ShopPage = () => {
         nonce: nonce,
       });
 
-      console.log("Transaction successful:", transaction.transactionHash);
-
-      console.log("Adding to inventory:", {
+      await addToInventory(
         productId,
         deliveryHubId,
         qty,
         price,
-      });
-      await addToInventory(productId, deliveryHubId, qty, price);
-
-      console.log("Fetching updated inventory for deliveryHubId:", user.id);
-      const updatedInventory = await getInventory(user.id);
-      setInventory(updatedInventory);
-      setShowCatalog(true);
-
-      // Hiển thị thông báo thành công trên giao diện
-      setSuccessMessage(
-        "Mua sản phẩm thành công! Xem danh sách sản phẩm đã mua bên dưới."
+        product.productdate,
+        product.expirydate
       );
 
-      // Cuộn đến phần catalog
-      if (catalogRef.current) {
-        catalogRef.current.scrollIntoView({ behavior: "smooth" });
-      }
+      const updatedInventory = await getInventory(user.id);
+      console.log("Updated inventory after purchase:", updatedInventory);
+      setInventory(updatedInventory);
+
+      setSuccessMessage(
+        "Mua sản phẩm thành công! Chuyển đến trang Đơn Mua sau 2 giây..."
+      );
+
+      setTimeout(() => {
+        handleMenuClick("purchases");
+      }, 2000);
     } catch (error) {
       console.error("Error during purchase:", error);
       alert(`Lỗi khi mua sản phẩm: ${error.message}`);
@@ -307,8 +275,10 @@ const ShopPage = () => {
     }
   };
 
-  // Format image URL
   const formatImageUrl = (imageUrl) => {
+    if (formatImageUrlFromContext) {
+      return formatImageUrlFromContext(imageUrl);
+    }
     if (!imageUrl) return "https://via.placeholder.com/150";
     if (imageUrl.startsWith("/uploads")) {
       return `http://localhost:3000${imageUrl}`;
@@ -372,15 +342,16 @@ const ShopPage = () => {
             />
           </Box>
 
-          <Grid container spacing={3}>
-            {filteredProducts.length === 0 ? (
-              <Box sx={{ width: "100%", textAlign: "center", my: 3 }}>
-                <Typography variant="body1">
-                  Không tìm thấy sản phẩm nào phù hợp với tìm kiếm của bạn.
-                </Typography>
-              </Box>
-            ) : (
-              filteredProducts.map((product) => (
+          {filteredProducts.length === 0 ? (
+            <Box sx={{ width: "100%", textAlign: "center", my: 3 }}>
+              <Typography variant="body1">
+                {error ||
+                  "Không tìm thấy sản phẩm nào phù hợp với tìm kiếm của bạn."}
+              </Typography>
+            </Box>
+          ) : (
+            <Grid container spacing={3}>
+              {filteredProducts.map((product) => (
                 <Grid item xs={12} sm={6} md={4} lg={3} key={product.id}>
                   <Card
                     sx={{
@@ -442,100 +413,10 @@ const ShopPage = () => {
                     </Box>
                   </Card>
                 </Grid>
-              ))
-            )}
-          </Grid>
-
-          {/* Danh sách đơn mua (Catalog) */}
-          {showCatalog && (
-            <Box sx={{ mt: 5 }} ref={catalogRef}>
-              <Typography
-                variant="h4"
-                component="h1"
-                sx={{ mb: 3, color: "primary.main" }}
-              >
-                Danh sách sản phẩm đã mua
-              </Typography>
-              <TableContainer component={Paper}>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: "bold" }}>ID</TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>
-                        Mã sản phẩm
-                      </TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>Tên</TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>
-                        Hình ảnh
-                      </TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>Giá</TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>Loại</TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>Mô tả</TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>
-                        Số lượng
-                      </TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>
-                        Ngày sản xuất
-                      </TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>
-                        Hạn sử dụng
-                      </TableCell>
-                      <TableCell sx={{ fontWeight: "bold" }}>
-                        Thao tác
-                      </TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {inventory.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>{item.id}</TableCell>
-                        <TableCell>{item.productcode}</TableCell>
-                        <TableCell>{item.name}</TableCell>
-                        <TableCell>
-                          <img
-                            src={formatImageUrl(item.imageurl)}
-                            alt={item.name}
-                            style={{
-                              width: 50,
-                              height: 50,
-                              objectFit: "contain",
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>{item.price} AGT</TableCell>
-                        <TableCell>{item.category || "ban cho"}</TableCell>
-                        <TableCell>
-                          {item.description || "Không có mô tả"}
-                        </TableCell>
-                        <TableCell>{item.quantity} hộp</TableCell>
-                        <TableCell>
-                          {new Date(item.productdate).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          {new Date(item.expirydate).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="contained" color="secondary">
-                            Đình bán
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Box>
-          )}
-          {/* Hiển thị thông báo nếu chưa có sản phẩm trong catalog */}
-          {showCatalog && inventory.length === 0 && (
-            <Box sx={{ mt: 5, textAlign: "center" }}>
-              <Typography variant="body1">
-                Chưa có sản phẩm nào trong danh sách đã mua.
-              </Typography>
-            </Box>
+              ))}
+            </Grid>
           )}
 
-          {/* Product Details Dialog */}
           <Dialog
             open={dialogOpen}
             onClose={handleCloseDialog}
@@ -568,7 +449,6 @@ const ShopPage = () => {
                   <Box
                     sx={{ display: "flex", flexDirection: "column", gap: 2 }}
                   >
-                    {/* Main product info */}
                     <Box sx={{ display: "flex", mb: 2 }}>
                       <Box sx={{ width: "40%", pr: 2 }}>
                         <img
@@ -612,7 +492,6 @@ const ShopPage = () => {
                       </Box>
                     </Box>
 
-                    {/* Seller information */}
                     <Box
                       sx={{
                         backgroundColor: "#f5f5f5",
@@ -695,7 +574,6 @@ const ShopPage = () => {
                       )}
                     </Box>
 
-                    {/* Farm details section */}
                     {farmInfo && (
                       <Box sx={{ mt: 2 }}>
                         <Typography
@@ -747,7 +625,6 @@ const ShopPage = () => {
                       </Box>
                     )}
 
-                    {/* API Error message */}
                     {apiErrorInfo && !farmInfo && (
                       <Alert severity="info" sx={{ mt: 2 }}>
                         Không thể tải thông tin nông trại từ máy chủ. Vui lòng
@@ -755,7 +632,6 @@ const ShopPage = () => {
                       </Alert>
                     )}
 
-                    {/* Product details */}
                     <Box sx={{ mt: 2 }}>
                       <Typography
                         variant="h6"
