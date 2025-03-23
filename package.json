@@ -22,19 +22,14 @@
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.2",
     "pg": "^8.14.1",
-<<<<<<< HEAD
     "react-slick": "^0.30.3",
     "slick-carousel": "^1.8.1",
     "web3": "^4.16.0"
   },
   "devDependencies": {
-=======
     "recharts": "^2.15.1",
-    "web3": "^4.16.0"
-  },
-  "devDependencies": {
+    "web3": "^4.16.0",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
->>>>>>> main
     "hardhat": "^2.22.19"
   }
 }
