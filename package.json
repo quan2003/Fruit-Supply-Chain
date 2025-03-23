@@ -20,6 +20,7 @@
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.2",
     "pg": "^8.14.1",
+    "recharts": "^2.15.1",
     "web3": "^4.16.0"
   },
   "devDependencies": {
