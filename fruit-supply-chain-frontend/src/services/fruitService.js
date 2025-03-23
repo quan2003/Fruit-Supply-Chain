@@ -1,68 +1,90 @@
 // fruit-supply-chain-frontend/src/services/fruitService.js
-import {
-  getFruit,
-  harvestFruit,
-  recordStep,
-  getAllFruitCatalogs,
-  addRecommendation,
-} from "./api";
+import axios from "axios";
 
-export const getFruitById = async (fruitId) => {
+const API_URL = "http://localhost:3000";
+
+// Lấy danh sách sản phẩm
+export const getFruitProducts = async () => {
   try {
-    const fruit = await getFruit(fruitId);
-    return fruit;
+    const response = await axios.get(`${API_URL}/products`);
+    return response.data;
   } catch (error) {
-    console.error(`Error fetching fruit with ID ${fruitId}:`, error);
-    throw error;
+    console.error("Error fetching fruit products:", error);
+    throw new Error("Không thể lấy danh sách sản phẩm từ API");
   }
 };
 
-export const getFruitCount = async () => {
+// Lấy sản phẩm theo ID
+export const getFruitProductById = async (productId) => {
   try {
-    // Giả lập dữ liệu, bạn có thể thay bằng API thật
-    return 10;
+    const response = await axios.get(`${API_URL}/products/${productId}`);
+    return response.data;
   } catch (error) {
-    console.error("Error fetching fruit count:", error);
-    throw error;
+    console.error(`Error fetching fruit product with ID ${productId}:`, error);
+    throw new Error(
+      `Không thể lấy thông tin sản phẩm với ID ${productId} từ API`
+    );
   }
 };
 
-export const harvestFruitService = async (data) => {
+// Thêm sản phẩm mới
+export const addFruitProduct = async (formData) => {
   try {
-    const result = await harvestFruit(data);
-    return result;
+    const response = await axios.post(`${API_URL}/products`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+    return response.data;
   } catch (error) {
-    console.error("Error harvesting fruit:", error);
-    throw error;
+    console.error("Error adding fruit product:", error);
+    throw new Error("Không thể thêm sản phẩm mới");
   }
 };
 
-export const recordStepService = async (data) => {
+// Kiểm tra thông tin giao dịch mua sản phẩm
+export const purchaseProduct = async (productId, buyerAddress, quantity) => {
   try {
-    const result = await recordStep(data);
-    return result;
+    const response = await axios.post(`${API_URL}/purchase-product`, {
+      productId,
+      buyerAddress,
+      quantity,
+    });
+    return response.data;
   } catch (error) {
-    console.error("Error recording step:", error);
-    throw error;
+    console.error("Error processing purchase request:", error);
+    throw new Error("Không thể xử lý yêu cầu mua sản phẩm");
   }
 };
 
-export const getAllFruitCatalogsService = async () => {
+// Thêm sản phẩm vào kho sau khi giao dịch thành công
+export const addToInventory = async (
+  productId,
+  deliveryHubId,
+  quantity,
+  price
+) => {
   try {
-    const catalogs = await getAllFruitCatalogs();
-    return catalogs;
+    const response = await axios.post(`${API_URL}/add-to-inventory`, {
+      productId,
+      deliveryHubId,
+      quantity,
+      price,
+    });
+    return response.data;
   } catch (error) {
-    console.error("Error fetching fruit catalogs:", error);
-    throw error;
+    console.error("Error adding to inventory:", error);
+    throw new Error("Không thể thêm sản phẩm vào kho");
   }
 };
 
-export const addRecommendationService = async (data) => {
+// Lấy danh sách sản phẩm trong kho của đại lý
+export const getInventory = async (deliveryHubId) => {
   try {
-    const result = await addRecommendation(data);
-    return result;
+    const response = await axios.get(`${API_URL}/inventory/${deliveryHubId}`);
+    return response.data;
   } catch (error) {
-    console.error("Error adding recommendation:", error);
-    throw error;
+    console.error("Error fetching inventory:", error);
+    throw new Error("Không thể lấy danh sách sản phẩm trong kho");
   }
 };

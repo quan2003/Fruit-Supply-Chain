@@ -1,109 +1,196 @@
-/* fruit-supply-chain-frontend/src/assets/styles/global.css */
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+/* src/assets/styles/global.css (bổ sung cho phần quản lý sản phẩm) */
 
-.layout {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-header {
-  background-color: #001529;
+.catalog-container {
   padding: 20px;
-  color: white;
 }
 
-nav {
+.catalog-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 20px;
 }
 
-.logo {
-  font-size: 24px;
-  font-weight: bold;
-}
-
-nav ul {
-  list-style: none;
-  display: flex;
-  margin: 0;
-  padding: 0;
-}
-
-nav ul li {
-  margin: 0 15px;
-}
-
-nav ul li a {
-  color: white;
-  text-decoration: none;
-}
-
-nav ul li a:hover {
-  color: #1890ff;
-}
-
-.account {
-  font-size: 16px;
-}
-
-.account button {
+.btn-add {
   background-color: #1890ff;
-  color: white;
-  border: none;
-  padding: 5px 10px;
-  cursor: pointer;
-}
-
-.content {
-  display: flex;
-  flex: 1;
-}
-
-.sidebar {
-  width: 200px;
-  background-color: #f0f2f5;
-  padding: 20px;
-}
-
-.sidebar ul {
-  list-style: none;
-  padding: 0;
-}
-
-.sidebar ul li {
-  margin: 10px 0;
-}
-
-.sidebar ul li a {
-  color: #001529;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 4px;
   text-decoration: none;
+  font-weight: 500;
 }
 
-.sidebar ul li a:hover {
-  color: #1890ff;
+.catalog-table {
+  width: 100%;
+  overflow-x: auto;
 }
 
-main {
-  flex: 1;
+.catalog-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.catalog-table th,
+.catalog-table td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.catalog-table th {
+  background-color: #f5f5f5;
+  font-weight: 500;
+}
+
+.product-thumbnail {
+  width: 50px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-view,
+.btn-edit {
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.btn-view {
+  background-color: #52c41a;
+  color: #fff;
+}
+
+.btn-edit {
+  background-color: #faad14;
+  color: #fff;
+}
+
+.form-container {
+  max-width: 800px;
+  margin: 0 auto;
   padding: 20px;
 }
 
-footer {
-  background-color: #f0f2f5;
-  padding: 10px;
-  text-align: center;
+.form-group {
+  margin-bottom: 20px;
 }
 
-.error {
-  color: red;
-  margin-bottom: 10px;
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+}
+
+.form-group textarea {
+  min-height: 100px;
+}
+
+.image-preview {
+  margin-top: 10px;
+  max-width: 200px;
+  max-height: 200px;
+  object-fit: contain;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.btn-cancel,
+.btn-submit {
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  border: none;
+}
+
+.btn-cancel {
+  background-color: #f5f5f5;
+  color: #333;
+}
+
+.btn-submit {
+  background-color: #1890ff;
+  color: #fff;
+}
+
+.product-detail-container {
+  padding: 20px;
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.btn-back {
+  background-color: #f5f5f5;
+  color: #333;
+  padding: 8px 16px;
+  border-radius: 4px;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.product-detail-content {
+  display: flex;
+  gap: 30px;
+}
+
+.product-detail-image {
+  flex: 0 0 300px;
+}
+
+.product-detail-image img {
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.product-detail-info {
+  flex: 1;
+}
+
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.detail-table th,
+.detail-table td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.detail-table th {
+  width: 150px;
+  background-color: #f5f5f5;
+  font-weight: 500;
+}
+
+.product-actions {
+  margin-top: 20px;
 }
