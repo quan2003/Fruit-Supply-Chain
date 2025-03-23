@@ -385,14 +385,28 @@ app.get("/inventory/:deliveryHubId", async (req, res) => {
   const deliveryHubId = req.params.deliveryHubId;
 
   try {
+    console.log(`Fetching inventory for deliveryHubId: ${deliveryHubId}`); // Thêm log để debug
+
     const result = await pool.query(
-      "SELECT i.*, p.name, p.productcode, p.imageurl, p.description FROM inventory i JOIN products p ON i.product_id = p.id WHERE i.delivery_hub_id = $1",
+      "SELECT i.*, p.name, p.productcode, p.imageurl, p.description, p.productdate AS product_productdate, p.expirydate AS product_expirydate FROM inventory i JOIN products p ON i.product_id = p.id WHERE i.delivery_hub_id = $1",
       [deliveryHubId]
     );
-    res.json(result.rows);
+
+    console.log(`Inventory query result: ${JSON.stringify(result.rows)}`); // Thêm log để kiểm tra dữ liệu trả về
+
+    // Xử lý dữ liệu trả về: ưu tiên productdate và expirydate từ inventory, nếu không có thì lấy từ products
+    const inventoryData = result.rows.map((item) => ({
+      ...item,
+      productdate: item.productdate || item.product_productdate,
+      expirydate: item.expirydate || item.product_expirydate,
+    }));
+
+    res.json(inventoryData);
   } catch (error) {
     console.error("Error fetching inventory:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    res
+      .status(500)
+      .json({ error: "Internal Server Error", details: error.message });
   }
 });
 
@@ -511,7 +525,8 @@ app.get("/outgoing-products/:deliveryHubId", async (req, res) => {
 // ==== API THÊM SẢN PHẨM VÀO KHO SAU KHI GIAO DỊCH THÀNH CÔNG ====
 
 app.post("/add-to-inventory", async (req, res) => {
-  const { productId, deliveryHubId, quantity, price } = req.body;
+  const { productId, deliveryHubId, quantity, price, productdate, expirydate } =
+    req.body;
 
   try {
     console.log("Adding to inventory:", {
@@ -519,10 +534,33 @@ app.post("/add-to-inventory", async (req, res) => {
       deliveryHubId,
       quantity,
       price,
+      productdate,
+      expirydate,
     });
+
+    // Kiểm tra các trường bắt buộc
+    if (!productId || !deliveryHubId || !quantity || !price) {
+      return res
+        .status(400)
+        .json({ message: "Vui lòng cung cấp đầy đủ thông tin! 😅" });
+    }
+
+    // Gán giá trị mặc định cho productdate và expirydate nếu không có
+    const defaultProductDate = productdate || new Date().toISOString();
+    const defaultExpiryDate =
+      expirydate ||
+      new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString();
+
     const inventoryResult = await pool.query(
-      "INSERT INTO inventory (product_id, delivery_hub_id, quantity, price, received_date) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING *",
-      [productId, deliveryHubId, quantity, price]
+      "INSERT INTO inventory (product_id, delivery_hub_id, quantity, price, productdate, expirydate, received_date) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP) RETURNING *",
+      [
+        productId,
+        deliveryHubId,
+        quantity,
+        price,
+        defaultProductDate,
+        defaultExpiryDate,
+      ]
     );
     console.log("Inventory item added:", inventoryResult.rows[0]);
 
@@ -592,7 +630,6 @@ app.post("/farm", async (req, res) => {
     req.body;
 
   try {
-    // Kiểm tra các trường bắt buộc
     if (
       !farmId ||
       !location ||
@@ -606,7 +643,6 @@ app.post("/farm", async (req, res) => {
         .json({ message: "Vui lòng điền đầy đủ thông tin! 😅" });
     }
 
-    // Lấy producer_id từ email
     const user = await pool.query(
       "SELECT id FROM users WHERE email = $1 AND role = 'Producer'",
       [email]
@@ -617,7 +653,6 @@ app.post("/farm", async (req, res) => {
 
     const producerId = user.rows[0].id;
 
-    // Ánh xạ currentConditions thành giá trị hợp lệ của ENUM fruit_quality
     const validQualities = [
       "Nắng",
       "Mưa",
@@ -626,7 +661,7 @@ app.post("/farm", async (req, res) => {
       "Sương mù",
       "Gió mạnh",
     ];
-    let quality = "Nắng"; // Giá trị mặc định nếu không tìm thấy giá trị hợp lệ
+    let quality = "Nắng";
     for (const validQuality of validQualities) {
       if (currentConditions.includes(validQuality)) {
         quality = validQuality;
@@ -634,7 +669,6 @@ app.post("/farm", async (req, res) => {
       }
     }
 
-    // Lưu farm vào database
     const newFarm = await pool.query(
       "INSERT INTO farms (producer_id, farm_name, location, weather_condition, yield, quality, current_conditions) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
       [producerId, farmId, location, climate, 0, quality, currentConditions]
@@ -796,33 +830,45 @@ app.get("/analytics/trends", async (req, res) => {
 // ==== SẢN PHẨM ====
 
 app.get("/products", async (req, res) => {
+  const { email } = req.query;
+
   try {
-    const result = await pool.query("SELECT * FROM products");
-    res.json(result.rows);
+    if (email) {
+      // Nếu có email, lọc sản phẩm theo producer
+      const user = await pool.query(
+        "SELECT id FROM users WHERE email = $1 AND role = 'Producer'",
+        [email]
+      );
+      if (user.rows.length === 0) {
+        return res
+          .status(404)
+          .json({ message: "Không tìm thấy người dùng! 😅" });
+      }
+      const producerId = user.rows[0].id;
+
+      const farms = await pool.query(
+        "SELECT id FROM farms WHERE producer_id = $1",
+        [producerId]
+      );
+      const farmIds = farms.rows.map((farm) => farm.id);
+
+      if (farmIds.length === 0) {
+        return res.json([]);
+      }
+
+      const result = await pool.query(
+        "SELECT * FROM products WHERE farm_id = ANY($1)",
+        [farmIds]
+      );
+      res.json(result.rows);
+    } else {
+      // Nếu không có email, lấy tất cả sản phẩm
+      const result = await pool.query("SELECT * FROM products");
+      res.json(result.rows);
+    }
   } catch (error) {
     console.error("Error fetching products:", error);
     res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-app.get("/products/farm", async (req, res) => {
-  const { farm_id } = req.query;
-
-  try {
-    if (!farm_id) {
-      return res.status(400).json({ message: "Vui lòng cung cấp farm_id! 😅" });
-    }
-
-    const result = await pool.query(
-      "SELECT * FROM products WHERE farm_id = $1",
-      [farm_id]
-    );
-    res.json(result.rows);
-  } catch (error) {
-    console.error("Lỗi khi lấy sản phẩm:", error);
-    res
-      .status(500)
-      .json({ message: "Có lỗi xảy ra! Vui lòng thử lại nhé! 😓" });
   }
 });
 
@@ -842,7 +888,7 @@ app.get("/products/:id", async (req, res) => {
 });
 
 app.post("/products", upload.single("image"), async (req, res) => {
-  console.log("Dữ liệu nhận được từ frontend:", req.body, req.file); // Thêm log để debug
+  console.log("Dữ liệu nhận được từ frontend:", req.body, req.file);
 
   const {
     name,
@@ -854,6 +900,7 @@ app.post("/products", upload.single("image"), async (req, res) => {
     productdate,
     expirydate,
     farm_id,
+    email, // Thêm email để kiểm tra producer
   } = req.body;
   const image = req.file;
 
@@ -868,21 +915,35 @@ app.post("/products", upload.single("image"), async (req, res) => {
       !productdate ||
       !expirydate ||
       !farm_id ||
-      !image
+      !image ||
+      !email
     ) {
       return res
         .status(400)
         .json({ message: "Vui lòng điền đầy đủ thông tin! 😅" });
     }
 
-    const farmExists = await pool.query("SELECT * FROM farms WHERE id = $1", [
-      farm_id,
-    ]);
-    if (farmExists.rows.length === 0) {
-      return res.status(400).json({ message: "Farm không tồn tại! 😅" });
+    // Kiểm tra producer
+    const user = await pool.query(
+      "SELECT id FROM users WHERE email = $1 AND role = 'Producer'",
+      [email]
+    );
+    if (user.rows.length === 0) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng! 😅" });
+    }
+    const producerId = user.rows[0].id;
+
+    // Kiểm tra farm có thuộc producer không
+    const farm = await pool.query(
+      "SELECT * FROM farms WHERE id = $1 AND producer_id = $2",
+      [farm_id, producerId]
+    );
+    if (farm.rows.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "Farm không thuộc producer này! 😅" });
     }
 
-    // Lưu URL của hình ảnh
     const imageUrl = `/uploads/${image.filename}`;
 
     const result = await pool.query(

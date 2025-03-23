@@ -26,7 +26,6 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-// Removed the unused import for getDeliveryHubStats
 
 const mockData = [
   { day: "Thứ 2", sales: 5, orders: 3 },

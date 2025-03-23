@@ -4,9 +4,11 @@ import axios from "axios";
 const API_URL = "http://localhost:3000";
 
 // Lấy danh sách sản phẩm
-export const getFruitProducts = async () => {
+export const getFruitProducts = async (email) => {
   try {
-    const response = await axios.get(`${API_URL}/products`);
+    const response = await axios.get(`${API_URL}/products`, {
+      params: { email }, // Truyền email qua query parameter
+    });
     return response.data;
   } catch (error) {
     console.error("Error fetching fruit products:", error);
@@ -82,7 +84,13 @@ export const addToInventory = async (
 export const getInventory = async (deliveryHubId) => {
   try {
     const response = await axios.get(`${API_URL}/inventory/${deliveryHubId}`);
-    return response.data;
+    return response.data.map((item) => ({
+      ...item,
+      productdate: item.productdate || new Date().toISOString(),
+      expirydate:
+        item.expirydate ||
+        new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
+    }));
   } catch (error) {
     console.error("Error fetching inventory:", error);
     throw new Error("Không thể lấy danh sách sản phẩm trong kho");
