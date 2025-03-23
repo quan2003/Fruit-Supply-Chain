@@ -19,6 +19,13 @@ import ProtectedRoute from "./components/common/ProtectedRoute";
 import { useAuth } from "./contexts/AuthContext";
 import { Typography } from "@mui/material";
 
+// Import các component con cho DeliveryHubPage
+import StatisticsPage from "./components/DeliveryHub/StatisticsPage";
+import ShopPage from "./components/DeliveryHub/ShopPage";
+import OrdersPage from "./components/DeliveryHub/OrdersPage";
+import PurchasesPage from "./components/DeliveryHub/PurchasesPage";
+import DashboardPage from "./components/DeliveryHub/DashboardPage";
+
 function App() {
   const { isManager } = useAuth();
 
@@ -40,9 +47,16 @@ function App() {
             </ProtectedRoute>
           }
         />
-        {/* Tạm thời bỏ qua kiểm tra quyền */}
-        <Route path="/delivery-hub" element={<DeliveryHubPage />} />
-        {/* Route cha cho các trang liên quan đến farm */}
+
+        {/* Nested routes cho DeliveryHubPage */}
+        <Route path="/delivery-hub" element={<DeliveryHubPage />}>
+          <Route index element={<DashboardPage />} />
+          <Route path="statistics" element={<StatisticsPage />} />
+          <Route path="shop" element={<ShopPage />} />
+          <Route path="orders" element={<OrdersPage />} />
+          <Route path="purchases" element={<PurchasesPage />} />
+        </Route>
+
         <Route path="/farms" element={<FarmPage />}>
           <Route
             index
