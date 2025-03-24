@@ -34,7 +34,7 @@ import {
 
 const DeliveryHubPage = () => {
   const { account } = useWeb3();
-  const { user, setUser } = useAuth(); // Import setUser từ useAuth
+  const { user, setUser } = useAuth();
   const navigate = useNavigate();
 
   const [tabValue, setTabValue] = useState(0);
@@ -49,66 +49,44 @@ const DeliveryHubPage = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState("statistics");
 
+  const fetchData = async () => {
+    if (!account || !user?.id) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const incoming = await getIncomingShipments();
+      setIncomingShipments(incoming);
+
+      const outgoing = await getOutgoingShipments();
+      setOutgoingShipments(outgoing);
+
+      const inv = await getInventory(user.id);
+      console.log("Fetched inventory data:", inv);
+      setInventory(inv);
+
+      setLoading(false);
+    } catch (error) {
+      console.error("Error loading delivery hub data:", error);
+      setAlertMessage({
+        type: "error",
+        message: "Có lỗi khi tải dữ liệu. Vui lòng thử lại sau.",
+      });
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      if (!account || !user?.id) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-
-        const incoming = await getIncomingShipments();
-        setIncomingShipments(incoming);
-
-        const outgoing = await getOutgoingShipments();
-        setOutgoingShipments(outgoing);
-
-        const inv = await getInventory(user.id);
-        console.log("Initial inventory data:", inv);
-        setInventory(inv);
-
-        setLoading(false);
-      } catch (error) {
-        console.error("Error loading delivery hub data:", error);
-        setAlertMessage({
-          type: "error",
-          message: "Có lỗi khi tải dữ liệu. Vui lòng thử lại sau.",
-        });
-        setLoading(false);
-      }
-    };
-
     fetchData();
   }, [account, user]);
 
   useEffect(() => {
-    const fetchInventoryData = async () => {
-      if (currentPage === "purchases" && user?.id) {
-        try {
-          console.log(`Fetching inventory for user.id: ${user.id}`);
-          setLoading(true);
-          setInventory([]);
-          const data = await getInventory(user.id);
-          console.log("Inventory data fetched:", data);
-          setInventory(data);
-        } catch (error) {
-          console.error("Error fetching inventory:", error);
-          setAlertMessage({
-            type: "error",
-            message: "Không thể tải danh sách đơn mua. Vui lòng thử lại sau.",
-          });
-        } finally {
-          setLoading(false);
-          console.log("Loading state set to false");
-        }
-      } else {
-        setLoading(false);
-      }
-    };
-
-    fetchInventoryData();
+    if (currentPage === "purchases" && user?.id) {
+      fetchData();
+    }
   }, [currentPage, user]);
 
   const handleMenuClick = (page) => {
@@ -129,32 +107,7 @@ const DeliveryHubPage = () => {
   };
 
   const handleRefresh = async () => {
-    try {
-      setLoading(true);
-
-      const incoming = await getIncomingShipments();
-      setIncomingShipments(incoming);
-
-      const outgoing = await getOutgoingShipments();
-      setOutgoingShipments(outgoing);
-
-      const inv = await getInventory(user?.id);
-      console.log("Refreshed inventory data:", inv);
-      setInventory(inv);
-
-      setLoading(false);
-      setAlertMessage({
-        type: "success",
-        message: "Dữ liệu đã được cập nhật thành công!",
-      });
-    } catch (error) {
-      console.error("Error refreshing data:", error);
-      setAlertMessage({
-        type: "error",
-        message: "Có lỗi khi cập nhật dữ liệu. Vui lòng thử lại sau.",
-      });
-      setLoading(false);
-    }
+    await fetchData();
   };
 
   const handleReceiveShipment = async (shipmentId) => {
@@ -165,8 +118,7 @@ const DeliveryHubPage = () => {
       const incoming = await getIncomingShipments();
       setIncomingShipments(incoming);
 
-      const inv = await getInventory(user?.id);
-      setInventory(inv);
+      await fetchData();
 
       setLoading(false);
       setAlertMessage({
@@ -197,8 +149,7 @@ const DeliveryHubPage = () => {
       const outgoing = await getOutgoingShipments();
       setOutgoingShipments(outgoing);
 
-      const inv = await getInventory(user?.id);
-      setInventory(inv);
+      await fetchData();
 
       setShowShipmentForm(false);
       setSelectedShipment(null);
@@ -218,7 +169,7 @@ const DeliveryHubPage = () => {
   };
 
   const handleLogout = () => {
-    setUser(null); // Sử dụng setUser từ useAuth
+    setUser(null);
     localStorage.removeItem("user");
     navigate("/");
   };
@@ -228,11 +179,10 @@ const DeliveryHubPage = () => {
 
     return data.filter(
       (item) =>
-        item.productName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.fruitType?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.origin?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.customerName?.toLowerCase().includes(searchTerm.toLowerCase())
+        item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.id?.toString().includes(searchTerm.toLowerCase())
     );
   };
 

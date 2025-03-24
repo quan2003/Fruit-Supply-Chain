@@ -3,7 +3,7 @@ import axios from "axios";
 
 const API_URL = "http://localhost:3000";
 
-// Mock data for development
+// Mock data for development (giữ lại các mock khác nếu cần, nhưng xóa mockInventory)
 const mockIncomingShipments = [
   {
     id: "969d3f59-d5de-4a2e-b432-234f5678d123",
@@ -64,54 +64,6 @@ const mockOutgoingShipments = [
     customerAddress: "0x4567890123abcdef4567890123abcdef45678901",
     deliveryAddress: "456 Đường Nguyễn Huệ, Quận 1, TP.HCM",
     status: "Đã giao",
-  },
-];
-
-const mockInventory = [
-  {
-    id: "f6gb83c4-2d6e-5f7g-f678-89af89bcde5",
-    productName: "Xoài cát Hòa Lộc",
-    fruitType: "Xoài",
-    origin: "Tiền Giang",
-    quantity: 30,
-    receivedDate: "2025-03-16T11:30:00Z",
-    expiryDate: "2025-03-26T00:00:00Z",
-    harvestDate: "2025-03-14T08:00:00Z",
-    producer: "Trại Xoài Tiền Giang",
-    shipper: "Công ty vận chuyển ABC",
-    quality: "Cao",
-    description: "Xoài cát Hòa Lộc thơm ngon, chất lượng cao",
-    storageConditions: "Nhiệt độ 10-15°C, độ ẩm 85-90%",
-  },
-  {
-    id: "g7hc94d5-3e7f-6g8h-g789-9abg9acdef6",
-    productName: "Thanh Long ruột đỏ",
-    fruitType: "Thanh Long",
-    origin: "Bình Thuận",
-    quantity: 70,
-    receivedDate: "2025-03-17T10:45:00Z",
-    expiryDate: "2025-03-27T00:00:00Z",
-    harvestDate: "2025-03-15T07:30:00Z",
-    producer: "Hợp tác xã Thanh Long Bình Thuận",
-    shipper: "Dịch vụ vận tải Nhanh Chóng",
-    quality: "Cao",
-    description: "Thanh Long ruột đỏ ngọt, mọng nước",
-    storageConditions: "Nhiệt độ 8-12°C, độ ẩm 90-95%",
-  },
-  {
-    id: "h8id05e6-4f8g-7h9i-h89a-abch9bcdef7",
-    productName: "Bưởi năm roi",
-    fruitType: "Bưởi",
-    origin: "Vĩnh Long",
-    quantity: 30,
-    receivedDate: "2025-03-15T13:15:00Z",
-    expiryDate: "2025-04-05T00:00:00Z",
-    harvestDate: "2025-03-13T08:30:00Z",
-    producer: "Vườn Bưởi Vĩnh Long",
-    shipper: "Công ty vận chuyển ABC",
-    quality: "Trung bình",
-    description: "Bưởi năm roi ngọt, ít hạt",
-    storageConditions: "Nhiệt độ 12-15°C, độ ẩm 85-90%",
   },
 ];
 
@@ -188,17 +140,10 @@ export const getOutgoingShipments = async () => {
 /**
  * Lấy danh sách tồn kho tại trung tâm phân phối
  */
-export const getInventory = async () => {
+export const getInventory = async (deliveryHubId) => {
   try {
-    // Trong môi trường phát triển, sử dụng dữ liệu mock
-    if (process.env.NODE_ENV === "development") {
-      return new Promise((resolve) => {
-        setTimeout(() => resolve(mockInventory), 500);
-      });
-    }
-
-    // Trong môi trường production, gọi API thực tế
-    const response = await axios.get(`${API_URL}/delivery-hub/inventory`);
+    // Gọi API thực tế bất kể môi trường
+    const response = await axios.get(`${API_URL}/inventory/${deliveryHubId}`);
     return response.data;
   } catch (error) {
     console.error("Error fetching inventory:", error);
