@@ -51,6 +51,7 @@ const ShopPage = () => {
     inventory,
     setInventory,
     handleMenuClick,
+    handleRefresh,
     formatImageUrl: formatImageUrlFromContext,
   } = useOutletContext();
   const { account, web3, connectWallet } = useWeb3();
@@ -71,7 +72,7 @@ const ShopPage = () => {
     const fetchProducts = async () => {
       try {
         setLoading(true);
-        const data = await getFruitProducts(); // Không truyền email để lấy tất cả sản phẩm
+        const data = await getFruitProducts();
         setProducts(data);
         setLoading(false);
       } catch (err) {
@@ -256,9 +257,8 @@ const ShopPage = () => {
         product.expirydate
       );
 
-      const updatedInventory = await getInventory(user.id);
-      console.log("Updated inventory after purchase:", updatedInventory);
-      setInventory(updatedInventory);
+      // Cập nhật inventory sau khi mua
+      await handleRefresh();
 
       setSuccessMessage(
         "Mua sản phẩm thành công! Chuyển đến trang Đơn Mua sau 2 giây..."

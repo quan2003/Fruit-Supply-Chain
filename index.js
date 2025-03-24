@@ -385,16 +385,15 @@ app.get("/inventory/:deliveryHubId", async (req, res) => {
   const deliveryHubId = req.params.deliveryHubId;
 
   try {
-    console.log(`Fetching inventory for deliveryHubId: ${deliveryHubId}`); // Thêm log để debug
+    console.log(`Fetching inventory for deliveryHubId: ${deliveryHubId}`);
 
     const result = await pool.query(
-      "SELECT i.*, p.name, p.productcode, p.imageurl, p.description, p.productdate AS product_productdate, p.expirydate AS product_expirydate FROM inventory i JOIN products p ON i.product_id = p.id WHERE i.delivery_hub_id = $1",
+      "SELECT i.*, p.name, p.productcode, p.category, p.imageurl, p.description, p.productdate AS product_productdate, p.expirydate AS product_expirydate FROM inventory i JOIN products p ON i.product_id = p.id WHERE i.delivery_hub_id = $1",
       [deliveryHubId]
     );
 
-    console.log(`Inventory query result: ${JSON.stringify(result.rows)}`); // Thêm log để kiểm tra dữ liệu trả về
+    console.log(`Inventory query result: ${JSON.stringify(result.rows)}`);
 
-    // Xử lý dữ liệu trả về: ưu tiên productdate và expirydate từ inventory, nếu không có thì lấy từ products
     const inventoryData = result.rows.map((item) => ({
       ...item,
       productdate: item.productdate || item.product_productdate,
@@ -409,7 +408,6 @@ app.get("/inventory/:deliveryHubId", async (req, res) => {
       .json({ error: "Internal Server Error", details: error.message });
   }
 });
-
 // ==== API CẬP NHẬT GIÁ SẢN PHẨM TRONG KHO ====
 
 app.put("/inventory/:inventoryId/price", async (req, res) => {
