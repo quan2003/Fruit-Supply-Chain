@@ -10,6 +10,7 @@ const getEthereumHeaders = () => {
       "Ví MetaMask chưa được kết nối! Vui lòng kết nối ví để tiếp tục."
     );
   }
+  console.log("Địa chỉ ví gửi trong header:", address); // Debug để kiểm tra
   return { "x-ethereum-address": address };
 };
 
@@ -23,7 +24,7 @@ export const getIncomingShipments = async () => {
   } catch (error) {
     console.error("Lỗi khi lấy danh sách lô hàng đến:", error);
     throw new Error(
-      error.response?.data?.message ||
+      error.response?.data?.error || // Lấy lỗi từ server nếu có
         error.message ||
         "Không thể tải danh sách lô hàng đến"
     );

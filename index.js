@@ -43,7 +43,7 @@ const validRoles = [
 const checkAuth = async (req, res, next) => {
   const userAddress = req.headers["x-ethereum-address"];
   if (!userAddress) {
-    return res.status(401).json({ error: "Yêu cầu xác thực" });
+    return res.status(401).json({ error: "Yêu cầu xác thực ví MetaMask!" });
   }
 
   try {
@@ -52,7 +52,9 @@ const checkAuth = async (req, res, next) => {
       [userAddress]
     );
     if (user.rows.length === 0) {
-      return res.status(401).json({ error: "Người dùng không tồn tại" });
+      return res.status(401).json({
+        error: "Địa chỉ ví không được liên kết với tài khoản nào!",
+      });
     }
 
     req.user = user.rows[0];
@@ -217,7 +219,6 @@ app.post("/update-wallet", async (req, res) => {
       .json({ message: "Có lỗi xảy ra! Vui lòng thử lại nhé! 😓" });
   }
 });
-
 // ==== LẤY FARM CỦA PRODUCER ====
 app.get("/farms/user", checkAuth, checkRole(["Producer"]), async (req, res) => {
   const { email } = req.query;

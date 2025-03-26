@@ -59,7 +59,11 @@ function App() {
         <Route
           path="/delivery-hub"
           element={
-            <ProtectedRoute isAllowed={(user) => user?.role === "DeliveryHub"}>
+            <ProtectedRoute
+              isAllowed={(user) =>
+                user?.role === "DeliveryHub" || user?.role === "Admin"
+              }
+            >
               <DeliveryHubPage />
             </ProtectedRoute>
           }

@@ -26,6 +26,7 @@ import {
   Refresh as RefreshIcon,
   Close as CloseIcon,
   ShoppingBag as ShoppingBagIcon,
+  Security as SecurityIcon,
 } from "@mui/icons-material";
 import { useOutletContext } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
@@ -38,7 +39,7 @@ const PurchasesPage = () => {
     account,
     web3,
     executeTransaction,
-    getSellerListings,
+    addManager,
     connectWallet,
     walletError,
     userError,
@@ -65,7 +66,11 @@ const PurchasesPage = () => {
   const [transactionHash, setTransactionHash] = useState(null);
   const [transactionStatus, setTransactionStatus] = useState(null);
   const [listingId, setListingId] = useState(null);
-  const [blockchainListings, setBlockchainListings] = useState([]);
+
+  // State cho chức năng thêm manager
+  const [managerDialogOpen, setManagerDialogOpen] = useState(false);
+  const [managerAddress, setManagerAddress] = useState(""); // Không mặc định địa chỉ
+  const [addingManager, setAddingManager] = useState(false);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -84,25 +89,14 @@ const PurchasesPage = () => {
       });
       return;
     }
-
-    if (userError) {
+    if (userError || walletError) {
       setAlert({
         open: true,
-        message: userError,
+        message: userError || walletError,
         severity: "error",
       });
       return;
     }
-
-    if (walletError) {
-      setAlert({
-        open: true,
-        message: walletError,
-        severity: "error",
-      });
-      return;
-    }
-
     if (user.role !== "DeliveryHub") {
       setAlert({
         open: true,
@@ -112,7 +106,6 @@ const PurchasesPage = () => {
       });
       return;
     }
-
     setSelectedProduct(product);
     const suggestedPrice = product.price
       ? (parseFloat(product.price) * 1.15).toFixed(2)
@@ -149,44 +142,17 @@ const PurchasesPage = () => {
       });
       return;
     }
-
-    if (!account) {
-      setAlert({
-        open: true,
-        message: "Vui lòng kết nối ví MetaMask trước khi đăng bán!",
-        severity: "warning",
-      });
-      return;
-    }
-
-    if (userError) {
-      setAlert({
-        open: true,
-        message: userError,
-        severity: "error",
-      });
-      return;
-    }
-
-    if (walletError) {
-      setAlert({
-        open: true,
-        message: walletError,
-        severity: "error",
-      });
-      return;
-    }
-
-    if (user.role !== "DeliveryHub") {
+    if (!account || userError || walletError || user.role !== "DeliveryHub") {
       setAlert({
         open: true,
         message:
-          "Bạn không có quyền thực hiện hành động này! Vui lòng đăng nhập với vai trò DeliveryHub.",
+          userError ||
+          walletError ||
+          "Vui lòng kết nối ví MetaMask hoặc đăng nhập với vai trò DeliveryHub!",
         severity: "error",
       });
       return;
     }
-
     setSellingInProgress(true);
     setTransactionStatus("preparing");
 
@@ -208,66 +174,107 @@ const PurchasesPage = () => {
         );
       }
 
-      console.log("Chuẩn bị đăng bán sản phẩm:", productData);
+      setTransactionStatus("pending");
+      const transactionResult = await executeTransaction({
+        type: "listProductForSale",
+        productId: productData.productId,
+        price: productData.price,
+        quantity: productData.quantity,
+        inventoryId: productData.inventoryId,
+      });
 
-      try {
-        setTransactionStatus("pending");
-        const transactionResult = await executeTransaction({
-          type: "listProductForSale",
-          productId: productData.productId,
-          price: productData.price,
-          quantity: productData.quantity,
-          inventoryId: productData.inventoryId,
-        });
+      setTransactionHash(transactionResult.transactionHash);
+      setListingId(transactionResult.listingId);
+      setTransactionStatus("confirmed");
 
-        setTransactionHash(transactionResult.transactionHash);
-        setListingId(transactionResult.listingId);
-        setTransactionStatus("confirmed");
+      productData.transactionHash = transactionResult.transactionHash;
+      productData.listingId = transactionResult.listingId;
 
-        console.log("Giao dịch xác nhận:", transactionResult);
+      await sellProductToConsumer(productData);
 
-        productData.transactionHash = transactionResult.transactionHash;
-        productData.listingId = transactionResult.listingId;
-
-        const response = await sellProductToConsumer(productData);
-        console.log("Kết quả đăng bán sản phẩm:", response);
-
-        setAlert({
-          open: true,
-          message: "Đã đăng bán sản phẩm thành công!",
-          severity: "success",
-        });
-
-        handleCloseSellDialog();
-        contextHandleRefresh();
-      } catch (txError) {
-        console.error("Lỗi giao dịch:", txError);
-        setTransactionStatus("failed");
-
-        let txErrorMessage = txError.message || "Giao dịch blockchain thất bại";
-        setAlert({
-          open: true,
-          message: `Lỗi giao dịch: ${txErrorMessage}`,
-          severity: "error",
-        });
-
-        throw new Error(txErrorMessage);
-      }
-    } catch (error) {
-      console.error("Lỗi khi đăng bán sản phẩm:", error);
-
-      if (transactionStatus !== "failed") {
-        setTransactionStatus("failed");
-      }
-
-      let errorMessage = error.message || "Vui lòng thử lại sau";
       setAlert({
         open: true,
-        message: `Lỗi khi đăng bán sản phẩm: ${errorMessage}`,
+        message: "Đã đăng bán sản phẩm thành công!",
+        severity: "success",
+      });
+      handleCloseSellDialog();
+      contextHandleRefresh();
+    } catch (error) {
+      console.error("Lỗi khi đăng bán sản phẩm:", error);
+      setTransactionStatus("failed");
+      setAlert({
+        open: true,
+        message: `Lỗi khi đăng bán sản phẩm: ${error.message}`,
         severity: "error",
       });
     } finally {
       setSellingInProgress(false);
+    }
+  };
+
+  // Hàm xử lý thêm manager
+  const handleOpenManagerDialog = () => {
+    if (!account) {
+      setAlert({
+        open: true,
+        message: "Vui lòng kết nối ví MetaMask trước!",
+        severity: "warning",
+      });
+      return;
+    }
+    setManagerDialogOpen(true);
+    setManagerAddress(""); // Reset địa chỉ khi mở dialog
+    setTransactionHash(null);
+    setTransactionStatus(null);
+  };
+
+  const handleCloseManagerDialog = () => {
+    setManagerDialogOpen(false);
+    setManagerAddress("");
+    setTransactionHash(null);
+    setTransactionStatus(null);
+  };
+
+  const handleManagerAddressChange = (e) => {
+    setManagerAddress(e.target.value);
+  };
+
+  const handleAddManager = async () => {
+    if (!managerAddress || !web3.utils.isAddress(managerAddress)) {
+      setAlert({
+        open: true,
+        message:
+          "Vui lòng nhập địa chỉ ví hợp lệ (định dạng Ethereum address)!",
+        severity: "error",
+      });
+      return;
+    }
+
+    setAddingManager(true);
+    setTransactionStatus("preparing");
+
+    try {
+      setTransactionStatus("pending");
+      const result = await addManager(managerAddress);
+      setTransactionHash(result.transactionHash);
+      setTransactionStatus("confirmed");
+
+      setAlert({
+        open: true,
+        message: `Đã cấp quyền manager cho ${managerAddress} thành công!`,
+        severity: "success",
+      });
+      handleCloseManagerDialog();
+    } catch (error) {
+      console.error("Lỗi khi thêm manager:", error);
+      setTransactionStatus("failed");
+      setAlert({
+        open: true,
+        message: `Lỗi: ${error.message}`,
+        severity: "error",
+      });
+    } finally {
+      setAddingManager(false);
     }
   };
 
@@ -292,23 +299,6 @@ const PurchasesPage = () => {
     localStorage.removeItem("user");
     window.location.href = "/";
   };
-
-  useEffect(() => {
-    const fetchBlockchainListings = async () => {
-      if (account && tabValue === 1) {
-        try {
-          const listings = await getSellerListings();
-          setBlockchainListings(listings);
-          console.log("Danh sách giao dịch blockchain:", listings);
-        } catch (error) {
-          console.error("Lỗi khi lấy danh sách giao dịch blockchain:", error);
-          setBlockchainListings([]);
-        }
-      }
-    };
-
-    fetchBlockchainListings();
-  }, [account, tabValue, getSellerListings]);
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
@@ -378,14 +368,25 @@ const PurchasesPage = () => {
         <Typography variant="h5" component="h1">
           Quản lý sản phẩm
         </Typography>
-        <Button
-          startIcon={<RefreshIcon />}
-          variant="outlined"
-          onClick={contextHandleRefresh}
-          disabled={loading}
-        >
-          Làm mới
-        </Button>
+        <Box>
+          <Button
+            startIcon={<SecurityIcon />}
+            variant="outlined"
+            color="secondary"
+            onClick={handleOpenManagerDialog}
+            sx={{ mr: 2 }}
+          >
+            Thêm quyền Manager
+          </Button>
+          <Button
+            startIcon={<RefreshIcon />}
+            variant="outlined"
+            onClick={contextHandleRefresh}
+            disabled={loading}
+          >
+            Làm mới
+          </Button>
+        </Box>
       </Box>
 
       <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 3 }}>
@@ -632,6 +633,7 @@ const PurchasesPage = () => {
         </>
       )}
 
+      {/* Dialog đăng bán sản phẩm */}
       <Dialog
         open={sellDialogOpen}
         onClose={handleCloseSellDialog}
@@ -643,11 +645,7 @@ const PurchasesPage = () => {
           <IconButton
             aria-label="close"
             onClick={handleCloseSellDialog}
-            sx={{
-              position: "absolute",
-              right: 8,
-              top: 8,
-            }}
+            sx={{ position: "absolute", right: 8, top: 8 }}
           >
             <CloseIcon />
           </IconButton>
@@ -753,11 +751,7 @@ const PurchasesPage = () => {
                     </Typography>
                     <Typography
                       variant="body2"
-                      sx={{
-                        bgcolor: "#f5f5f5",
-                        p: 1,
-                        borderRadius: 1,
-                      }}
+                      sx={{ bgcolor: "#f5f5f5", p: 1, borderRadius: 1 }}
                     >
                       {listingId}
                     </Typography>
@@ -788,6 +782,109 @@ const PurchasesPage = () => {
               "Đã đăng bán"
             ) : (
               "Đăng bán"
+            )}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog thêm manager */}
+      <Dialog
+        open={managerDialogOpen}
+        onClose={handleCloseManagerDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Thêm quyền Manager
+          <IconButton
+            aria-label="close"
+            onClick={handleCloseManagerDialog}
+            sx={{ position: "absolute", right: 8, top: 8 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <TextField
+              fullWidth
+              label="Địa chỉ ví Manager (Ethereum Address)"
+              variant="outlined"
+              value={managerAddress}
+              onChange={handleManagerAddressChange}
+              placeholder="Ví dụ: 0x1234..."
+              sx={{ mb: 2 }}
+              disabled={addingManager || transactionStatus === "confirmed"}
+            />
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Chỉ tài khoản owner mới có thể cấp quyền manager. Giao dịch này
+              yêu cầu xác nhận trên MetaMask.
+            </Alert>
+
+            {transactionStatus && (
+              <Alert
+                severity={
+                  transactionStatus === "preparing"
+                    ? "info"
+                    : transactionStatus === "pending"
+                    ? "warning"
+                    : transactionStatus === "confirmed"
+                    ? "success"
+                    : "error"
+                }
+                sx={{ mb: 2 }}
+              >
+                {transactionStatus === "preparing" &&
+                  "Đang chuẩn bị giao dịch blockchain..."}
+                {transactionStatus === "pending" &&
+                  "Đang xử lý giao dịch blockchain. Vui lòng xác nhận trong MetaMask..."}
+                {transactionStatus === "confirmed" &&
+                  "Đã cấp quyền manager thành công!"}
+                {transactionStatus === "failed" &&
+                  "Giao dịch thất bại. Vui lòng thử lại."}
+              </Alert>
+            )}
+
+            {transactionHash && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  Mã giao dịch:
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    wordBreak: "break-all",
+                    bgcolor: "#f5f5f5",
+                    p: 1,
+                    borderRadius: 1,
+                  }}
+                >
+                  {transactionHash}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={handleCloseManagerDialog} variant="outlined">
+            Hủy
+          </Button>
+          <Button
+            onClick={handleAddManager}
+            variant="contained"
+            color="secondary"
+            disabled={
+              addingManager ||
+              !managerAddress ||
+              transactionStatus === "confirmed"
+            }
+          >
+            {addingManager ? (
+              <CircularProgress size={24} />
+            ) : transactionStatus === "confirmed" ? (
+              "Đã thêm"
+            ) : (
+              "Thêm Manager"
             )}
           </Button>
         </DialogActions>

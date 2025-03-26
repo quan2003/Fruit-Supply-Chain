@@ -58,15 +58,19 @@ const DeliveryHubPage = () => {
   const [currentPage, setCurrentPage] = useState("statistics");
 
   const fetchData = async () => {
-    if (!account || !user?.id) {
+    if (!account) {
+      setAlertMessage({
+        type: "error",
+        message: "Vui lòng kết nối ví MetaMask để tiếp tục!",
+      });
       setLoading(false);
       return;
     }
 
-    if (user.role !== "DeliveryHub") {
+    if (!user?.id) {
       setAlertMessage({
         type: "error",
-        message: "Bạn không có quyền truy cập trang này!",
+        message: "Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại!",
       });
       setLoading(false);
       return;
@@ -74,6 +78,35 @@ const DeliveryHubPage = () => {
 
     try {
       setLoading(true);
+
+      // Kiểm tra xem ví đã được liên kết chưa
+      const walletCheck = await axios.post(
+        "http://localhost:3000/check-role",
+        {},
+        { headers: { "x-ethereum-address": account } }
+      );
+
+      // Nếu API trả về lỗi (ví dụ: ví chưa được liên kết), hiển thị thông điệp lỗi từ backend
+      if (walletCheck.data.error) {
+        setAlertMessage({
+          type: "error",
+          message: walletCheck.data.error,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Kiểm tra role từ API (nếu cần)
+      const allowedRoles = ["DeliveryHub", "Admin"];
+      if (!allowedRoles.includes(walletCheck.data.role)) {
+        setAlertMessage({
+          type: "error",
+          message:
+            "Ví của bạn không có quyền truy cập trang này! Vai trò yêu cầu: DeliveryHub hoặc Admin.",
+        });
+        setLoading(false);
+        return;
+      }
 
       const incoming = await getIncomingShipments();
       setIncomingShipments(incoming);
@@ -95,15 +128,18 @@ const DeliveryHubPage = () => {
       setAlertMessage({
         type: "error",
         message:
-          error.message || "Có lỗi khi tải dữ liệu. Vui lòng thử lại sau.",
+          error.response?.data?.error ||
+          "Có lỗi khi tải dữ liệu. Vui lòng thử lại sau.",
       });
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    console.log("Current account:", account); // Log để kiểm tra account
-    fetchData();
+    console.log("Current account:", account);
+    if (account && user) {
+      fetchData();
+    }
   }, [account, user]);
 
   useEffect(() => {
@@ -290,7 +326,6 @@ const DeliveryHubPage = () => {
     try {
       setLoading(true);
 
-      // Thêm sản phẩm vào kho sau khi mua thành công
       await addToInventory(
         productId,
         user.id,
@@ -301,11 +336,9 @@ const DeliveryHubPage = () => {
         transactionHash
       );
 
-      // Làm mới inventory để đảm bảo dữ liệu mới nhất
       const updatedInventory = await getInventory(user.id);
       setInventory(updatedInventory);
 
-      // Tìm inventoryId từ inventory state dựa trên productId
       const inventoryItem = updatedInventory.find(
         (item) => item.product_id === productId
       );
@@ -314,7 +347,6 @@ const DeliveryHubPage = () => {
       }
       const inventoryId = inventoryItem.id;
 
-      // Đăng bán sản phẩm lên blockchain
       const transactionResult = await executeTransaction({
         type: "listProductForSale",
         productId,
@@ -323,25 +355,21 @@ const DeliveryHubPage = () => {
         inventoryId,
       });
 
-      // Đăng bán sản phẩm cho người tiêu dùng
       await sellProductToConsumer({
-        inventoryId, // Sử dụng inventoryId thay vì productId
+        inventoryId,
         quantity,
         price,
         transactionHash: transactionResult.transactionHash,
         listingId: transactionResult.listingId,
       });
 
-      // Xóa sản phẩm khỏi inventory (Đơn Mua)
       setInventory((prevInventory) =>
         prevInventory.filter((item) => item.id !== inventoryId)
       );
 
-      // Cập nhật danh sách outgoingProducts (Sản phẩm đang bán)
       const updatedOutgoingProducts = await getOutgoingProducts(user.id);
       setOutgoingProducts(updatedOutgoingProducts);
 
-      // Chuyển sang tab "Sản phẩm đang bán" (tabValue = 4)
       setTabValue(4);
       navigate("/delivery-hub/outgoing-products");
       setCurrentPage("outgoing-products");
@@ -372,18 +400,23 @@ const DeliveryHubPage = () => {
 
   const handleUpdateWallet = async () => {
     try {
-      await axios.post("http://localhost:3000/update-wallet", {
+      const response = await axios.post("http://localhost:3000/update-wallet", {
         email: user.email,
         walletAddress: account,
       });
       setWalletError(null);
+      setAlertMessage({
+        type: "success",
+        message: response.data.message,
+      });
       fetchData();
     } catch (error) {
       console.error("Error updating wallet:", error);
       setAlertMessage({
         type: "error",
         message:
-          error.message || "Có lỗi khi cập nhật ví. Vui lòng thử lại sau.",
+          error.response?.data?.message ||
+          "Có lỗi khi cập nhật ví. Vui lòng thử lại sau.",
       });
     }
   };
