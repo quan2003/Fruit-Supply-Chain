@@ -1,6 +1,6 @@
-// src/components/FarmManagement/AddFarmProductForm.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useWeb3 } from "../../contexts/Web3Context";
 import { addFruitProduct } from "../../services/fruitService";
 import {
   Box,
@@ -20,13 +20,14 @@ import "../FruitCatalog/CatalogStyles.css";
 
 const AddFarmProductForm = () => {
   const navigate = useNavigate();
+  const { account } = useWeb3();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [redirecting, setRedirecting] = useState(false);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
-  const [farms, setFarms] = useState([]); // Danh sách farm của producer
+  const [farms, setFarms] = useState([]);
   const user = JSON.parse(localStorage.getItem("user")) || {};
 
   const [product, setProduct] = useState({
@@ -37,33 +38,41 @@ const AddFarmProductForm = () => {
     quantity: "",
     productiondate: "",
     expirydate: "",
-    farm_id: "", // Sẽ được cập nhật sau khi lấy danh sách farm
+    farm_id: "",
   });
 
   useEffect(() => {
     const fetchFarms = async () => {
+      if (!user.email || !account) {
+        setError("Vui lòng đăng nhập và kết nối ví MetaMask!");
+        return;
+      }
+
       try {
         const response = await fetch(
-          `http://localhost:3000/farms/user?email=${user.email}`
+          `http://localhost:3000/farms/user?email=${user.email}`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              "x-ethereum-address": account,
+            },
+          }
         );
         const data = await response.json();
         if (response.ok && data.length > 0) {
           setFarms(data);
-          setProduct((prev) => ({ ...prev, farm_id: data[0].id })); // Chọn farm đầu tiên mặc định
+          setProduct((prev) => ({ ...prev, farm_id: data[0].id }));
         } else {
           setError("Không tìm thấy farm của bạn! Vui lòng tạo farm trước.");
+          setTimeout(() => navigate("/farms/register"), 3000);
         }
       } catch (err) {
         setError("Không thể lấy danh sách farm. Vui lòng thử lại sau.");
       }
     };
 
-    if (user.email) {
-      fetchFarms();
-    } else {
-      setError("Vui lòng đăng nhập để thêm sản phẩm!");
-    }
-  }, [user.email]);
+    fetchFarms();
+  }, [user.email, account, navigate]);
 
   useEffect(() => {
     if (success) {
@@ -115,6 +124,12 @@ const AddFarmProductForm = () => {
     setError(null);
     setSuccess(null);
 
+    if (!account) {
+      setError("Vui lòng kết nối ví MetaMask!");
+      setLoading(false);
+      return;
+    }
+
     try {
       const productCode = generateProductCode(product.name);
 
@@ -129,9 +144,9 @@ const AddFarmProductForm = () => {
       formData.append("productdate", product.productiondate);
       formData.append("expirydate", product.expirydate);
       formData.append("farm_id", product.farm_id);
-      formData.append("email", user.email); // Truyền email để backend kiểm tra
+      formData.append("email", user.email);
 
-      await addFruitProduct(formData);
+      await addFruitProduct(formData, { "x-ethereum-address": account });
       setLoading(false);
       setSuccess("Thêm sản phẩm thành công!");
     } catch (err) {

@@ -13,24 +13,22 @@ import {
   ListItemText,
   Divider,
 } from "@mui/material";
-import { useNavigate, Outlet, Link } from "react-router-dom";
+import { useNavigate, Outlet } from "react-router-dom";
 import { useWeb3 } from "../contexts/Web3Context";
 import MenuIcon from "@mui/icons-material/Menu";
 import LocalFloristIcon from "@mui/icons-material/LocalFlorist";
 import Footer from "../components/common/Footer";
+import { useAuth } from "../contexts/AuthContext";
 
 const FarmPage = () => {
   const { account, connectWallet } = useWeb3();
+  const { user, logout } = useAuth(); // Lấy user và logout từ AuthContext
   const navigate = useNavigate();
-
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem("user")) || {};
-  const isFarmer = user.role === "Producer";
-
   const handleLogout = () => {
-    localStorage.removeItem("user");
-    navigate("/");
+    logout(); // Gọi hàm logout từ AuthContext
+    navigate("/dang-nhap");
   };
 
   const shortenAddress = (address) =>

@@ -1,4 +1,3 @@
-// src/pages/DeliveryHubPage.jsx
 import React, { useState, useEffect } from "react";
 import {
   Container,
@@ -11,6 +10,9 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
+  Alert,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import {
   Assessment as AssessmentIcon,
@@ -24,16 +26,21 @@ import { Outlet, useNavigate } from "react-router-dom";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import { useWeb3 } from "../contexts/Web3Context";
 import { useAuth } from "../contexts/AuthContext";
+import axios from "axios";
 import {
   getIncomingShipments,
   getOutgoingShipments,
   getInventory,
   receiveShipment,
   shipToCustomer,
+  getOutgoingProducts,
+  addToInventory,
+  sellProductToConsumer,
 } from "../services/deliveryHubService";
 
 const DeliveryHubPage = () => {
-  const { account } = useWeb3();
+  const { account, walletError, setWalletError, executeTransaction, contract } =
+    useWeb3();
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
 
@@ -42,6 +49,7 @@ const DeliveryHubPage = () => {
   const [incomingShipments, setIncomingShipments] = useState([]);
   const [outgoingShipments, setOutgoingShipments] = useState([]);
   const [inventory, setInventory] = useState([]);
+  const [outgoingProducts, setOutgoingProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [showShipmentForm, setShowShipmentForm] = useState(false);
   const [selectedShipment, setSelectedShipment] = useState(null);
@@ -51,6 +59,15 @@ const DeliveryHubPage = () => {
 
   const fetchData = async () => {
     if (!account || !user?.id) {
+      setLoading(false);
+      return;
+    }
+
+    if (user.role !== "DeliveryHub") {
+      setAlertMessage({
+        type: "error",
+        message: "Bạn không có quyền truy cập trang này!",
+      });
       setLoading(false);
       return;
     }
@@ -68,18 +85,24 @@ const DeliveryHubPage = () => {
       console.log("Fetched inventory data:", inv);
       setInventory(inv);
 
+      const outgoingProds = await getOutgoingProducts(user.id);
+      console.log("Fetched outgoing products data:", outgoingProds);
+      setOutgoingProducts(outgoingProds);
+
       setLoading(false);
     } catch (error) {
       console.error("Error loading delivery hub data:", error);
       setAlertMessage({
         type: "error",
-        message: "Có lỗi khi tải dữ liệu. Vui lòng thử lại sau.",
+        message:
+          error.message || "Có lỗi khi tải dữ liệu. Vui lòng thử lại sau.",
       });
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    console.log("Current account:", account); // Log để kiểm tra account
     fetchData();
   }, [account, user]);
 
@@ -93,6 +116,25 @@ const DeliveryHubPage = () => {
     setCurrentPage(page);
     setDrawerOpen(false);
     navigate(`/delivery-hub/${page}`);
+    switch (page) {
+      case "statistics":
+        setTabValue(0);
+        break;
+      case "shop":
+        setTabValue(1);
+        break;
+      case "orders":
+        setTabValue(2);
+        break;
+      case "purchases":
+        setTabValue(3);
+        break;
+      case "outgoing-products":
+        setTabValue(4);
+        break;
+      default:
+        setTabValue(0);
+    }
   };
 
   const handleTabChange = (event, newValue) => {
@@ -100,6 +142,31 @@ const DeliveryHubPage = () => {
     setShowShipmentForm(false);
     setSelectedShipment(null);
     setAlertMessage({ type: "", message: "" });
+    switch (newValue) {
+      case 0:
+        navigate("/delivery-hub/statistics");
+        setCurrentPage("statistics");
+        break;
+      case 1:
+        navigate("/delivery-hub/shop");
+        setCurrentPage("shop");
+        break;
+      case 2:
+        navigate("/delivery-hub/orders");
+        setCurrentPage("orders");
+        break;
+      case 3:
+        navigate("/delivery-hub/purchases");
+        setCurrentPage("purchases");
+        break;
+      case 4:
+        navigate("/delivery-hub/outgoing-products");
+        setCurrentPage("outgoing-products");
+        break;
+      default:
+        navigate("/delivery-hub/statistics");
+        setCurrentPage("statistics");
+    }
   };
 
   const handleSearchChange = (event) => {
@@ -129,7 +196,8 @@ const DeliveryHubPage = () => {
       console.error("Error receiving shipment:", error);
       setAlertMessage({
         type: "error",
-        message: "Có lỗi khi nhận lô hàng. Vui lòng thử lại sau.",
+        message:
+          error.message || "Có lỗi khi nhận lô hàng. Vui lòng thử lại sau.",
       });
       setLoading(false);
     }
@@ -139,6 +207,8 @@ const DeliveryHubPage = () => {
     setSelectedShipment(fruitItem);
     setShowShipmentForm(true);
     setTabValue(2);
+    navigate("/delivery-hub/orders");
+    setCurrentPage("orders");
   };
 
   const handleShipmentCreated = async (shipmentData) => {
@@ -162,7 +232,133 @@ const DeliveryHubPage = () => {
       console.error("Error creating shipment:", error);
       setAlertMessage({
         type: "error",
-        message: "Có lỗi khi tạo lô hàng. Vui lòng thử lại sau.",
+        message:
+          error.message || "Có lỗi khi tạo lô hàng. Vui lòng thử lại sau.",
+      });
+      setLoading(false);
+    }
+  };
+
+  const handleHarvestFruit = async (fruitType, origin, farmId, quality) => {
+    try {
+      setLoading(true);
+      console.log("Calling harvestFruit with:", {
+        fruitType,
+        origin,
+        farmId,
+        quality,
+      });
+
+      const transactionResult = await executeTransaction({
+        type: "harvestFruit",
+        fruitType,
+        origin,
+        farmId: farmId || "defaultFarm",
+        quality: quality || "Good",
+      });
+
+      console.log("Harvest successful:", transactionResult);
+
+      await fetchData();
+
+      setLoading(false);
+      setAlertMessage({
+        type: "success",
+        message: "Đã thu hoạch trái cây thành công!",
+      });
+
+      return transactionResult;
+    } catch (error) {
+      console.error("Error harvesting fruit:", error);
+      setAlertMessage({
+        type: "error",
+        message:
+          error.message ||
+          "Có lỗi khi thu hoạch trái cây. Vui lòng thử lại sau.",
+      });
+      setLoading(false);
+      throw error;
+    }
+  };
+
+  const handlePurchaseProduct = async (
+    productId,
+    quantity,
+    price,
+    transactionHash
+  ) => {
+    try {
+      setLoading(true);
+
+      // Thêm sản phẩm vào kho sau khi mua thành công
+      await addToInventory(
+        productId,
+        user.id,
+        quantity,
+        price,
+        new Date().toISOString(),
+        new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
+        transactionHash
+      );
+
+      // Làm mới inventory để đảm bảo dữ liệu mới nhất
+      const updatedInventory = await getInventory(user.id);
+      setInventory(updatedInventory);
+
+      // Tìm inventoryId từ inventory state dựa trên productId
+      const inventoryItem = updatedInventory.find(
+        (item) => item.product_id === productId
+      );
+      if (!inventoryItem) {
+        throw new Error("Không tìm thấy sản phẩm trong kho!");
+      }
+      const inventoryId = inventoryItem.id;
+
+      // Đăng bán sản phẩm lên blockchain
+      const transactionResult = await executeTransaction({
+        type: "listProductForSale",
+        productId,
+        price,
+        quantity,
+        inventoryId,
+      });
+
+      // Đăng bán sản phẩm cho người tiêu dùng
+      await sellProductToConsumer({
+        inventoryId, // Sử dụng inventoryId thay vì productId
+        quantity,
+        price,
+        transactionHash: transactionResult.transactionHash,
+        listingId: transactionResult.listingId,
+      });
+
+      // Xóa sản phẩm khỏi inventory (Đơn Mua)
+      setInventory((prevInventory) =>
+        prevInventory.filter((item) => item.id !== inventoryId)
+      );
+
+      // Cập nhật danh sách outgoingProducts (Sản phẩm đang bán)
+      const updatedOutgoingProducts = await getOutgoingProducts(user.id);
+      setOutgoingProducts(updatedOutgoingProducts);
+
+      // Chuyển sang tab "Sản phẩm đang bán" (tabValue = 4)
+      setTabValue(4);
+      navigate("/delivery-hub/outgoing-products");
+      setCurrentPage("outgoing-products");
+
+      setLoading(false);
+      setAlertMessage({
+        type: "success",
+        message:
+          "Đã mua, đăng bán và chuyển sản phẩm sang mục đang bán thành công!",
+      });
+    } catch (error) {
+      console.error("Error adding product to inventory after purchase:", error);
+      setAlertMessage({
+        type: "error",
+        message:
+          error.message ||
+          "Có lỗi khi thêm sản phẩm vào kho hoặc đăng bán. Vui lòng thử lại sau.",
       });
       setLoading(false);
     }
@@ -172,6 +368,24 @@ const DeliveryHubPage = () => {
     setUser(null);
     localStorage.removeItem("user");
     navigate("/");
+  };
+
+  const handleUpdateWallet = async () => {
+    try {
+      await axios.post("http://localhost:3000/update-wallet", {
+        email: user.email,
+        walletAddress: account,
+      });
+      setWalletError(null);
+      fetchData();
+    } catch (error) {
+      console.error("Error updating wallet:", error);
+      setAlertMessage({
+        type: "error",
+        message:
+          error.message || "Có lỗi khi cập nhật ví. Vui lòng thử lại sau.",
+      });
+    }
   };
 
   const filterData = (data) => {
@@ -319,6 +533,32 @@ const DeliveryHubPage = () => {
               </ListItemIcon>
               <ListItemText primary="Đơn Mua" />
             </ListItem>
+            <ListItem
+              button
+              onClick={() => handleMenuClick("outgoing-products")}
+              sx={{
+                bgcolor:
+                  currentPage === "outgoing-products"
+                    ? "#007BFF"
+                    : "transparent",
+                color:
+                  currentPage === "outgoing-products" ? "white" : "inherit",
+                "&:hover": {
+                  bgcolor:
+                    currentPage === "outgoing-products" ? "#0069D9" : "#f0f0f0",
+                },
+              }}
+            >
+              <ListItemIcon
+                sx={{
+                  color:
+                    currentPage === "outgoing-products" ? "white" : "inherit",
+                }}
+              >
+                <ShoppingCartIcon />
+              </ListItemIcon>
+              <ListItemText primary="Sản phẩm đang bán" />
+            </ListItem>
           </List>
           <Divider sx={{ my: 2 }} />
           <ListItem button onClick={handleLogout}>
@@ -351,6 +591,30 @@ const DeliveryHubPage = () => {
         </Box>
 
         <Container maxWidth="lg" sx={{ mt: 3 }}>
+          {walletError && (
+            <Box sx={{ display: "flex", gap: 2, alignItems: "center", mb: 2 }}>
+              <Alert severity="error">{walletError}</Alert>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleUpdateWallet}
+              >
+                Cập nhật ví
+              </Button>
+            </Box>
+          )}
+          {alertMessage.message && (
+            <Alert severity={alertMessage.type} sx={{ mb: 2 }}>
+              {alertMessage.message}
+            </Alert>
+          )}
+          <Tabs value={tabValue} onChange={handleTabChange} centered>
+            <Tab label="Thống kê" />
+            <Tab label="Shop" />
+            <Tab label="Đơn đặt hàng" />
+            <Tab label="Đơn mua" />
+            <Tab label="Sản phẩm đang bán" />
+          </Tabs>
           <Outlet
             context={{
               tabValue,
@@ -368,9 +632,15 @@ const DeliveryHubPage = () => {
               inventory,
               setInventory,
               outgoingShipments,
+              outgoingProducts,
+              setOutgoingProducts,
               handleReceiveShipment,
               handlePrepareShipment,
               handleShipmentCreated,
+              handleHarvestFruit,
+              handlePurchaseProduct,
+              executeTransaction,
+              contract,
               filterData,
               formatImageUrl,
               handleMenuClick,

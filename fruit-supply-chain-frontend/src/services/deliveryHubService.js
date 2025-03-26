@@ -1,314 +1,272 @@
-// fruit-supply-chain-frontend/src/services/deliveryHubService.js
 import axios from "axios";
 
-const API_URL = "http://localhost:3000";
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3000";
 
-// Mock data for development (giữ lại các mock khác nếu cần, nhưng xóa mockInventory)
-const mockIncomingShipments = [
-  {
-    id: "969d3f59-d5de-4a2e-b432-234f5678d123",
-    productName: "Xoài cát Hòa Lộc",
-    fruitType: "Xoài",
-    origin: "Tiền Giang",
-    quantity: 50,
-    shippedDate: "2025-03-15T08:30:00Z",
-    shipperName: "Công ty vận chuyển ABC",
-    shipperAddress: "0x1234567890abcdef1234567890abcdef12345678",
-    status: "Đang vận chuyển",
-  },
-  {
-    id: "d3b8ccd1-6e5a-4b9f-b234-456f456789a1",
-    productName: "Thanh Long ruột đỏ",
-    fruitType: "Thanh Long",
-    origin: "Bình Thuận",
-    quantity: 100,
-    shippedDate: "2025-03-16T09:15:00Z",
-    shipperName: "Dịch vụ vận tải Nhanh Chóng",
-    shipperAddress: "0x2345678901abcdef2345678901abcdef23456789",
-    status: "Đang vận chuyển",
-  },
-  {
-    id: "cb147e98-0b29-4c3d-c345-567f56789ab2",
-    productName: "Bưởi năm roi",
-    fruitType: "Bưởi",
-    origin: "Vĩnh Long",
-    quantity: 30,
-    shippedDate: "2025-03-14T10:45:00Z",
-    shipperName: "Công ty vận chuyển ABC",
-    shipperAddress: "0x1234567890abcdef1234567890abcdef12345678",
-    status: "Đang vận chuyển",
-  },
-];
+// Hàm lấy header với x-ethereum-address
+const getEthereumHeaders = () => {
+  const address = window.ethereum?.selectedAddress;
+  if (!address) {
+    throw new Error(
+      "Ví MetaMask chưa được kết nối! Vui lòng kết nối ví để tiếp tục."
+    );
+  }
+  return { "x-ethereum-address": address };
+};
 
-const mockOutgoingShipments = [
-  {
-    id: "4de59188-cc1f-4d4e-d456-678f6789abc3",
-    productName: "Xoài cát Hòa Lộc",
-    fruitType: "Xoài",
-    origin: "Tiền Giang",
-    quantity: 20,
-    shippedDate: "2025-03-18T14:30:00Z",
-    customerName: "Nguyễn Văn A",
-    customerAddress: "0x3456789012abcdef3456789012abcdef34567890",
-    deliveryAddress: "123 Đường Lê Lợi, Quận 1, TP.HCM",
-    status: "Đang vận chuyển",
-  },
-  {
-    id: "e5fa72b3-1c5d-4e6f-e567-789f789abcd4",
-    productName: "Thanh Long ruột đỏ",
-    fruitType: "Thanh Long",
-    origin: "Bình Thuận",
-    quantity: 30,
-    shippedDate: "2025-03-17T15:45:00Z",
-    customerName: "Trần Thị B",
-    customerAddress: "0x4567890123abcdef4567890123abcdef45678901",
-    deliveryAddress: "456 Đường Nguyễn Huệ, Quận 1, TP.HCM",
-    status: "Đã giao",
-  },
-];
-
-const mockCustomers = [
-  {
-    id: "1",
-    name: "Nguyễn Văn A",
-    email: "nguyenvana@example.com",
-    address: "123 Đường Lê Lợi, Quận 1, TP.HCM",
-    walletAddress: "0x3456789012abcdef3456789012abcdef34567890",
-  },
-  {
-    id: "2",
-    name: "Trần Thị B",
-    email: "tranthib@example.com",
-    address: "456 Đường Nguyễn Huệ, Quận 1, TP.HCM",
-    walletAddress: "0x4567890123abcdef4567890123abcdef45678901",
-  },
-  {
-    id: "3",
-    name: "Lê Văn C",
-    email: "levanc@example.com",
-    address: "789 Đường Trần Hưng Đạo, Quận 5, TP.HCM",
-    walletAddress: "0x5678901234abcdef5678901234abcdef56789012",
-  },
-];
-
-/**
- * Lấy danh sách các lô hàng đến trung tâm phân phối
- */
+// Lấy danh sách lô hàng đến
 export const getIncomingShipments = async () => {
   try {
-    // Trong môi trường phát triển, sử dụng dữ liệu mock
-    if (process.env.NODE_ENV === "development") {
-      return new Promise((resolve) => {
-        setTimeout(() => resolve(mockIncomingShipments), 500);
-      });
-    }
-
-    // Trong môi trường production, gọi API thực tế
-    const response = await axios.get(
-      `${API_URL}/delivery-hub/incoming-shipments`
-    );
+    const response = await axios.get(`${API_URL}/incoming-shipments`, {
+      headers: getEthereumHeaders(),
+    });
     return response.data;
   } catch (error) {
-    console.error("Error fetching incoming shipments:", error);
-    throw error;
+    console.error("Lỗi khi lấy danh sách lô hàng đến:", error);
+    throw new Error(
+      error.response?.data?.message ||
+        error.message ||
+        "Không thể tải danh sách lô hàng đến"
+    );
   }
 };
 
-/**
- * Lấy danh sách các lô hàng gửi đi từ trung tâm phân phối
- */
+// Lấy danh sách lô hàng đi
 export const getOutgoingShipments = async () => {
   try {
-    // Trong môi trường phát triển, sử dụng dữ liệu mock
-    if (process.env.NODE_ENV === "development") {
-      return new Promise((resolve) => {
-        setTimeout(() => resolve(mockOutgoingShipments), 500);
-      });
-    }
+    const response = await axios.get(`${API_URL}/outgoing-shipments`, {
+      headers: getEthereumHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách lô hàng đi:", error);
+    throw new Error(
+      error.response?.data?.message ||
+        error.message ||
+        "Không thể tải danh sách lô hàng đi"
+    );
+  }
+};
 
-    // Trong môi trường production, gọi API thực tế
-    const response = await axios.get(
-      `${API_URL}/delivery-hub/outgoing-shipments`
+// Lấy danh sách sản phẩm trong kho
+export const getInventory = async (deliveryHubId) => {
+  try {
+    console.log("Lấy danh sách kho cho deliveryHubId:", deliveryHubId);
+    const response = await axios.get(`${API_URL}/inventory/${deliveryHubId}`, {
+      headers: getEthereumHeaders(),
+    });
+    console.log("Kết quả kho:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách kho:", error);
+    throw new Error(
+      error.response?.data?.message ||
+        error.message ||
+        "Không thể tải danh sách sản phẩm trong kho"
+    );
+  }
+};
+
+// Nhận lô hàng
+export const receiveShipment = async (shipmentId) => {
+  try {
+    const response = await axios.post(
+      `${API_URL}/receive-shipment`,
+      { shipmentId },
+      { headers: getEthereumHeaders() }
     );
     return response.data;
   } catch (error) {
-    console.error("Error fetching outgoing shipments:", error);
-    throw error;
+    console.error("Lỗi khi nhận lô hàng:", error);
+    throw new Error(
+      error.response?.data?.message || error.message || "Không thể nhận lô hàng"
+    );
   }
 };
 
-/**
- * Lấy danh sách tồn kho tại trung tâm phân phối
- */
-export const getInventory = async (deliveryHubId) => {
+// Gửi lô hàng đến khách hàng
+export const shipToCustomer = async (shipmentData) => {
   try {
-    // Gọi API thực tế bất kể môi trường
-    const response = await axios.get(`${API_URL}/inventory/${deliveryHubId}`);
+    const response = await axios.post(
+      `${API_URL}/ship-to-customer`,
+      shipmentData,
+      { headers: getEthereumHeaders() }
+    );
     return response.data;
   } catch (error) {
-    console.error("Error fetching inventory:", error);
+    console.error("Lỗi khi gửi lô hàng đến khách hàng:", error);
+    throw new Error(
+      error.response?.data?.message ||
+        error.message ||
+        "Không thể gửi lô hàng đến khách hàng"
+    );
+  }
+};
+
+// Đăng bán sản phẩm cho người tiêu dùng
+export const sellProductToConsumer = async (productData) => {
+  try {
+    console.log("Đăng bán sản phẩm với dữ liệu:", productData);
+
+    if (!productData.inventoryId) {
+      throw new Error("Thiếu thông tin ID sản phẩm trong kho");
+    }
+
+    const endpoint = `${API_URL}/sell-product`;
+
+    const response = await axios.post(endpoint, productData, {
+      headers: {
+        "Content-Type": "application/json",
+        ...getEthereumHeaders(),
+      },
+    });
+
+    console.log("Kết quả đăng bán sản phẩm:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error("Lỗi khi đăng bán sản phẩm:", error);
+    if (error.response) {
+      console.error("Trạng thái phản hồi:", error.response.status);
+      console.error("Dữ liệu phản hồi:", error.response.data);
+      throw new Error(
+        error.response.data.message ||
+          error.message ||
+          "Không thể đăng bán sản phẩm"
+      );
+    }
     throw error;
   }
 };
 
-/**
- * Ghi nhận nhận lô hàng từ nhà vận chuyển
- * @param {string} shipmentId - ID của lô hàng
- */
-export const receiveShipment = async (shipmentId) => {
+// Xác minh giao dịch blockchain
+export const verifyTransaction = async (transactionHash) => {
   try {
-    // Trong môi trường phát triển, giả lập nhận lô hàng
-    if (process.env.NODE_ENV === "development") {
-      return new Promise((resolve) => {
-        console.log(`Received shipment with ID: ${shipmentId}`);
-        setTimeout(() => resolve({ success: true }), 1000);
-      });
-    }
-
-    // Trong môi trường production, gọi API thực tế
     const response = await axios.post(
-      `${API_URL}/delivery-hub/receive-shipment`,
+      `${API_URL}/verify-transaction`,
+      { transactionHash },
+      { headers: getEthereumHeaders() }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Lỗi khi xác minh giao dịch:", error);
+    throw new Error(
+      error.response?.data?.message ||
+        error.message ||
+        "Không thể xác minh giao dịch blockchain"
+    );
+  }
+};
+
+// Lấy danh sách sản phẩm đang bán từ trung tâm phân phối
+export const getOutgoingProducts = async (deliveryHubId) => {
+  try {
+    console.log(
+      "Lấy danh sách sản phẩm đang bán cho deliveryHubId:",
+      deliveryHubId
+    );
+    const response = await axios.get(
+      `${API_URL}/outgoing-products/${deliveryHubId}`,
+      { headers: getEthereumHeaders() }
+    );
+    console.log("Kết quả sản phẩm đang bán:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách sản phẩm đang bán:", error);
+    if (error.response && error.response.status === 404) {
+      return [];
+    }
+    throw new Error(
+      error.response?.data?.message ||
+        error.message ||
+        "Không thể tải danh sách sản phẩm đang bán"
+    );
+  }
+};
+
+// Lấy danh sách khách hàng
+export const getCustomers = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/users`, {
+      headers: getEthereumHeaders(),
+    });
+    return response.data.filter((user) => user.role === "Customer");
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách khách hàng:", error);
+    throw new Error(
+      error.response?.data?.message ||
+        error.message ||
+        "Không thể tải danh sách khách hàng"
+    );
+  }
+};
+
+// Lấy thống kê trung tâm phân phối
+export const getDeliveryHubStats = async (deliveryHubId) => {
+  try {
+    const response = await axios.get(`${API_URL}/stats/${deliveryHubId}`, {
+      headers: getEthereumHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Lỗi khi lấy thống kê trung tâm phân phối:", error);
+    throw new Error(
+      error.response?.data?.message ||
+        error.message ||
+        "Không thể tải thống kê trung tâm phân phối"
+    );
+  }
+};
+
+// Theo dõi lô hàng
+export const trackShipment = async (shipmentId) => {
+  try {
+    const response = await axios.get(
+      `${API_URL}/track-shipment/${shipmentId}`,
       {
-        shipmentId,
+        headers: getEthereumHeaders(),
       }
     );
     return response.data;
   } catch (error) {
-    console.error("Error receiving shipment:", error);
-    throw error;
-  }
-};
-
-/**
- * Gửi lô hàng đến khách hàng
- * @param {Object} shipmentData - Thông tin lô hàng
- */
-export const shipToCustomer = async (shipmentData) => {
-  try {
-    // Trong môi trường phát triển, giả lập gửi lô hàng
-    if (process.env.NODE_ENV === "development") {
-      return new Promise((resolve) => {
-        console.log("Shipping to customer:", shipmentData);
-        setTimeout(
-          () =>
-            resolve({
-              success: true,
-              shipmentId: `ship-${Math.random().toString(36).substring(2, 10)}`,
-            }),
-          1000
-        );
-      });
-    }
-
-    // Trong môi trường production, gọi API thực tế
-    const response = await axios.post(
-      `${API_URL}/delivery-hub/ship-to-customer`,
-      shipmentData
+    console.error("Lỗi khi theo dõi lô hàng:", error);
+    throw new Error(
+      error.response?.data?.message ||
+        error.message ||
+        "Không thể theo dõi lô hàng"
     );
-    return response.data;
-  } catch (error) {
-    console.error("Error shipping to customer:", error);
-    throw error;
   }
 };
 
-/**
- * Lấy danh sách khách hàng
- */
-export const getCustomers = async () => {
+// Thêm vào kho sau khi mua
+export const addToInventory = async (
+  productId,
+  deliveryHubId,
+  quantity,
+  price,
+  productdate,
+  expirydate,
+  transactionHash
+) => {
   try {
-    // Trong môi trường phát triển, sử dụng dữ liệu mock
-    if (process.env.NODE_ENV === "development") {
-      return new Promise((resolve) => {
-        setTimeout(() => resolve(mockCustomers), 500);
-      });
-    }
+    const payload = {
+      productId,
+      deliveryHubId,
+      quantity,
+      price,
+      productdate,
+      expirydate,
+      transactionHash,
+    };
 
-    // Trong môi trường production, gọi API thực tế
-    const response = await axios.get(`${API_URL}/customers`);
+    const response = await axios.post(`${API_URL}/add-to-inventory`, payload, {
+      headers: getEthereumHeaders(),
+    });
     return response.data;
   } catch (error) {
-    console.error("Error fetching customers:", error);
-    throw error;
-  }
-};
-
-/**
- * Theo dõi trạng thái lô hàng đi
- * @param {string} shipmentId - ID của lô hàng
- */
-export const trackShipment = async (shipmentId) => {
-  try {
-    // Trong môi trường phát triển, giả lập theo dõi lô hàng
-    if (process.env.NODE_ENV === "development") {
-      return new Promise((resolve) => {
-        const mockStatus = {
-          id: shipmentId,
-          status: "Đang vận chuyển",
-          lastUpdated: new Date().toISOString(),
-          location: "TP.HCM",
-          estimatedDelivery: new Date(Date.now() + 86400000).toISOString(), // 1 day from now
-          steps: [
-            {
-              step: "Received By DeliveryHub",
-              timestamp: new Date(Date.now() - 172800000).toISOString(),
-              actor: "Trung tâm phân phối A",
-            },
-            {
-              step: "Shipped By DeliveryHub",
-              timestamp: new Date(Date.now() - 86400000).toISOString(),
-              actor: "Trung tâm phân phối A",
-            },
-          ],
-        };
-        setTimeout(() => resolve(mockStatus), 500);
-      });
-    }
-
-    // Trong môi trường production, gọi API thực tế
-    const response = await axios.get(
-      `${API_URL}/delivery-hub/track-shipment/${shipmentId}`
+    console.error("Lỗi khi thêm vào kho:", error);
+    throw new Error(
+      error.response?.data?.message ||
+        error.message ||
+        "Không thể thêm sản phẩm vào kho"
     );
-    return response.data;
-  } catch (error) {
-    console.error(`Error tracking shipment ${shipmentId}:`, error);
-    throw error;
-  }
-};
-
-/**
- * Lấy báo cáo hiệu suất của trung tâm phân phối
- */
-export const getDeliveryHubStats = async () => {
-  try {
-    // Trong môi trường phát triển, giả lập báo cáo
-    if (process.env.NODE_ENV === "development") {
-      return new Promise((resolve) => {
-        const mockStats = {
-          totalReceived: 150,
-          totalShipped: 120,
-          currentInventory: 30,
-          avgProcessingTime: 1.5, // in days
-          topProducts: [
-            { name: "Xoài cát Hòa Lộc", count: 45 },
-            { name: "Thanh Long ruột đỏ", count: 30 },
-            { name: "Bưởi năm roi", count: 20 },
-          ],
-          monthlySummary: [
-            { month: "01/2025", received: 100, shipped: 90 },
-            { month: "02/2025", received: 120, shipped: 110 },
-            { month: "03/2025", received: 150, shipped: 120 },
-          ],
-        };
-        setTimeout(() => resolve(mockStats), 500);
-      });
-    }
-
-    // Trong môi trường production, gọi API thực tế
-    const response = await axios.get(`${API_URL}/delivery-hub/stats`);
-    return response.data;
-  } catch (error) {
-    console.error("Error fetching delivery hub stats:", error);
-    throw error;
   }
 };

@@ -1,7 +1,7 @@
-// src/components/FarmManagement/FarmProductList.jsx
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { getFruitProducts } from "../../services/fruitService"; // Sử dụng service đã sửa
+import { useWeb3 } from "../../contexts/Web3Context";
+import { getFruitProducts } from "../../services/fruitService";
 import LoadingSpinner from "../common/LoadingSpinner";
 import {
   Table,
@@ -22,6 +22,7 @@ import "../FruitCatalog/CatalogStyles.css";
 
 const FarmProductList = () => {
   const navigate = useNavigate();
+  const { account } = useWeb3();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -31,17 +32,35 @@ const FarmProductList = () => {
 
   useEffect(() => {
     const fetchProducts = async () => {
-      if (!user.email) {
-        setError("Vui lòng đăng nhập để xem danh sách sản phẩm!");
+      if (!user.email || !account) {
+        setError("Vui lòng đăng nhập và kết nối ví MetaMask!");
         setLoading(false);
         return;
       }
 
       try {
         setLoading(true);
-        const data = await getFruitProducts(user.email); // Sử dụng API /products với email
+        const data = await getFruitProducts(user.email, {
+          "x-ethereum-address": account,
+        });
         setProducts(data || []);
         setLoading(false);
+
+        // Kiểm tra xem có farm không
+        const response = await fetch(
+          `http://localhost:3000/farms/user?email=${user.email}`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              "x-ethereum-address": account,
+            },
+          }
+        );
+        const farms = await response.json();
+        if (!response.ok || farms.length === 0) {
+          setError("Không tìm thấy farm của bạn! Vui lòng tạo farm trước.");
+          setTimeout(() => navigate("/farms/register"), 3000);
+        }
       } catch (err) {
         setError("Không thể tải danh sách sản phẩm. Vui lòng thử lại sau.");
         setLoading(false);
@@ -49,7 +68,7 @@ const FarmProductList = () => {
     };
 
     fetchProducts();
-  }, [user.email]);
+  }, [user.email, account, navigate]);
 
   const handleChangePage = (event, newPage) => {
     setPage(newPage);

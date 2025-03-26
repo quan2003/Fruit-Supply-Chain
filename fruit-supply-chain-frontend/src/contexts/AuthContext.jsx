@@ -8,57 +8,72 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }) {
-  const { account } = useWeb3();
+  const { account, loading: web3Loading } = useWeb3();
   const [isManager, setIsManager] = useState(false);
   const [isFarmer, setIsFarmer] = useState(false);
   const [userFarms, setUserFarms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [user, setUser] = useState(() => {
-    // Khôi phục user từ localStorage khi khởi động
     const savedUser = localStorage.getItem("user");
     return savedUser ? JSON.parse(savedUser) : null;
   });
 
   useEffect(() => {
     const checkUserRole = async () => {
-      if (account) {
-        try {
-          const managerStatus = false; // Giả lập: không phải manager
-          setIsManager(managerStatus);
+      setLoading(true);
+      setError(null);
 
-          const farms = [
+      try {
+        if (web3Loading) {
+          return;
+        }
+
+        if (!user) {
+          setIsFarmer(false);
+          setIsManager(false);
+          setUserFarms([]);
+          return;
+        }
+
+        setIsFarmer(user.role === "Producer");
+        setIsManager(user.role === "Admin");
+
+        if (user.role === "Producer" && account) {
+          const response = await fetch(
+            `http://localhost:3000/farms/user?email=${user.email}`,
             {
-              id: "1",
-              location: "Tiền Giang",
-              climate: "Nhiệt đới",
-              soil: "Đất phù sa",
-              lastUpdated: Date.now(),
-              currentConditions: "Tốt",
-              owner: account,
-              fruitIds: ["1", "2"],
-            },
-          ];
-
-          const userOwnedFarms = farms.filter(
-            (farm) => farm.owner.toLowerCase() === account.toLowerCase()
+              headers: {
+                "Content-Type": "application/json",
+                "x-ethereum-address": account,
+              },
+            }
           );
 
-          setUserFarms(userOwnedFarms);
-          setIsFarmer(userOwnedFarms.length > 0);
-        } catch (error) {
-          console.error("Error checking user role:", error);
-        } finally {
-          setLoading(false);
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(
+              errorData.message || "Không thể lấy danh sách farm"
+            );
+          }
+
+          const farms = await response.json();
+          setUserFarms(farms);
         }
+      } catch (error) {
+        console.error("Lỗi khi kiểm tra vai trò người dùng:", error);
+        setError(error.message);
+        setUserFarms([]);
+      } finally {
+        setLoading(false);
       }
     };
 
     checkUserRole();
-  }, [account]);
+  }, [user, account, web3Loading]);
 
   const login = (userData) => {
     setUser(userData);
-    // Đồng bộ với localStorage
     localStorage.setItem("user", JSON.stringify(userData));
   };
 
@@ -67,7 +82,6 @@ export function AuthProvider({ children }) {
     setUserFarms([]);
     setIsFarmer(false);
     setIsManager(false);
-    // Xóa localStorage
     localStorage.removeItem("user");
   };
 
@@ -77,6 +91,7 @@ export function AuthProvider({ children }) {
     isFarmer,
     userFarms,
     loading,
+    error,
     login,
     logout,
     checkFarmOwnership: (farmId) => {
