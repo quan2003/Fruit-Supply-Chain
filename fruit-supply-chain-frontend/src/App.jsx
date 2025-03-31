@@ -1,5 +1,6 @@
+// App.jsx
 import React from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/common/Layout";
 import HomePage from "./pages/HomePage";
 import CatalogPage from "./pages/CatalogPage";
@@ -10,6 +11,7 @@ import AdminPage from "./pages/AdminPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import DeliveryHubPage from "./pages/DeliveryHubPage";
+import ShopPage from "./pages/ShopPage";
 import UnauthorizedPage from "./pages/UnauthorizedPage";
 import FarmProductList from "./components/FarmManagement/FarmProductList";
 import AddFarmProductForm from "./components/FarmManagement/AddFarmProductForm";
@@ -21,9 +23,10 @@ import { Typography } from "@mui/material";
 
 // Import các component con cho DeliveryHubPage
 import StatisticsPage from "./components/DeliveryHub/StatisticsPage";
-import ShopPage from "./components/DeliveryHub/ShopPage";
+import DeliveryHubShopPage from "./components/DeliveryHub/ShopPage";
 import OrdersPage from "./components/DeliveryHub/OrdersPage";
 import PurchasesPage from "./components/DeliveryHub/PurchasesPage";
+import OutgoingProductsPage from "./components/DeliveryHub/OutgoingProductsPage"; // Đảm bảo import đúng
 import DashboardPage from "./components/DeliveryHub/DashboardPage";
 
 function App() {
@@ -32,6 +35,7 @@ function App() {
   return (
     <Layout>
       <Routes>
+        {/* Các route công khai */}
         <Route path="/" element={<HomePage />} />
         <Route path="/dang-nhap" element={<LoginPage />} />
         <Route path="/dang-ky" element={<RegisterPage />} />
@@ -39,74 +43,66 @@ function App() {
         <Route path="/tracker" element={<TrackerPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
+        <Route path="/cua-hang" element={<ShopPage />} />
+
+        {/* Route cho admin (bảo vệ bởi role Admin) */}
         <Route
           path="/admin"
           element={
-            <ProtectedRoute isAllowed={isManager}>
+            <ProtectedRoute isAllowed={(user) => user?.role === "Admin"}>
               <AdminPage />
             </ProtectedRoute>
           }
         />
 
         {/* Nested routes cho DeliveryHubPage */}
-        <Route path="/delivery-hub" element={<DeliveryHubPage />}>
+        <Route
+          path="/delivery-hub"
+          element={
+            <ProtectedRoute
+              isAllowed={(user) =>
+                user?.role === "DeliveryHub" || user?.role === "Admin"
+              }
+            >
+              <DeliveryHubPage />
+            </ProtectedRoute>
+          }
+        >
           <Route index element={<DashboardPage />} />
           <Route path="statistics" element={<StatisticsPage />} />
-          <Route path="shop" element={<ShopPage />} />
+          <Route path="shop" element={<DeliveryHubShopPage />} />
           <Route path="orders" element={<OrdersPage />} />
           <Route path="purchases" element={<PurchasesPage />} />
+          <Route path="outgoing-products" element={<OutgoingProductsPage />} />
         </Route>
 
-        <Route path="/farms" element={<FarmPage />}>
-          <Route
-            index
-            element={
-              <ProtectedRoute isAllowed={(user) => user?.role === "Producer"}>
-                <FarmOverview />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="products"
-            element={
-              <ProtectedRoute isAllowed={(user) => user?.role === "Producer"}>
-                <FarmProductList />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="add-product"
-            element={
-              <ProtectedRoute isAllowed={(user) => user?.role === "Producer"}>
-                <AddFarmProductForm />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="register"
-            element={
-              <ProtectedRoute isAllowed={(user) => user?.role === "Producer"}>
-                <RegisterFarmForm />
-              </ProtectedRoute>
-            }
-          />
+        {/* Nested routes cho FarmPage */}
+        <Route
+          path="/farms"
+          element={
+            <ProtectedRoute isAllowed={(user) => user?.role === "Producer"}>
+              <FarmPage />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<FarmOverview />} />
+          <Route path="products" element={<FarmProductList />} />
+          <Route path="add-product" element={<AddFarmProductForm />} />
+          <Route path="register" element={<RegisterFarmForm />} />
           <Route
             path="sold"
             element={
-              <ProtectedRoute isAllowed={(user) => user?.role === "Producer"}>
-                <Typography>Trang Sản phẩm đã bán (Chưa triển khai)</Typography>
-              </ProtectedRoute>
+              <Typography>Trang Sản phẩm đã bán (Chưa triển khai)</Typography>
             }
           />
           <Route
             path="categories"
-            element={
-              <ProtectedRoute isAllowed={(user) => user?.role === "Producer"}>
-                <Typography>Trang Danh mục (Chưa triển khai)</Typography>
-              </ProtectedRoute>
-            }
+            element={<Typography>Trang Danh mục (Chưa triển khai)</Typography>}
           />
         </Route>
+
+        {/* Route mặc định nếu không tìm thấy */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
   );

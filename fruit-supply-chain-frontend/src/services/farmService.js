@@ -3,9 +3,13 @@ import axios from "axios";
 
 const API_URL = "http://localhost:3000";
 
-export const getAllFarmsService = async () => {
+export const getAllFarmsService = async (headers = {}) => {
   try {
-    const response = await axios.get(`${API_URL}/farms`);
+    const response = await axios.get(`${API_URL}/farms`, {
+      headers: {
+        ...headers,
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Error fetching all farms:", error);
@@ -13,9 +17,13 @@ export const getAllFarmsService = async () => {
   }
 };
 
-export const getFarmByIdService = async (farmId) => {
+export const getFarmByIdService = async (farmId, headers = {}) => {
   try {
-    const response = await axios.get(`${API_URL}/farms/${farmId}`);
+    const response = await axios.get(`${API_URL}/farms/${farmId}`, {
+      headers: {
+        ...headers,
+      },
+    });
     return response.data;
   } catch (error) {
     console.error(`Error fetching farm with ID ${farmId}:`, error);
@@ -25,9 +33,29 @@ export const getFarmByIdService = async (farmId) => {
   }
 };
 
-export const registerFarmService = async (farmData) => {
+export const getProducerByIdService = async (producerId, headers = {}) => {
   try {
-    const response = await axios.post(`${API_URL}/farms`, farmData);
+    const response = await axios.get(`${API_URL}/producers/${producerId}`, {
+      headers: {
+        ...headers,
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching producer with ID ${producerId}:`, error);
+    throw new Error(
+      `Không thể lấy thông tin producer với ID ${producerId} từ API`
+    );
+  }
+};
+
+export const registerFarmService = async (farmData, headers = {}) => {
+  try {
+    const response = await axios.post(`${API_URL}/farms`, farmData, {
+      headers: {
+        ...headers,
+      },
+    });
     return response.data;
   } catch (error) {
     console.error("Error registering farm:", error);
@@ -35,11 +63,20 @@ export const registerFarmService = async (farmData) => {
   }
 };
 
-export const updateFarmConditionsService = async (farmId, conditions) => {
+export const updateFarmConditionsService = async (
+  farmId,
+  conditions,
+  headers = {}
+) => {
   try {
     const response = await axios.put(
       `${API_URL}/farms/${farmId}/conditions`,
-      conditions
+      conditions,
+      {
+        headers: {
+          ...headers,
+        },
+      }
     );
     return response.data;
   } catch (error) {

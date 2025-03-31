@@ -15,7 +15,7 @@ import {
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Facebook, Twitter, Google } from "@mui/icons-material";
 import { useWeb3 } from "../contexts/Web3Context";
-import { useAuth } from "../contexts/AuthContext"; // Import useAuth
+import { useAuth } from "../contexts/AuthContext";
 import Layout from "../components/common/Layout";
 import Footer from "../components/common/Footer";
 
@@ -26,7 +26,7 @@ const LoginPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { connectWallet, account } = useWeb3();
-  const { login } = useAuth(); // Lấy hàm login từ useAuth
+  const { login } = useAuth();
   const [role, setRole] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -69,13 +69,11 @@ const LoginPage = () => {
       if (response.ok) {
         setIsLoggedIn(true);
         setExpectedWallet(data.user.walletAddress?.toLowerCase() || "");
-        // Lưu thông tin user vào AuthContext
         login(data.user);
-        // Đồng bộ với localStorage
         localStorage.setItem(
           "user",
           JSON.stringify({
-            id: data.user.id, // Thêm id vào localStorage
+            id: data.user.id,
             name: data.user.name,
             email: data.user.email,
             role: data.user.role,
@@ -96,7 +94,7 @@ const LoginPage = () => {
       await connectWallet();
       if (account) {
         if (!expectedWallet || account.toLowerCase() === expectedWallet) {
-          await fetch("http://localhost:3000/update-wallet", {
+          const response = await fetch("http://localhost:3000/update-wallet", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -104,7 +102,16 @@ const LoginPage = () => {
             body: JSON.stringify({ email, walletAddress: account }),
           });
 
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.message || "Không thể cập nhật ví MetaMask!");
+          }
+
+          // Cập nhật lại user trong localStorage với walletAddress mới
           const user = JSON.parse(localStorage.getItem("user")) || {};
+          user.walletAddress = account;
+          localStorage.setItem("user", JSON.stringify(user));
+
           if (user.role === "Producer") {
             navigate("/farms");
           } else if (user.role === "Admin") {
@@ -130,7 +137,7 @@ const LoginPage = () => {
       }
     } catch (error) {
       console.error("Lỗi khi kết nối ví MetaMask:", error);
-      setError("Không thể kết nối ví MetaMask! 😓");
+      setError(error.message || "Không thể kết nối ví MetaMask! 😓");
     }
   };
 

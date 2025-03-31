@@ -3,87 +3,153 @@ import axios from "axios";
 
 const API_URL = "http://localhost:3000";
 
+const axiosInstance = axios.create({
+  baseURL: API_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
 // Lấy danh sách sản phẩm
-export const getFruitProducts = async (email) => {
+export const getFruitProducts = async (email, headers = {}) => {
   try {
-    const response = await axios.get(`${API_URL}/products`, {
-      params: { email }, // Truyền email qua query parameter
+    const response = await axiosInstance.get("/products", {
+      params: { email },
+      headers: {
+        ...headers,
+      },
     });
     return response.data;
   } catch (error) {
     console.error("Error fetching fruit products:", error);
-    throw new Error("Không thể lấy danh sách sản phẩm từ API");
+    throw new Error(
+      error.response?.data?.message || "Không thể lấy danh sách sản phẩm từ API"
+    );
   }
 };
 
 // Lấy sản phẩm theo ID
-export const getFruitProductById = async (productId) => {
+export const getFruitProductById = async (productId, headers = {}) => {
   try {
-    const response = await axios.get(`${API_URL}/products/${productId}`);
+    const response = await axiosInstance.get(`/products/${productId}`, {
+      headers: {
+        ...headers,
+      },
+    });
     return response.data;
   } catch (error) {
     console.error(`Error fetching fruit product with ID ${productId}:`, error);
     throw new Error(
-      `Không thể lấy thông tin sản phẩm với ID ${productId} từ API`
+      error.response?.data?.message ||
+        `Không thể lấy thông tin sản phẩm với ID ${productId} từ API`
     );
   }
 };
 
 // Thêm sản phẩm mới
-export const addFruitProduct = async (formData) => {
+export const addFruitProduct = async (formData, headers = {}) => {
   try {
-    const response = await axios.post(`${API_URL}/products`, formData, {
+    const response = await axiosInstance.post("/products", formData, {
       headers: {
+        ...headers,
         "Content-Type": "multipart/form-data",
       },
     });
     return response.data;
   } catch (error) {
     console.error("Error adding fruit product:", error);
-    throw new Error("Không thể thêm sản phẩm mới");
+    throw new Error(error.response?.data?.message || "Không thể thêm sản phẩm");
   }
 };
 
 // Kiểm tra thông tin giao dịch mua sản phẩm
-export const purchaseProduct = async (productId, buyerAddress, quantity) => {
+// Kiểm tra thông tin giao dịch mua sản phẩm
+export const purchaseProduct = async (
+  productId,
+  buyerAddress,
+  quantity,
+  headers = {}
+) => {
   try {
-    const response = await axios.post(`${API_URL}/purchase-product`, {
-      productId,
-      buyerAddress,
-      quantity,
-    });
+    // Đảm bảo có header x-ethereum-address
+    const finalHeaders = {
+      ...headers,
+      "x-ethereum-address": headers["x-ethereum-address"] || buyerAddress,
+    };
+
+    console.log("Headers being sent:", finalHeaders);
+
+    const response = await axiosInstance.post(
+      "/purchase-product",
+      {
+        productId,
+        buyerAddress,
+        quantity,
+      },
+      {
+        headers: finalHeaders,
+      }
+    );
     return response.data;
   } catch (error) {
     console.error("Error processing purchase request:", error);
-    throw new Error("Không thể xử lý yêu cầu mua sản phẩm");
+    throw new Error(
+      error.response?.data?.message || "Không thể xử lý yêu cầu mua sản phẩm"
+    );
   }
 };
 
+// Thêm sản phẩm vào kho sau khi giao dịch thành công
 // Thêm sản phẩm vào kho sau khi giao dịch thành công
 export const addToInventory = async (
   productId,
   deliveryHubId,
   quantity,
-  price
+  price,
+  options = {}
 ) => {
   try {
-    const response = await axios.post(`${API_URL}/add-to-inventory`, {
-      productId,
-      deliveryHubId,
-      quantity,
-      price,
-    });
+    const { transactionHash, headers = {} } = options;
+
+    // Đảm bảo có header x-ethereum-address
+    const finalHeaders = {
+      ...headers,
+      "x-ethereum-address":
+        headers["x-ethereum-address"] || localStorage.getItem("walletAddress"),
+    };
+
+    console.log("Headers being sent to add-to-inventory:", finalHeaders);
+
+    const response = await axiosInstance.post(
+      "/add-to-inventory",
+      {
+        productId,
+        deliveryHubId,
+        quantity,
+        price,
+        transactionHash,
+      },
+      {
+        headers: finalHeaders,
+      }
+    );
     return response.data;
   } catch (error) {
     console.error("Error adding to inventory:", error);
-    throw new Error("Không thể thêm sản phẩm vào kho");
+    throw new Error(
+      error.response?.data?.message || "Không thể thêm sản phẩm vào kho"
+    );
   }
 };
 
 // Lấy danh sách sản phẩm trong kho của đại lý
-export const getInventory = async (deliveryHubId) => {
+export const getInventory = async (deliveryHubId, headers = {}) => {
   try {
-    const response = await axios.get(`${API_URL}/inventory/${deliveryHubId}`);
+    const response = await axiosInstance.get(`/inventory/${deliveryHubId}`, {
+      headers: {
+        ...headers,
+      },
+    });
     return response.data.map((item) => ({
       ...item,
       productdate: item.productdate || new Date().toISOString(),
@@ -93,6 +159,46 @@ export const getInventory = async (deliveryHubId) => {
     }));
   } catch (error) {
     console.error("Error fetching inventory:", error);
-    throw new Error("Không thể lấy danh sách sản phẩm trong kho");
+    throw new Error(
+      error.response?.data?.message ||
+        "Không thể lấy danh sách sản phẩm trong kho"
+    );
+  }
+};
+
+// Lấy danh sách farm của người dùng
+export const getUserFarms = async (email, headers = {}) => {
+  try {
+    const response = await axiosInstance.get("/farms/user", {
+      params: { email },
+      headers: {
+        ...headers,
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching user farms:", error);
+    throw new Error(
+      error.response?.data?.message || "Không thể lấy danh sách farm từ API"
+    );
+  }
+};
+
+// Tạo farm mới
+export const createFarm = async (farmData, headers = {}) => {
+  try {
+    const response = await axiosInstance.post("/farm", farmData, {
+      headers: {
+        ...headers,
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error creating farm:", error);
+    const errorMessage =
+      error.response?.data?.error ||
+      error.response?.data?.message ||
+      "Không thể tạo farm. Vui lòng kiểm tra thông tin và thử lại.";
+    throw new Error(errorMessage);
   }
 };

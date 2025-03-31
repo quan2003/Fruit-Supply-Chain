@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useWeb3 } from "../../contexts/Web3Context";
 import {
   Box,
   Typography,
@@ -19,6 +20,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
 const RegisterFarmForm = () => {
   const navigate = useNavigate();
+  const { account } = useWeb3();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -26,16 +28,14 @@ const RegisterFarmForm = () => {
   const [snackOpen, setSnackOpen] = useState(false);
   const [provinces, setProvinces] = useState([]);
 
-  // State cho form
   const [farm, setFarm] = useState({
-    farmName: "", // Tên farm do người dùng nhập
-    location: "", // Vị trí (tỉnh/thành phố)
-    climate: "", // Khí hậu (chọn từ dropdown)
-    soil: "", // Loại đất (gợi ý từ vị trí, người dùng có thể chỉnh sửa)
-    currentConditions: "", // Điều kiện hiện tại (tự động điền từ API)
+    farmName: "",
+    location: "",
+    climate: "",
+    soil: "",
+    currentConditions: "",
   });
 
-  // Danh sách khí hậu, loại đất
   const climates = [
     "Nhiệt đới gió mùa",
     "Ôn đới",
@@ -52,7 +52,6 @@ const RegisterFarmForm = () => {
     "Đất phèn",
   ];
 
-  // Lấy danh sách tỉnh/thành phố từ API
   useEffect(() => {
     const fetchProvinces = async () => {
       try {
@@ -70,7 +69,6 @@ const RegisterFarmForm = () => {
     fetchProvinces();
   }, []);
 
-  // Hàm gọi OpenWeatherMap API để lấy thông tin thời tiết
   const fetchWeatherData = async (location) => {
     try {
       const apiKey = "d9ec71718fb4f20fe64c75961433a71b";
@@ -86,7 +84,6 @@ const RegisterFarmForm = () => {
       const data = await response.json();
       const temperature = data.main.temp;
       const weatherDescription = data.weather[0].description.toLowerCase();
-      // Ánh xạ mô tả thời tiết từ API sang các điều kiện
       let condition;
       if (weatherDescription.includes("clear")) condition = "Nắng";
       else if (weatherDescription.includes("rain")) condition = "Mưa";
@@ -98,7 +95,7 @@ const RegisterFarmForm = () => {
         condition = "Sương mù";
       else if (weatherDescription.includes("wind")) condition = "Gió mạnh";
       else if (weatherDescription.includes("dry")) condition = "Khô hạn";
-      else condition = "Ẩm ướt"; // Mặc định nếu không khớp
+      else condition = "Ẩm ướt";
       return `${temperature}°C, ${condition}`;
     } catch (err) {
       setError(err.message);
@@ -106,30 +103,28 @@ const RegisterFarmForm = () => {
     }
   };
 
-  // Gợi ý loại đất dựa trên vị trí
   const suggestSoilType = (location) => {
     if (location.includes("Đà Lạt") || location.includes("Lâm Đồng"))
-      return "Đất đỏ bazan"; // Tây Nguyên
+      return "Đất đỏ bazan";
     if (
       location.includes("Hà Nội") ||
       location.includes("Bắc Ninh") ||
       location.includes("Hải Dương")
     )
-      return "Đất phù sa"; // Đồng bằng sông Hồng
+      return "Đất phù sa";
     if (
       location.includes("Hồ Chí Minh") ||
       location.includes("Cần Thơ") ||
       location.includes("Tiền Giang")
     )
-      return "Đất phù sa"; // Đồng bằng sông Cửu Long
+      return "Đất phù sa";
     if (location.includes("Nha Trang") || location.includes("Phan Thiết"))
-      return "Đất cát"; // Duyên hải Nam Trung Bộ
+      return "Đất cát";
     if (location.includes("Quảng Nam") || location.includes("Quảng Ngãi"))
-      return "Đất feralit"; // Miền Trung
-    return "Đất feralit"; // Mặc định
+      return "Đất feralit";
+    return "Đất feralit";
   };
 
-  // Xử lý khi người dùng thay đổi vị trí
   const handleLocationChange = async (e) => {
     const { name, value } = e.target;
     setFarm((prev) => ({
@@ -153,7 +148,6 @@ const RegisterFarmForm = () => {
     }
   };
 
-  // Tự động tạo mã farm dựa trên tên farm
   const generateFarmId = (farmName) => {
     if (!farmName) return "";
     const nameWithoutDiacritics = farmName
@@ -183,6 +177,12 @@ const RegisterFarmForm = () => {
     setError(null);
     setSuccess(null);
 
+    if (!account) {
+      setError("Vui lòng kết nối ví MetaMask!");
+      setLoading(false);
+      return;
+    }
+
     try {
       const user = JSON.parse(localStorage.getItem("user")) || {};
       if (!user.email) {
@@ -191,13 +191,13 @@ const RegisterFarmForm = () => {
         return;
       }
 
-      // Tạo mã farm tự động
       const farmId = generateFarmId(farm.farmName);
 
       const response = await fetch("http://localhost:3000/farm", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-ethereum-address": account,
         },
         body: JSON.stringify({
           farmId,

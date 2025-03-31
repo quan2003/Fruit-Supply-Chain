@@ -1,4 +1,3 @@
-// src/components/DeliveryHub/ShopPage.jsx
 import React, { useState, useEffect } from "react";
 import {
   Box,
@@ -17,13 +16,6 @@ import {
   DialogContent,
   IconButton,
   Divider,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
 } from "@mui/material";
 import {
   Search as SearchIcon,
@@ -43,8 +35,8 @@ import {
 import {
   getFarmByIdService,
   getAllFarmsService,
+  getProducerByIdService,
 } from "../../services/farmService";
-import { getAllUsersService } from "../../services/userService";
 
 const ShopPage = () => {
   const {
@@ -69,37 +61,59 @@ const ShopPage = () => {
   const [purchaseLoading, setPurchaseLoading] = useState(false);
 
   useEffect(() => {
-    const fetchProducts = async () => {
+    const fetchData = async () => {
+      if (!user || !user.id || !user.email) {
+        setError("Vui lòng đăng nhập để xem danh sách sản phẩm.");
+        setLoading(false);
+        return;
+      }
+
+      if (user.role !== "DeliveryHub") {
+        setError("Bạn không có quyền truy cập trang này!");
+        setLoading(false);
+        return;
+      }
+
+      if (!account) {
+        setError("Vui lòng kết nối ví MetaMask để tiếp tục.");
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
-        const data = await getFruitProducts();
-        setProducts(data);
-        setLoading(false);
-      } catch (err) {
-        console.error("Error fetching products:", err);
-        setError("Không thể tải danh sách sản phẩm từ API.");
-        setLoading(false);
-      }
-    };
 
-    const fetchInventory = async () => {
-      try {
-        if (user?.id) {
-          const data = await getInventory(user.id);
-          console.log("ShopPage initial inventory:", data);
-          setInventory(data);
-        } else {
-          console.warn("User is not logged in or user.id is undefined");
+        const headers = {
+          "x-ethereum-address": account,
+          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+        };
+
+        // Fetch products
+        const productData = await getFruitProducts(null, headers);
+        setProducts(productData);
+
+        // Fetch inventory
+        console.log("Fetching inventory for user.id:", user.id);
+        let inventoryData = [];
+        try {
+          inventoryData = await getInventory(user.id, headers);
+          console.log("Inventory data:", inventoryData);
+        } catch (err) {
+          console.warn("Inventory is empty or inaccessible:", err);
+          inventoryData = [];
         }
+        setInventory(inventoryData);
+
+        setLoading(false);
       } catch (err) {
-        console.error("Error fetching inventory:", err);
-        setError("Không thể tải danh sách đơn mua.");
+        console.error("Error fetching data:", err);
+        setError("Không thể tải dữ liệu. Vui lòng thử lại sau.");
+        setLoading(false);
       }
     };
 
-    fetchProducts();
-    fetchInventory();
-  }, [user, setInventory]);
+    fetchData();
+  }, [user, account, setInventory]);
 
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value);
@@ -120,71 +134,55 @@ const ShopPage = () => {
     setApiErrorInfo(null);
 
     try {
-      let success = false;
-      let errorMessages = [];
+      const headers = {
+        "x-ethereum-address": account,
+      };
 
-      try {
-        const allFarms = await getAllFarmsService();
-        const allUsers = await getAllUsersService();
+      const allFarms = await getAllFarmsService(headers);
 
-        if (product.farm_id) {
-          try {
-            const farmData = await getFarmByIdService(product.farm_id);
-            if (farmData) {
-              const producer = allUsers.find(
-                (user) =>
-                  user.role === "Producer" &&
-                  user.id.toString() === farmData.producer_id?.toString()
-              );
+      let farmData = null;
+      let producer = null;
 
-              setFarmInfo({
-                ...farmData,
-                producer_name: producer?.name,
-                producer_wallet: producer?.wallet_address
-                  ? formatWalletAddress(producer.wallet_address)
-                  : null,
-              });
-
-              success = true;
-            }
-          } catch (error) {
-            errorMessages.push(
-              `Không thể tìm nông trại ID ${product.farm_id}: ${error.message}`
-            );
-          }
-        }
-
-        if (
-          !success &&
-          allFarms.length > 0 &&
-          allUsers.some((user) => user.role === "Producer")
-        ) {
-          const farm = allFarms[0];
-          const producer = allUsers.find((user) => user.role === "Producer");
-
-          setFarmInfo({
-            ...farm,
-            producer_name: producer?.name,
-            producer_wallet: producer?.wallet_address
-              ? formatWalletAddress(producer.wallet_address)
-              : null,
-          });
-
-          success = true;
-        }
-      } catch (error) {
-        errorMessages.push(`Lỗi khi tải dữ liệu: ${error.message}`);
+      if (product.farm_id) {
+        farmData = await getFarmByIdService(product.farm_id, headers);
       }
 
-      if (!success) {
+      if (!farmData && allFarms.length > 0) {
+        farmData = allFarms[0];
+      }
+
+      if (farmData && farmData.producer_id) {
+        try {
+          producer = await getProducerByIdService(
+            farmData.producer_id,
+            headers
+          );
+        } catch (error) {
+          console.error("Producer not found, using default info:", error);
+          producer = null;
+        }
+      }
+
+      if (farmData) {
+        setFarmInfo({
+          ...farmData,
+          producer_name: producer?.name || "Không có thông tin",
+          producer_wallet: producer?.wallet_address
+            ? formatWalletAddress(producer.wallet_address)
+            : "Không có thông tin",
+        });
+      } else {
         setApiErrorInfo({
-          errors: errorMessages,
+          errors: ["Không tìm thấy thông tin nông trại."],
           timestamp: new Date().toISOString(),
         });
-        console.error("API errors:", errorMessages);
       }
     } catch (error) {
-      console.error("Error in handleProductClick:", error);
+      console.error("Error fetching farm info:", error);
+      setApiErrorInfo({
+        errors: [error.message || "Lỗi khi tải thông tin nông trại."],
+        timestamp: new Date().toISOString(),
+      });
     } finally {
       setLoadingFarmInfo(false);
     }
@@ -218,7 +216,21 @@ const ShopPage = () => {
     setPurchaseLoading(true);
     try {
       const quantity = 2;
-      const purchaseInfo = await purchaseProduct(product.id, account, quantity);
+
+      // Đảm bảo header x-ethereum-address được gửi đúng cách
+      const headers = {
+        "x-ethereum-address": account,
+        Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+      };
+
+      console.log("Purchase headers:", headers);
+
+      const purchaseInfo = await purchaseProduct(
+        product.id,
+        account,
+        quantity,
+        headers
+      );
 
       if (!purchaseInfo || purchaseInfo.error) {
         throw new Error(purchaseInfo.error || "Không thể thực hiện giao dịch!");
@@ -239,7 +251,7 @@ const ShopPage = () => {
 
       const nonce = await web3.eth.getTransactionCount(account, "pending");
       const gasPrice = await web3.eth.getGasPrice();
-      await web3.eth.sendTransaction({
+      const transactionResult = await web3.eth.sendTransaction({
         from: account,
         to: producerAddress,
         value: totalPriceInWei,
@@ -248,16 +260,14 @@ const ShopPage = () => {
         nonce: nonce,
       });
 
-      await addToInventory(
-        productId,
-        deliveryHubId,
-        qty,
-        price,
-        product.productdate,
-        product.expirydate
-      );
+      const transactionHash = transactionResult.transactionHash;
 
-      // Cập nhật inventory sau khi mua
+      // Truyền transaction hash và headers vào options
+      await addToInventory(productId, deliveryHubId, qty, price, {
+        transactionHash,
+        headers,
+      });
+
       await handleRefresh();
 
       setSuccessMessage(
@@ -654,7 +664,7 @@ const ShopPage = () => {
                               ? new Date(
                                   selectedProduct.productdate
                                 ).toLocaleDateString()
-                              : "22/3/2025"}
+                              : "Không có thông tin"}
                           </Typography>
                         </Grid>
                         <Grid item xs={6}>
@@ -664,12 +674,13 @@ const ShopPage = () => {
                               ? new Date(
                                   selectedProduct.expirydate
                                 ).toLocaleDateString()
-                              : "29/3/2025"}
+                              : "Không có thông tin"}
                           </Typography>
                         </Grid>
                         <Grid item xs={6}>
                           <Typography variant="body2">
-                            Loại: {selectedProduct.category || "ban cho"}
+                            Loại:{" "}
+                            {selectedProduct.category || "Không có thông tin"}
                           </Typography>
                         </Grid>
                         {selectedProduct.productcode && (
@@ -679,47 +690,6 @@ const ShopPage = () => {
                             </Typography>
                           </Grid>
                         )}
-
-                        {Object.entries(selectedProduct).map(([key, value]) => {
-                          if (
-                            [
-                              "id",
-                              "name",
-                              "price",
-                              "imageurl",
-                              "description",
-                              "quantity",
-                              "productdate",
-                              "expirydate",
-                              "category",
-                              "farm_id",
-                              "producer_id",
-                              "productcode",
-                            ].includes(key) ||
-                            value === null ||
-                            value === undefined
-                          ) {
-                            return null;
-                          }
-
-                          const displayKey = key
-                            .replace(/_/g, " ")
-                            .split(" ")
-                            .map(
-                              (word) =>
-                                word.charAt(0).toUpperCase() + word.slice(1)
-                            )
-                            .join(" ");
-
-                          return (
-                            <Grid item xs={6} key={key}>
-                              <Typography variant="body2">
-                                <strong>{displayKey}:</strong>{" "}
-                                {value.toString()}
-                              </Typography>
-                            </Grid>
-                          );
-                        })}
                       </Grid>
                     </Box>
                   </Box>
