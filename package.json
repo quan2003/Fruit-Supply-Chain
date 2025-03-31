@@ -14,15 +14,21 @@
   "type": "commonjs",
   "description": "",
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.2",
     "pg": "^8.14.1",
+    "react-slick": "^0.30.3",
+    "slick-carousel": "^1.8.1",
     "web3": "^4.16.0"
   },
   "devDependencies": {
+    "recharts": "^2.15.1",
+    "web3": "^4.16.0",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "hardhat": "^2.22.19"
   }
