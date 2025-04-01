@@ -74,7 +74,12 @@ const AddFarmProductForm = () => {
 
     const fetchFarms = async () => {
       try {
+        console.log("User từ localStorage:", user);
         console.log("Gọi API /farms/user với account:", account);
+        console.log("Header gửi đi:", {
+          "Content-Type": "application/json",
+          "x-ethereum-address": account,
+        });
         const response = await fetch(
           `http://localhost:3000/farms/user?email=${user.email}`,
           {
@@ -86,11 +91,13 @@ const AddFarmProductForm = () => {
         );
         if (!response.ok) {
           const errorData = await response.json();
+          console.log("Lỗi từ server:", errorData);
           throw new Error(
             errorData.error || "Không thể lấy danh sách farm từ API"
           );
         }
         const data = await response.json();
+        console.log("Dữ liệu farm nhận được:", data);
         if (data.length > 0) {
           setFarms(data);
           setProduct((prev) => ({ ...prev, farm_id: data[0].id }));
@@ -165,23 +172,30 @@ const AddFarmProductForm = () => {
       setError(null);
       const fetchFarms = async () => {
         try {
-          console.log("Gọi lại API /farms/user với account:", account);
+          console.log("User từ localStorage:", user);
+          console.log("Gọi API /farms/user với account:", account);
+          console.log("Header gửi đi:", {
+            "Content-Type": "application/json",
+            "x-ethereum-address": account,
+          });
           const response = await fetch(
             `http://localhost:3000/farms/user?email=${user.email}`,
             {
               headers: {
                 "Content-Type": "application/json",
-                "x-ethereum-address": account,
+                "x-ethereum-address": account || "",
               },
             }
           );
           if (!response.ok) {
             const errorData = await response.json();
+            console.log("Lỗi từ server:", errorData);
             throw new Error(
               errorData.error || "Không thể lấy danh sách farm từ API"
             );
           }
           const data = await response.json();
+          console.log("Dữ liệu farm nhận được:", data);
           if (data.length > 0) {
             setFarms(data);
             setProduct((prev) => ({ ...prev, farm_id: data[0].id }));
@@ -292,21 +306,22 @@ const AddFarmProductForm = () => {
         tx
       );
 
-      const formData = new FormData();
-      formData.append("name", product.name);
-      formData.append("productcode", productCode);
-      formData.append("category", product.category);
-      formData.append("description", product.description);
-      formData.append("price", product.price);
-      formData.append("quantity", product.quantity);
-      formData.append("image", imageFile);
-      formData.append("productdate", product.productiondate);
-      formData.append("expirydate", product.expirydate);
-      formData.append("farm_id", product.farm_id);
-      formData.append("email", user.email);
-      formData.append("hash", ipfsHash);
+      // Gửi dữ liệu dưới dạng JSON thay vì FormData
+      const productData = {
+        name: product.name,
+        productcode: productCode,
+        category: product.category,
+        description: product.description,
+        price: product.price,
+        quantity: product.quantity,
+        productdate: product.productiondate,
+        expirydate: product.expirydate,
+        farm_id: product.farm_id,
+        email: user.email,
+        frontendHash: ipfsHash, // Đổi tên trường hash thành frontendHash
+      };
 
-      await addFruitProduct(formData, { "x-ethereum-address": account });
+      await addFruitProduct(productData, { "x-ethereum-address": account });
       setLoading(false);
       setSuccess("Thêm sản phẩm thành công!");
     } catch (err) {

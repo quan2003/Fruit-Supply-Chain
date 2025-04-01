@@ -243,11 +243,9 @@ app.post("/update-wallet", async (req, res) => {
       [walletAddress, email]
     );
     if (walletExists.rows.length > 0) {
-      return res
-        .status(400)
-        .json({
-          message: "Địa chỉ ví đã được sử dụng bởi người dùng khác! 😅",
-        });
+      return res.status(400).json({
+        message: "Địa chỉ ví đã được sử dụng bởi người dùng khác! 😅",
+      });
     }
 
     const updatedUser = await pool.query(
@@ -294,6 +292,7 @@ app.get("/farms/user", checkAuth, checkRole(["Producer"]), async (req, res) => {
       [producerId]
     );
 
+    console.log("Dữ liệu farm trả về:", farms.rows); // Thêm log để debug
     res.json(farms.rows);
   } catch (error) {
     console.error("Lỗi khi lấy farm:", error);
@@ -1892,117 +1891,99 @@ app.post(
 );
 
 // ==== API THÊM SẢN PHẨM ====
-app.post(
-  "/products",
-  checkAuth,
-  checkRole(["Producer"]),
-  upload.single("image"),
-  async (req, res) => {
-    console.log("Dữ liệu nhận được từ frontend:", req.body, req.file);
+app.post("/products", checkAuth, checkRole(["Producer"]), async (req, res) => {
+  console.log("Dữ liệu nhận được từ frontend:", req.body);
 
-    const {
-      name,
-      productcode,
-      category,
-      description,
-      price,
-      quantity,
-      productdate,
-      expirydate,
-      farm_id,
-      email,
-      hash: frontendHash,
-    } = req.body;
-    const image = req.file;
+  const {
+    name,
+    productcode,
+    category,
+    description,
+    price,
+    quantity,
+    productdate,
+    expirydate,
+    farm_id,
+    email,
+    frontendHash,
+  } = req.body;
 
-    try {
-      if (
-        !name ||
-        !productcode ||
-        !category ||
-        !description ||
-        !price ||
-        !quantity ||
-        !productdate ||
-        !expirydate ||
-        !farm_id ||
-        !email ||
-        !image
-      ) {
-        return res
-          .status(400)
-          .json({ message: "Vui lòng điền đầy đủ thông tin! 😅" });
-      }
+  try {
+    if (
+      !name ||
+      !productcode ||
+      !category ||
+      !description ||
+      !price ||
+      !quantity ||
+      !productdate ||
+      !expirydate ||
+      !farm_id ||
+      !email ||
+      !frontendHash
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Vui lòng điền đầy đủ thông tin! 😅" });
+    }
 
-      if (req.user.email !== email) {
-        return res.status(403).json({ message: "Không có quyền truy cập! 😅" });
-      }
+    if (req.user.email !== email) {
+      return res.status(403).json({ message: "Không có quyền truy cập! 😅" });
+    }
 
-      const user = await pool.query(
-        "SELECT id FROM users WHERE email = $1 AND role = 'Producer'",
-        [email]
-      );
-      if (user.rows.length === 0) {
-        return res
-          .status(404)
-          .json({ message: "Không tìm thấy người dùng! 😅" });
-      }
-      const producerId = user.rows[0].id;
+    const user = await pool.query(
+      "SELECT id FROM users WHERE email = $1 AND role = 'Producer'",
+      [email]
+    );
+    if (user.rows.length === 0) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng! 😅" });
+    }
+    const producerId = user.rows[0].id;
 
-      const farm = await pool.query(
-        "SELECT * FROM farms WHERE id = $1 AND producer_id = $2",
-        [farm_id, producerId]
-      );
-      if (farm.rows.length === 0) {
-        return res
-          .status(400)
-          .json({ message: "Farm không thuộc producer này! 😅" });
-      }
+    const farm = await pool.query(
+      "SELECT * FROM farms WHERE id = $1 AND producer_id = $2",
+      [farm_id, producerId]
+    );
+    if (farm.rows.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "Farm không thuộc producer này! 😅" });
+    }
 
-      let ipfsHash = "";
-      if (image) {
-        const fileBuffer = fs.readFileSync(image.path);
-        const result = await ipfs.add(fileBuffer);
-        ipfsHash = result.path;
-        console.log(`Uploaded image to IPFS with hash: ${ipfsHash}`);
-        fs.unlinkSync(image.path);
-      }
+    const finalHash = frontendHash;
+    const imageUrl = `http://localhost:8080/ipfs/${finalHash}`; // Sử dụng gateway cục bộ
+    const result = await pool.query(
+      "INSERT INTO products (name, productcode, category, description, price, quantity, imageurl, productdate, expirydate, farm_id, hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *",
+      [
+        name,
+        productcode,
+        category,
+        description,
+        price,
+        quantity,
+        imageUrl,
+        productdate,
+        expirydate,
+        farm_id,
+        finalHash,
+      ]
+    );
 
-      const finalHash = frontendHash || ipfsHash;
-      const imageUrl = `/uploads/${image.filename}`; // Lưu ý: Vì đã xóa file tạm, imageUrl có thể không cần thiết
-      const result = await pool.query(
-        "INSERT INTO products (name, productcode, category, description, price, quantity, imageurl, productdate, expirydate, farm_id, hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *",
-        [
-          name,
-          productcode,
-          category,
-          description,
-          price,
-          quantity,
-          imageUrl,
-          productdate,
-          expirydate,
-          farm_id,
-          finalHash,
-        ]
-      );
-
-      res.status(201).json(result.rows[0]);
-    } catch (error) {
-      console.error("Lỗi khi lưu sản phẩm vào cơ sở dữ liệu:", error);
-      if (error.code === "ECONNREFUSED" && error.message.includes("ipfs")) {
-        res.status(500).json({
-          error:
-            "Không thể kết nối đến IPFS daemon. Vui lòng kiểm tra xem IPFS daemon có đang chạy không.",
-        });
-      } else {
-        res
-          .status(500)
-          .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
-      }
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error("Lỗi khi lưu sản phẩm vào cơ sở dữ liệu:", error);
+    if (error.code === "ECONNREFUSED" && error.message.includes("ipfs")) {
+      res.status(500).json({
+        error:
+          "Không thể kết nối đến IPFS daemon. Vui lòng kiểm tra xem IPFS daemon có đang chạy không.",
+      });
+    } else {
+      res
+        .status(500)
+        .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
     }
   }
-);
+});
 
 // ==== IPFS UPLOAD ENDPOINT ====
 app.post("/ipfs/add", upload.single("file"), async (req, res) => {

@@ -84,25 +84,28 @@ const FarmOverview = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!user.email || !account) {
-        setError("Vui lòng đăng nhập và kết nối ví MetaMask!");
+      // Kiểm tra điều kiện trước khi gọi API
+      if (!user.email) {
+        setError("Vui lòng đăng nhập để xem thông tin!");
+        setLoading(false);
+        return;
+      }
+      if (!account || typeof account !== "string" || account === "") {
+        setError("Vui lòng kết nối ví MetaMask để tiếp tục!");
         setLoading(false);
         return;
       }
 
       try {
         setLoading(true);
+        console.log("Bắt đầu fetch data với account:", account);
 
         // Lấy thống kê farm
-        const statsData = await getFarmStats(user.email, {
-          "x-ethereum-address": account,
-        });
+        const statsData = await getFarmStats(user.email, account);
         setStats(statsData);
 
         // Lấy dữ liệu sản lượng
-        const yieldDataResponse = await getYieldData(user.email, {
-          "x-ethereum-address": account,
-        });
+        const yieldDataResponse = await getYieldData(user.email, account);
         setYieldData(yieldDataResponse);
 
         // Lấy dữ liệu farm từ localStorage
@@ -114,7 +117,8 @@ const FarmOverview = () => {
 
         setLoading(false);
       } catch (err) {
-        setError("Không thể tải dữ liệu. Vui lòng thử lại sau.");
+        console.error("Lỗi khi fetch data:", err);
+        setError(err.message || "Không thể tải dữ liệu. Vui lòng thử lại sau.");
         setLoading(false);
       }
     };

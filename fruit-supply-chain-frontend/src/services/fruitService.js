@@ -47,12 +47,12 @@ export const getFruitProductById = async (productId, headers = {}) => {
 };
 
 // Thêm sản phẩm mới
-export const addFruitProduct = async (formData, headers = {}) => {
+export const addFruitProduct = async (productData, headers = {}) => {
   try {
-    const response = await axiosInstance.post("/products", formData, {
+    const response = await axiosInstance.post("/products", productData, {
       headers: {
         ...headers,
-        "Content-Type": "multipart/form-data",
+        "Content-Type": "application/json",
       },
     });
     return response.data;
@@ -62,7 +62,6 @@ export const addFruitProduct = async (formData, headers = {}) => {
   }
 };
 
-// Kiểm tra thông tin giao dịch mua sản phẩm
 // Kiểm tra thông tin giao dịch mua sản phẩm
 export const purchaseProduct = async (
   productId,
@@ -99,7 +98,6 @@ export const purchaseProduct = async (
   }
 };
 
-// Thêm sản phẩm vào kho sau khi giao dịch thành công
 // Thêm sản phẩm vào kho sau khi giao dịch thành công
 export const addToInventory = async (
   productId,

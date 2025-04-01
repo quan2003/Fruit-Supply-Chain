@@ -20,6 +20,9 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import "../FruitCatalog/CatalogStyles.css";
 
+// Ảnh placeholder đáng tin cậy
+const placeholderImage = "https://placehold.co/150x150";
+
 const FarmProductList = () => {
   const navigate = useNavigate();
   const { account } = useWeb3();
@@ -32,17 +35,24 @@ const FarmProductList = () => {
 
   useEffect(() => {
     const fetchProducts = async () => {
-      if (!user.email || !account) {
-        setError("Vui lòng đăng nhập và kết nối ví MetaMask!");
+      // Kiểm tra điều kiện trước khi gọi API
+      if (!user.email) {
+        setError("Vui lòng đăng nhập để xem danh sách sản phẩm!");
+        setLoading(false);
+        return;
+      }
+      if (!account || typeof account !== "string" || account === "") {
+        setError("Vui lòng kết nối ví MetaMask để tiếp tục!");
         setLoading(false);
         return;
       }
 
       try {
         setLoading(true);
-        const data = await getFruitProducts(user.email, {
-          "x-ethereum-address": account,
-        });
+        console.log("Bắt đầu fetch products với account:", account);
+
+        // Lấy danh sách sản phẩm
+        const data = await getFruitProducts(user.email, account);
 
         // Kiểm tra dữ liệu trả về
         if (!Array.isArray(data)) {
@@ -69,7 +79,6 @@ const FarmProductList = () => {
         }));
 
         setProducts(sanitizedData);
-        setLoading(false);
 
         // Kiểm tra xem có farm không
         const response = await fetch(
@@ -81,14 +90,23 @@ const FarmProductList = () => {
             },
           }
         );
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || "Không thể lấy danh sách farm!");
+        }
         const farms = await response.json();
-        if (!response.ok || farms.length === 0) {
+        if (farms.length === 0) {
           setError("Không tìm thấy farm của bạn! Vui lòng tạo farm trước.");
           setTimeout(() => navigate("/farms/register"), 3000);
         }
+
+        setLoading(false);
       } catch (err) {
         console.error("Lỗi khi lấy danh sách sản phẩm:", err);
-        setError("Không thể tải danh sách sản phẩm. Vui lòng thử lại sau.");
+        setError(
+          err.message ||
+            "Không thể tải danh sách sản phẩm. Vui lòng thử lại sau."
+        );
         setLoading(false);
       }
     };
@@ -105,12 +123,13 @@ const FarmProductList = () => {
     setPage(0);
   };
 
-  if (loading)
+  if (loading) {
     return (
       <div className="loading-message">
         <LoadingSpinner /> Đang tải dữ liệu...
       </div>
     );
+  }
 
   if (error) {
     return (
@@ -227,19 +246,18 @@ const FarmProductList = () => {
                       <TableCell>{product.name}</TableCell>
                       <TableCell>
                         <img
-                          src={
-                            product.imageurl
-                              ? `http://localhost:3000${product.imageurl}`
-                              : "https://via.placeholder.com/150"
-                          }
+                          src={product.imageurl}
                           alt={product.name}
                           style={{
                             width: "50px",
                             height: "50px",
                             borderRadius: "5px",
+                            objectFit: "cover",
                           }}
                           onError={(e) => {
-                            e.target.src = "https://via.placeholder.com/150";
+                            console.error("Lỗi tải ảnh:", product.imageurl);
+                            e.target.src = placeholderImage;
+                            e.target.onerror = null; // Ngăn vòng lặp vô hạn
                           }}
                         />
                       </TableCell>
