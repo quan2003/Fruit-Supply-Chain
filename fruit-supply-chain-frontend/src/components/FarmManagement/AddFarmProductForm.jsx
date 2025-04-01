@@ -20,7 +20,17 @@ import "../FruitCatalog/CatalogStyles.css";
 
 const AddFarmProductForm = () => {
   const navigate = useNavigate();
-  const { account } = useWeb3();
+  const {
+    account,
+    contract,
+    connectWallet,
+    updateWalletAddress,
+    loading: web3Loading,
+    walletError,
+    userError,
+    contractError,
+    setWalletError,
+  } = useWeb3();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -30,9 +40,18 @@ const AddFarmProductForm = () => {
   const [farms, setFarms] = useState([]);
   const user = JSON.parse(localStorage.getItem("user")) || {};
 
+  const validFruits = [
+    "Dua Hau",
+    "Mang Cut",
+    "Trai Cam",
+    "Trai Thanh Long",
+    "Trai Xoai",
+    "Vu Sua",
+  ];
+
   const [product, setProduct] = useState({
     name: "",
-    category: "ban cho",
+    category: "",
     description: "",
     price: "",
     quantity: "",
@@ -42,13 +61,20 @@ const AddFarmProductForm = () => {
   });
 
   useEffect(() => {
-    const fetchFarms = async () => {
-      if (!user.email || !account) {
-        setError("Vui lòng đăng nhập và kết nối ví MetaMask!");
-        return;
-      }
+    if (!user.email) {
+      console.log("AddFarmProductForm - No user email, redirecting to login");
+      navigate("/dang-nhap");
+      return;
+    }
 
+    if (!account) {
+      console.log("Chưa có account, không gọi fetchFarms");
+      return;
+    }
+
+    const fetchFarms = async () => {
       try {
+        console.log("Gọi API /farms/user với account:", account);
         const response = await fetch(
           `http://localhost:3000/farms/user?email=${user.email}`,
           {
@@ -58,8 +84,14 @@ const AddFarmProductForm = () => {
             },
           }
         );
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(
+            errorData.error || "Không thể lấy danh sách farm từ API"
+          );
+        }
         const data = await response.json();
-        if (response.ok && data.length > 0) {
+        if (data.length > 0) {
           setFarms(data);
           setProduct((prev) => ({ ...prev, farm_id: data[0].id }));
         } else {
@@ -67,7 +99,10 @@ const AddFarmProductForm = () => {
           setTimeout(() => navigate("/farms/register"), 3000);
         }
       } catch (err) {
-        setError("Không thể lấy danh sách farm. Vui lòng thử lại sau.");
+        console.error("Lỗi khi lấy danh sách farm:", err);
+        setError(
+          "Không thể lấy danh sách farm. Vui lòng thử lại sau: " + err.message
+        );
       }
     };
 
@@ -75,21 +110,21 @@ const AddFarmProductForm = () => {
   }, [user.email, account, navigate]);
 
   useEffect(() => {
-    if (success) {
+    if (success && !redirecting) {
       setRedirecting(true);
       const timer = setTimeout(() => {
         navigate("/farms/products");
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [success, navigate]);
+  }, [success, redirecting, navigate]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setProduct({
-      ...product,
+    setProduct((prev) => ({
+      ...prev,
       [name]: value,
-    });
+    }));
   };
 
   const handleImageChange = (e) => {
@@ -101,6 +136,70 @@ const AddFarmProductForm = () => {
       }
       setImageFile(file);
       setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleConnectWallet = async () => {
+    try {
+      const accounts = await window.ethereum.request({
+        method: "eth_accounts",
+      });
+      if (accounts.length > 0) {
+        console.log("Ví MetaMask đã được kết nối:", accounts[0]);
+        setError(null);
+        return;
+      }
+
+      await connectWallet();
+      setError(null);
+    } catch (err) {
+      console.error("Lỗi khi kết nối ví MetaMask:", err);
+      setError("Không thể kết nối ví MetaMask: " + err.message);
+    }
+  };
+
+  const handleUpdateWallet = async () => {
+    try {
+      await updateWalletAddress(user.email);
+      setWalletError(null);
+      setError(null);
+      const fetchFarms = async () => {
+        try {
+          console.log("Gọi lại API /farms/user với account:", account);
+          const response = await fetch(
+            `http://localhost:3000/farms/user?email=${user.email}`,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                "x-ethereum-address": account,
+              },
+            }
+          );
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(
+              errorData.error || "Không thể lấy danh sách farm từ API"
+            );
+          }
+          const data = await response.json();
+          if (data.length > 0) {
+            setFarms(data);
+            setProduct((prev) => ({ ...prev, farm_id: data[0].id }));
+          } else {
+            setError("Không tìm thấy farm của bạn! Vui lòng tạo farm trước.");
+            setTimeout(() => navigate("/farms/register"), 3000);
+          }
+        } catch (err) {
+          console.error("Lỗi khi lấy danh sách farm:", err);
+          setError(
+            "Không thể lấy danh sách farm. Vui lòng thử lại sau: " + err.message
+          );
+        }
+      };
+      await fetchFarms();
+    } catch (err) {
+      console.error("Lỗi khi cập nhật ví:", err);
+      setError("Không thể cập nhật ví: " + err.message);
     }
   };
 
@@ -118,20 +217,80 @@ const AddFarmProductForm = () => {
     return `${namePrefix}${randomNum}`;
   };
 
+  const uploadToIPFS = async (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch("http://localhost:3000/ipfs/add", {
+        method: "POST",
+        body: formData,
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Lỗi khi upload lên IPFS");
+      }
+      const data = await response.json();
+      return data.hash;
+    } catch (error) {
+      throw new Error("Không thể upload ảnh lên IPFS: " + error.message);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setSuccess(null);
 
-    if (!account) {
-      setError("Vui lòng kết nối ví MetaMask!");
+    if (!account || !contract) {
+      setError("Vui lòng kết nối ví MetaMask và khởi tạo hợp đồng!");
       setLoading(false);
       return;
     }
 
     try {
       const productCode = generateProductCode(product.name);
+
+      let ipfsHash = "";
+      if (imageFile) {
+        console.log(
+          "Bắt đầu upload ảnh lên IPFS qua backend, kích thước file:",
+          imageFile.size
+        );
+        ipfsHash = await uploadToIPFS(imageFile);
+        console.log(`Uploaded image to IPFS with hash: ${ipfsHash}`);
+      } else {
+        throw new Error("Vui lòng chọn hình ảnh để upload!");
+      }
+
+      const fruitType = product.category;
+      console.log("Calling setFruitHash with:", fruitType, ipfsHash);
+
+      let gasLimit;
+      try {
+        const gasEstimate = await contract.methods
+          .setFruitHash(fruitType, ipfsHash)
+          .estimateGas({ from: account });
+        gasLimit = Math.floor(Number(gasEstimate) * 3); // Tăng gấp 3 lần
+        console.log("Gas estimated:", gasEstimate, "Gas limit set:", gasLimit);
+      } catch (err) {
+        console.error("Gas estimation failed:", err);
+        gasLimit = 1000000; // Gas limit mặc định lớn hơn
+        console.log("Using default gas limit:", gasLimit);
+      }
+
+      console.log(
+        "Sending transaction to MetaMask with contract:",
+        contract.address
+      );
+      const tx = await contract.methods
+        .setFruitHash(fruitType, ipfsHash)
+        .send({ from: account, gas: gasLimit });
+      console.log(
+        `Transaction successful: ${fruitType} stored with hash ${ipfsHash}`,
+        tx
+      );
 
       const formData = new FormData();
       formData.append("name", product.name);
@@ -145,13 +304,26 @@ const AddFarmProductForm = () => {
       formData.append("expirydate", product.expirydate);
       formData.append("farm_id", product.farm_id);
       formData.append("email", user.email);
+      formData.append("hash", ipfsHash);
 
       await addFruitProduct(formData, { "x-ethereum-address": account });
       setLoading(false);
       setSuccess("Thêm sản phẩm thành công!");
     } catch (err) {
       console.error("Lỗi khi thêm sản phẩm:", err);
-      setError(err.message || "Không thể thêm sản phẩm. Vui lòng thử lại sau.");
+      let errorMessage = "Không thể thêm sản phẩm. Vui lòng thử lại sau.";
+      if (err.code === -32603) {
+        errorMessage =
+          "Lỗi giao dịch blockchain: Internal JSON-RPC error. Kiểm tra Hardhat node và hợp đồng.";
+      } else if (err.message.includes("out of gas")) {
+        errorMessage = "Giao dịch hết gas. Vui lòng thử lại với gas cao hơn.";
+      } else if (err.message.includes("revert")) {
+        errorMessage = "Hợp đồng từ chối giao dịch. Kiểm tra logic hợp đồng.";
+      } else if (err.message.includes("Failed to fetch")) {
+        errorMessage =
+          "Không thể kết nối đến backend. Vui lòng kiểm tra server.";
+      }
+      setError(errorMessage);
       setLoading(false);
     }
   };
@@ -169,6 +341,11 @@ const AddFarmProductForm = () => {
           Thêm sản phẩm
         </Typography>
 
+        {web3Loading && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Đang khởi tạo Web3, vui lòng chờ...
+          </Alert>
+        )}
         {error && (
           <Alert severity="error" sx={{ mb: 3 }}>
             {error}
@@ -178,6 +355,56 @@ const AddFarmProductForm = () => {
           <Alert severity="success" sx={{ mb: 3 }}>
             {success}
           </Alert>
+        )}
+        {walletError && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {walletError}
+          </Alert>
+        )}
+        {walletError &&
+          walletError.includes("Địa chỉ ví MetaMask không được liên kết") && (
+            <Box sx={{ mb: 3 }}>
+              <Button
+                variant="contained"
+                color="secondary"
+                onClick={handleUpdateWallet}
+                sx={{
+                  textTransform: "none",
+                  fontWeight: "bold",
+                  bgcolor: "#f50057",
+                  "&:hover": { bgcolor: "#c51162" },
+                }}
+              >
+                Cập nhật ví MetaMask
+              </Button>
+            </Box>
+          )}
+        {userError && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {userError}
+          </Alert>
+        )}
+        {contractError && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {contractError}
+          </Alert>
+        )}
+        {!account && !web3Loading && (
+          <Box sx={{ mb: 3 }}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleConnectWallet}
+              sx={{
+                textTransform: "none",
+                fontWeight: "bold",
+                bgcolor: "#1976D2",
+                "&:hover": { bgcolor: "#115293" },
+              }}
+            >
+              Kết nối ví MetaMask
+            </Button>
+          </Box>
         )}
 
         <form onSubmit={handleSubmit}>
@@ -198,15 +425,21 @@ const AddFarmProductForm = () => {
 
             <Grid item xs={12}>
               <FormControl fullWidth variant="standard" sx={{ mb: 2 }}>
-                <InputLabel shrink>Phân loại</InputLabel>
+                <InputLabel shrink>Loại trái cây</InputLabel>
                 <Select
                   name="category"
                   value={product.category}
                   onChange={handleChange}
                   required
                 >
-                  <MenuItem value="ban cho">Bán cho</MenuItem>
-                  <MenuItem value="nhap vao">Nhập vào</MenuItem>
+                  <MenuItem value="" disabled>
+                    Chọn loại trái cây
+                  </MenuItem>
+                  {validFruits.map((fruit) => (
+                    <MenuItem key={fruit} value={fruit}>
+                      {fruit}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
@@ -334,7 +567,7 @@ const AddFarmProductForm = () => {
                   type="submit"
                   variant="contained"
                   color="primary"
-                  disabled={loading}
+                  disabled={loading || !account || !contract || web3Loading}
                   sx={{
                     textTransform: "none",
                     fontWeight: "bold",

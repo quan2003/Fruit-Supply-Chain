@@ -1,10 +1,15 @@
-const express = require("express");
-const cors = require("cors");
-const bcrypt = require("bcrypt");
-const pool = require("./db");
-const path = require("path");
-const fs = require("fs");
-const multer = require("multer");
+import express from "express";
+import cors from "cors";
+import bcrypt from "bcrypt";
+import pool from "./db.js";
+import path from "path";
+import fs from "fs";
+import multer from "multer";
+import ipfs from "./ipfsClient.js";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -18,7 +23,7 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
 }
 
-// Cấu hình multer để lưu file
+// Cấu hình multer để lưu file tạm thời
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "uploads/");
@@ -39,6 +44,25 @@ const validRoles = [
   "Admin",
 ];
 
+// Đọc CONTRACT_ADDRESS từ file
+let CONTRACT_ADDRESS = "";
+try {
+  const contractAddressPath = "D:\\fruit-supply-chain\\contract-address.txt";
+  if (fs.existsSync(contractAddressPath)) {
+    CONTRACT_ADDRESS = fs.readFileSync(contractAddressPath, "utf8").trim();
+    console.log("Địa chỉ hợp đồng từ file:", CONTRACT_ADDRESS);
+  } else {
+    console.error(
+      "File contract-address.txt không tồn tại tại đường dẫn:",
+      contractAddressPath
+    );
+    throw new Error("File contract-address.txt không tồn tại!");
+  }
+} catch (error) {
+  console.error("Lỗi khi đọc CONTRACT_ADDRESS từ file:", error);
+  CONTRACT_ADDRESS = "";
+}
+
 // Middleware kiểm tra quyền
 const checkAuth = async (req, res, next) => {
   const userAddress = req.headers["x-ethereum-address"];
@@ -56,7 +80,6 @@ const checkAuth = async (req, res, next) => {
         error: "Địa chỉ ví không được liên kết với tài khoản nào!",
       });
     }
-
     req.user = user.rows[0];
     next();
   } catch (error) {
@@ -73,14 +96,29 @@ const checkRole = (roles) => {
     if (!req.user) {
       return res.status(401).json({ error: "Yêu cầu xác thực" });
     }
-
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({ error: "Không có quyền truy cập" });
     }
-
     next();
   };
 };
+
+// ==== API TRẢ VỀ ĐỊA CHỈ HỢP ĐỒNG ====
+app.get("/contract-address", (req, res) => {
+  try {
+    if (!CONTRACT_ADDRESS) {
+      throw new Error(
+        "Địa chỉ hợp đồng không được thiết lập. Vui lòng kiểm tra file D:\\fruit-supply-chain\\contract-address.txt."
+      );
+    }
+    res.status(200).json({ address: CONTRACT_ADDRESS });
+  } catch (error) {
+    console.error("Lỗi khi lấy địa chỉ hợp đồng:", error);
+    res
+      .status(500)
+      .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
+  }
+});
 
 // ==== API KIỂM TRA VAI TRÒ NGƯỜI DÙNG ====
 app.get("/check-role", checkAuth, async (req, res) => {
@@ -89,6 +127,7 @@ app.get("/check-role", checkAuth, async (req, res) => {
       role: req.user.role,
       email: req.user.email,
       name: req.user.name,
+      walletAddress: req.user.wallet_address,
     });
   } catch (error) {
     console.error("Lỗi khi kiểm tra vai trò:", error);
@@ -144,6 +183,12 @@ app.post("/login", async (req, res) => {
   const { email, password, role } = req.body;
 
   try {
+    if (!email || !password || !role) {
+      return res
+        .status(400)
+        .json({ message: "Vui lòng điền đầy đủ thông tin! 😅" });
+    }
+
     if (!validRoles.includes(role)) {
       return res.status(400).json({ message: "Vai trò không hợp lệ! 😅" });
     }
@@ -187,10 +232,10 @@ app.post("/update-wallet", async (req, res) => {
   const { email, walletAddress } = req.body;
 
   try {
-    if (!walletAddress) {
+    if (!email || !walletAddress) {
       return res
         .status(400)
-        .json({ message: "Vui lòng cung cấp địa chỉ ví! 😅" });
+        .json({ message: "Vui lòng cung cấp email và địa chỉ ví! 😅" });
     }
 
     const walletExists = await pool.query(
@@ -200,7 +245,9 @@ app.post("/update-wallet", async (req, res) => {
     if (walletExists.rows.length > 0) {
       return res
         .status(400)
-        .json({ message: "Địa chỉ ví đã được sử dụng! 😅" });
+        .json({
+          message: "Địa chỉ ví đã được sử dụng bởi người dùng khác! 😅",
+        });
     }
 
     const updatedUser = await pool.query(
@@ -219,6 +266,7 @@ app.post("/update-wallet", async (req, res) => {
       .json({ message: "Có lỗi xảy ra! Vui lòng thử lại nhé! 😓" });
   }
 });
+
 // ==== LẤY FARM CỦA PRODUCER ====
 app.get("/farms/user", checkAuth, checkRole(["Producer"]), async (req, res) => {
   const { email } = req.query;
@@ -268,11 +316,185 @@ app.get("/farms", async (req, res) => {
   }
 });
 
+// ==== API LẤY THỐNG KÊ FARM (TỔNG SẢN PHẨM, SẢN PHẨM ĐÃ BÁN, DOANH THU) ====
+app.get(
+  "/farms/stats",
+  checkAuth,
+  checkRole(["Producer"]),
+  async (req, res) => {
+    const { email } = req.query;
+
+    try {
+      if (!email) {
+        return res.status(400).json({ message: "Vui lòng cung cấp email! 😅" });
+      }
+
+      if (req.user.email !== email) {
+        return res.status(403).json({ message: "Không có quyền truy cập! 😅" });
+      }
+
+      const user = await pool.query(
+        "SELECT id FROM users WHERE email = $1 AND role = 'Producer'",
+        [email]
+      );
+      if (user.rows.length === 0) {
+        return res
+          .status(404)
+          .json({ message: "Không tìm thấy người dùng! 😅" });
+      }
+
+      const producerId = user.rows[0].id;
+
+      const farms = await pool.query(
+        "SELECT id FROM farms WHERE producer_id = $1",
+        [producerId]
+      );
+      const farmIds = farms.rows.map((farm) => farm.id);
+
+      if (farmIds.length === 0) {
+        return res.json({
+          totalProducts: 0,
+          soldProducts: 0,
+          totalRevenue: 0,
+        });
+      }
+
+      const productsCount = await pool.query(
+        "SELECT COUNT(*) FROM products WHERE farm_id = ANY($1)",
+        [farmIds]
+      );
+      const totalProducts = parseInt(productsCount.rows[0].count);
+
+      const soldProductsResult = await pool.query(
+        `
+      SELECT COUNT(*) 
+      FROM outgoing_products op
+      JOIN shipment_products sp ON op.product_id = sp.product_id
+      JOIN shipments s ON sp.shipment_id = s.id
+      WHERE op.product_id IN (SELECT id FROM products WHERE farm_id = ANY($1))
+      AND s.status = 'Delivered'
+      AND s.recipient_type = 'Customer'
+      `,
+        [farmIds]
+      );
+      const soldProducts = parseInt(soldProductsResult.rows[0].count);
+
+      const revenueResult = await pool.query(
+        `
+      SELECT COALESCE(SUM(sp.price * sp.quantity), 0) as total_revenue
+      FROM shipment_products sp
+      JOIN shipments s ON sp.shipment_id = s.id
+      WHERE sp.product_id IN (SELECT id FROM products WHERE farm_id = ANY($1))
+      AND s.status = 'Delivered'
+      AND s.recipient_type = 'Customer'
+      `,
+        [farmIds]
+      );
+      const totalRevenue = parseFloat(revenueResult.rows[0].total_revenue);
+
+      res.json({
+        totalProducts,
+        soldProducts,
+        totalRevenue,
+      });
+    } catch (error) {
+      console.error("Lỗi khi lấy thống kê farm:", error);
+      res
+        .status(500)
+        .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
+    }
+  }
+);
+
+// ==== API LẤY DỮ LIỆU SẢN LƯỢNG THEO THÁNG ====
+app.get(
+  "/farms/yield",
+  checkAuth,
+  checkRole(["Producer"]),
+  async (req, res) => {
+    const { email } = req.query;
+
+    try {
+      if (!email) {
+        return res.status(400).json({ message: "Vui lòng cung cấp email! 😅" });
+      }
+
+      if (req.user.email !== email) {
+        return res.status(403).json({ message: "Không có quyền truy cập! 😅" });
+      }
+
+      const user = await pool.query(
+        "SELECT id FROM users WHERE email = $1 AND role = 'Producer'",
+        [email]
+      );
+      if (user.rows.length === 0) {
+        return res
+          .status(404)
+          .json({ message: "Không tìm thấy người dùng! 😅" });
+      }
+
+      const producerId = user.rows[0].id;
+
+      const farms = await pool.query(
+        "SELECT id FROM farms WHERE producer_id = $1",
+        [producerId]
+      );
+      const farmIds = farms.rows.map((farm) => farm.id);
+
+      if (farmIds.length === 0) {
+        return res.json([]);
+      }
+
+      const yieldResult = await pool.query(
+        `
+      SELECT 
+        TO_CHAR(productdate, 'YYYY-MM') as month,
+        SUM(quantity) as yield
+      FROM products
+      WHERE farm_id = ANY($1)
+      GROUP BY TO_CHAR(productdate, 'YYYY-MM')
+      ORDER BY month
+      `,
+        [farmIds]
+      );
+
+      const yieldData = yieldResult.rows.map((row) => {
+        const [year, month] = row.month.split("-");
+        return {
+          month: `Tháng ${parseInt(month)}/${year}`,
+          yield: parseFloat(row.yield),
+        };
+      });
+
+      if (yieldData.length === 0) {
+        return res.json([
+          { month: "Tháng 1", yield: 0 },
+          { month: "Tháng 2", yield: 0 },
+          { month: "Tháng 3", yield: 0 },
+          { month: "Tháng 4", yield: 0 },
+          { month: "Tháng 5", yield: 0 },
+        ]);
+      }
+
+      res.json(yieldData);
+    } catch (error) {
+      console.error("Lỗi khi lấy dữ liệu sản lượng:", error);
+      res
+        .status(500)
+        .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
+    }
+  }
+);
+
 // ==== API LẤY FARM THEO ID ====
 app.get("/farms/:id", async (req, res) => {
   const farmId = req.params.id;
 
   try {
+    if (!/^\d+$/.test(farmId)) {
+      return res.status(400).json({ message: "ID farm không hợp lệ! 😅" });
+    }
+
     const result = await pool.query("SELECT * FROM farms WHERE id = $1", [
       farmId,
     ]);
@@ -610,8 +832,7 @@ app.post(
 
       const sellingPrice = price || inventoryItem.price;
 
-      let outgoingResult;
-      outgoingResult = await pool.query(
+      const outgoingResult = await pool.query(
         "INSERT INTO outgoing_products (product_id, delivery_hub_id, quantity, price, listed_date, status, transaction_hash, listing_id, fruit_id) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, 'Available', $5, $6, $7) RETURNING *",
         [
           inventoryItem.product_id,
@@ -783,6 +1004,7 @@ app.post(
     }
   }
 );
+
 // ==== API LẤY THÔNG TIN BẢN GHI INVENTORY THEO INVENTORY ID ====
 app.get(
   "/inventory/by-id/:inventoryId",
@@ -809,7 +1031,6 @@ app.get(
 
       const inventoryItem = result.rows[0];
 
-      // Kiểm tra quyền truy cập: Người dùng hiện tại phải là chủ sở hữu của bản ghi inventory
       if (req.user.id !== inventoryItem.delivery_hub_id) {
         return res.status(403).json({ message: "Không có quyền truy cập! 😅" });
       }
@@ -1366,7 +1587,6 @@ app.get("/fruit/:id", async (req, res) => {
     if (fruit.rows.length === 0) {
       return res.status(404).json({ message: "Không tìm thấy trái cây!" });
     }
-
     const history = await pool.query(
       "SELECT * FROM fruit_history WHERE fruit_id = $1",
       [fruitId]
@@ -1382,6 +1602,7 @@ app.get("/fruit/:id", async (req, res) => {
       recommendations: recommendations.rows.map((r) => r.recommendation),
     });
   } catch (error) {
+    console.error("Lỗi khi lấy thông tin trái cây:", error);
     res
       .status(500)
       .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
@@ -1464,6 +1685,7 @@ app.get("/analytics/trends", async (req, res) => {
       ],
     });
   } catch (error) {
+    console.error("Lỗi khi phân tích dữ liệu:", error);
     res
       .status(500)
       .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
@@ -1501,10 +1723,42 @@ app.get("/products", async (req, res) => {
         "SELECT * FROM products WHERE farm_id = ANY($1)",
         [farmIds]
       );
-      res.json(result.rows);
+
+      const sanitizedResult = result.rows.map((product) => ({
+        ...product,
+        id: product.id || 0,
+        productcode: product.productcode || "N/A",
+        name: product.name || "Không có tên",
+        imageurl: product.imageurl || "",
+        price: product.price || 0,
+        category: product.category || "N/A",
+        description: product.description || "Không có mô tả",
+        quantity: product.quantity || 0,
+        productdate: product.productdate || new Date().toISOString(),
+        expirydate: product.expirydate || new Date().toISOString(),
+        hash: product.hash || "N/A",
+      }));
+
+      res.json(sanitizedResult);
     } else {
       const result = await pool.query("SELECT * FROM products");
-      res.json(result.rows);
+
+      const sanitizedResult = result.rows.map((product) => ({
+        ...product,
+        id: product.id || 0,
+        productcode: product.productcode || "N/A",
+        name: product.name || "Không có tên",
+        imageurl: product.imageurl || "",
+        price: product.price || 0,
+        category: product.category || "N/A",
+        description: product.description || "Không có mô tả",
+        quantity: product.quantity || 0,
+        productdate: product.productdate || new Date().toISOString(),
+        expirydate: product.expirydate || new Date().toISOString(),
+        hash: product.hash || "N/A",
+      }));
+
+      res.json(sanitizedResult);
     }
   } catch (error) {
     console.error("Lỗi khi lấy danh sách sản phẩm:", error);
@@ -1530,6 +1784,7 @@ app.get("/products/:id", async (req, res) => {
       .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
   }
 });
+
 // ==== API LẤY TẤT CẢ SẢN PHẨM ĐANG BÁN TỪ CÁC TRUNG TÂM PHÂN PHỐI ====
 app.get("/all-outgoing-products", async (req, res) => {
   try {
@@ -1549,6 +1804,7 @@ app.get("/all-outgoing-products", async (req, res) => {
       .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
   }
 });
+
 // ==== API MUA SẢN PHẨM TỪ NGƯỜI TIÊU DÙNG ====
 app.post(
   "/buy-product",
@@ -1571,7 +1827,6 @@ app.post(
           .json({ message: "Vui lòng cung cấp đầy đủ thông tin! 😅" });
       }
 
-      // Kiểm tra sản phẩm trong outgoing_products
       const outgoingProductResult = await pool.query(
         "SELECT * FROM outgoing_products WHERE listing_id = $1 AND status = 'Available'",
         [listingId]
@@ -1589,7 +1844,6 @@ app.post(
           .json({ message: "Số lượng không đủ để mua! 😅" });
       }
 
-      // Kiểm tra khách hàng
       const customerResult = await pool.query(
         "SELECT * FROM users WHERE id = $1 AND role = 'Customer'",
         [customerId]
@@ -1600,20 +1854,17 @@ app.post(
           .json({ message: "Khách hàng không tồn tại! 😅" });
       }
 
-      // Tạo lô hàng (shipment) gửi đến khách hàng
       const shipmentResult = await pool.query(
         "INSERT INTO shipments (sender_id, sender_type, recipient_id, recipient_type, status, shipment_date) VALUES ($1, 'DeliveryHub', $2, 'Customer', 'In Transit', CURRENT_TIMESTAMP) RETURNING *",
         [deliveryHubId, customerId]
       );
       const shipment = shipmentResult.rows[0];
 
-      // Thêm sản phẩm vào lô hàng
       await pool.query(
         "INSERT INTO shipment_products (shipment_id, product_id, quantity, price) VALUES ($1, $2, $3, $4)",
         [shipment.id, outgoingProduct.product_id, quantity, price]
       );
 
-      // Cập nhật số lượng trong outgoing_products
       const newQuantity = outgoingProduct.quantity - quantity;
       if (newQuantity === 0) {
         await pool.query(
@@ -1640,6 +1891,7 @@ app.post(
   }
 );
 
+// ==== API THÊM SẢN PHẨM ====
 app.post(
   "/products",
   checkAuth,
@@ -1659,6 +1911,7 @@ app.post(
       expirydate,
       farm_id,
       email,
+      hash: frontendHash,
     } = req.body;
     const image = req.file;
 
@@ -1673,8 +1926,8 @@ app.post(
         !productdate ||
         !expirydate ||
         !farm_id ||
-        !image ||
-        !email
+        !email ||
+        !image
       ) {
         return res
           .status(400)
@@ -1706,10 +1959,19 @@ app.post(
           .json({ message: "Farm không thuộc producer này! 😅" });
       }
 
-      const imageUrl = `/uploads/${image.filename}`;
+      let ipfsHash = "";
+      if (image) {
+        const fileBuffer = fs.readFileSync(image.path);
+        const result = await ipfs.add(fileBuffer);
+        ipfsHash = result.path;
+        console.log(`Uploaded image to IPFS with hash: ${ipfsHash}`);
+        fs.unlinkSync(image.path);
+      }
 
+      const finalHash = frontendHash || ipfsHash;
+      const imageUrl = `/uploads/${image.filename}`; // Lưu ý: Vì đã xóa file tạm, imageUrl có thể không cần thiết
       const result = await pool.query(
-        "INSERT INTO products (name, productcode, category, description, price, quantity, imageurl, productdate, expirydate, farm_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *",
+        "INSERT INTO products (name, productcode, category, description, price, quantity, imageurl, productdate, expirydate, farm_id, hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *",
         [
           name,
           productcode,
@@ -1721,17 +1983,55 @@ app.post(
           productdate,
           expirydate,
           farm_id,
+          finalHash,
         ]
       );
+
       res.status(201).json(result.rows[0]);
     } catch (error) {
       console.error("Lỗi khi lưu sản phẩm vào cơ sở dữ liệu:", error);
-      res
-        .status(500)
-        .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
+      if (error.code === "ECONNREFUSED" && error.message.includes("ipfs")) {
+        res.status(500).json({
+          error:
+            "Không thể kết nối đến IPFS daemon. Vui lòng kiểm tra xem IPFS daemon có đang chạy không.",
+        });
+      } else {
+        res
+          .status(500)
+          .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
+      }
     }
   }
 );
+
+// ==== IPFS UPLOAD ENDPOINT ====
+app.post("/ipfs/add", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ error: "Vui lòng gửi file để upload lên IPFS!" });
+    }
+
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const result = await ipfs.add(fileBuffer);
+    fs.unlinkSync(req.file.path); // Xóa file tạm sau khi upload
+
+    res.status(200).json({ hash: result.path });
+  } catch (error) {
+    console.error("Lỗi khi upload lên IPFS:", error);
+    if (error.code === "ECONNREFUSED") {
+      res.status(500).json({
+        error:
+          "Không thể kết nối đến IPFS daemon. Vui lòng kiểm tra xem IPFS daemon có đang chạy không.",
+      });
+    } else {
+      res
+        .status(500)
+        .json({ error: "Lỗi khi upload lên IPFS", details: error.message });
+    }
+  }
+});
 
 // Phục vụ file tĩnh từ thư mục uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));

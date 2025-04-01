@@ -1,7 +1,25 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import Web3 from "web3";
+import { Web3 } from "web3";
 import axios from "axios";
-import contractData from "../deployedContract.json";
+import contractData from "../contracts/FruitSupplyChain.json";
+
+const getContractAddress = async () => {
+  try {
+    const response = await axios.get("http://localhost:3000/contract-address");
+    console.log("Địa chỉ hợp đồng từ backend:", response.data.address);
+    if (!response.data.address) {
+      throw new Error("Địa chỉ hợp đồng không hợp lệ!");
+    }
+    return response.data.address;
+  } catch (error) {
+    console.error("Lỗi khi lấy địa chỉ hợp đồng từ backend:", error);
+    throw new Error(
+      "Không thể lấy địa chỉ hợp đồng từ backend: " + error.message
+    );
+  }
+};
+
+const contractABI = contractData.abi;
 
 function convertABIIfNeeded(abi) {
   if (abi.length > 0 && typeof abi[0] === "object") {
@@ -86,9 +104,6 @@ function convertABIIfNeeded(abi) {
   return convertedABI;
 }
 
-const contractAddress = contractData.address;
-const contractABI = convertABIIfNeeded(contractData.abi);
-
 const Web3Context = createContext();
 
 export function useWeb3() {
@@ -99,9 +114,11 @@ export function Web3Provider({ children }) {
   const [web3, setWeb3] = useState(null);
   const [account, setAccount] = useState(null);
   const [contract, setContract] = useState(null);
+  const [contractAddress, setContractAddress] = useState(null);
   const [loading, setLoading] = useState(true);
   const [walletError, setWalletError] = useState(null);
   const [userError, setUserError] = useState(null);
+  const [contractError, setContractError] = useState(null);
 
   useEffect(() => {
     const initWeb3 = async () => {
@@ -117,18 +134,63 @@ export function Web3Provider({ children }) {
         const web3Instance = new Web3(window.ethereum);
         setWeb3(web3Instance);
 
-        console.log("Contract Address:", contractAddress);
-        if (!contractABI || !contractAddress) {
-          throw new Error("ABI hoặc địa chỉ hợp đồng không hợp lệ");
+        // Kiểm tra chain ID (Hardhat node mặc định là 1337)
+        const chainId = await web3Instance.eth.getChainId();
+        console.log("Chain ID:", chainId);
+        const chainIdNumber = Number(chainId);
+        if (chainIdNumber !== 1337) {
+          // Sửa từ 31337 thành 1337
+          try {
+            await window.ethereum.request({
+              method: "wallet_switchEthereumChain",
+              params: [{ chainId: "0x539" }], // 0x539 là 1337
+            });
+          } catch (switchError) {
+            if (switchError.code === 4902) {
+              await window.ethereum.request({
+                method: "wallet_addEthereumChain",
+                params: [
+                  {
+                    chainId: "0x539", // 1337 ở dạng hex
+                    chainName: "Hardhat Localhost",
+                    rpcUrls: ["http://127.0.0.1:8545/"],
+                    nativeCurrency: {
+                      name: "ETH",
+                      symbol: "ETH",
+                      decimals: 18,
+                    },
+                    blockExplorerUrls: null,
+                  },
+                ],
+              });
+            } else {
+              throw new Error(
+                `Vui lòng chuyển MetaMask sang Hardhat Localhost (Chain ID: 1337)! Hiện tại: ${chainIdNumber}`
+              );
+            }
+          }
+          const newChainId = await web3Instance.eth.getChainId();
+          if (Number(newChainId) !== 1337) {
+            throw new Error(
+              `Vui lòng chuyển MetaMask sang Hardhat Localhost (Chain ID: 1337)! Hiện tại: ${newChainId}`
+            );
+          }
         }
 
-        const contractInstance = new web3Instance.eth.Contract(
-          contractABI,
-          contractAddress
-        );
+        // Không gọi connectWallet tự động, chỉ khởi tạo contract nếu đã có account
+        const address = await getContractAddress();
+        setContractAddress(address);
+        console.log("Contract Address:", address);
+
+        const abi = convertABIIfNeeded(contractABI);
+        if (!abi) {
+          throw new Error("ABI không hợp lệ!");
+        }
+        const contractInstance = new web3Instance.eth.Contract(abi, address);
         console.log("Contract methods:", Object.keys(contractInstance.methods));
         setContract(contractInstance);
 
+        // Kiểm tra xem đã có tài khoản kết nối chưa
         const accounts = await web3Instance.eth.getAccounts();
         if (accounts.length > 0) {
           setAccount(accounts[0]);
@@ -139,25 +201,38 @@ export function Web3Provider({ children }) {
         window.ethereum.on("disconnect", handleDisconnect);
       } catch (error) {
         console.error("Lỗi khi khởi tạo Web3:", error);
-        setWalletError(
-          "Không thể khởi tạo Web3. Vui lòng kiểm tra kết nối MetaMask!"
+        setContractError(
+          "Không thể khởi tạo hợp đồng thông minh: " + error.message
         );
+        setContract(null);
       } finally {
         setLoading(false);
       }
     };
 
     initWeb3();
+
+    return () => {
+      if (window.ethereum) {
+        window.ethereum.removeListener(
+          "accountsChanged",
+          handleAccountsChanged
+        );
+        window.ethereum.removeListener("disconnect", handleDisconnect);
+      }
+    };
   }, []);
 
   const handleAccountsChanged = async (accounts) => {
     const newAccount = accounts[0] || null;
+    console.log("Tài khoản MetaMask thay đổi:", newAccount);
     setAccount(newAccount);
     if (newAccount) await checkUserAndWallet(newAccount);
     else setWalletError("Ví MetaMask đã ngắt kết nối!");
   };
 
   const handleDisconnect = () => {
+    console.log("Ví MetaMask đã ngắt kết nối");
     setAccount(null);
     setWalletError("Ví MetaMask đã ngắt kết nối!");
   };
@@ -168,6 +243,7 @@ export function Web3Provider({ children }) {
       const accounts = await window.ethereum.request({
         method: "eth_requestAccounts",
       });
+      console.log("Kết nối ví MetaMask thành công:", accounts);
       setAccount(accounts[0]);
       await checkUserAndWallet(accounts[0]);
     } catch (error) {
@@ -187,11 +263,19 @@ export function Web3Provider({ children }) {
         return;
       }
 
+      if (!currentAccount) {
+        setWalletError("Không tìm thấy địa chỉ ví MetaMask!");
+        setUserError(null);
+        return;
+      }
+
+      console.log("Gọi API /check-role với địa chỉ ví:", currentAccount);
       const response = await axios.get("http://localhost:3000/check-role", {
         headers: { "x-ethereum-address": currentAccount },
       });
 
       const { walletAddress, role } = response.data;
+      console.log("Kết quả từ API /check-role:", { walletAddress, role });
       if (role !== user.role) {
         setUserError("Vai trò của bạn đã thay đổi. Vui lòng đăng nhập lại!");
         setWalletError(null);
@@ -210,7 +294,13 @@ export function Web3Provider({ children }) {
       }
     } catch (error) {
       console.error("Lỗi khi kiểm tra user và ví:", error);
-      setWalletError("Không thể xác thực ví MetaMask!");
+      if (error.response && error.response.status === 401) {
+        setWalletError(
+          "Địa chỉ ví MetaMask không được liên kết với tài khoản. Vui lòng cập nhật ví trong hệ thống."
+        );
+      } else {
+        setWalletError("Không thể xác thực ví MetaMask: " + error.message);
+      }
       setUserError(null);
     }
   };
@@ -247,6 +337,8 @@ export function Web3Provider({ children }) {
   const testContract = async () => {
     try {
       if (!contract) throw new Error("Contract chưa được khởi tạo đúng!");
+      if (!contractAddress)
+        throw new Error("Địa chỉ hợp đồng không được định nghĩa!");
       const code = await web3.eth.getCode(contractAddress);
       console.log("Bytecode tại địa chỉ:", code);
       if (code === "0x")
@@ -341,7 +433,7 @@ export function Web3Provider({ children }) {
               [`${fruitType} Giống 1`, `${fruitType} Giống 2`]
             )
             .estimateGas({ from: account });
-          const gasEstimateNumber = Number(gasEstimate); // Chuyển BigInt thành number
+          const gasEstimateNumber = Number(gasEstimate);
           const gasLimit = Math.floor(gasEstimateNumber * 1.5);
           await contract.methods
             .addFruitCatalog(
@@ -374,7 +466,7 @@ export function Web3Provider({ children }) {
               farm.current_conditions || "19.65°C"
             )
             .estimateGas({ from: account });
-          const gasEstimateNumber = Number(gasEstimate); // Chuyển BigInt thành number
+          const gasEstimateNumber = Number(gasEstimate);
           const gasLimit = Math.floor(gasEstimateNumber * 1.5);
           await contract.methods
             .registerFarm(
@@ -400,7 +492,7 @@ export function Web3Provider({ children }) {
           const gasEstimate = await contract.methods
             .harvestFruit(fruitType, origin, farmId, quality)
             .estimateGas({ from: account });
-          const gasEstimateNumber = Number(gasEstimate); // Chuyển BigInt thành number
+          const gasEstimateNumber = Number(gasEstimate);
           const gasLimit = Math.floor(gasEstimateNumber * 1.5);
           const tx = await contract.methods
             .harvestFruit(fruitType, origin, farmId, quality)
@@ -418,7 +510,7 @@ export function Web3Provider({ children }) {
         const gasEstimate = await contract.methods
           .listProductForSale(fruitId, priceInWei, quantity)
           .estimateGas({ from: account });
-        const gasEstimateNumber = Number(gasEstimate); // Chuyển BigInt thành number
+        const gasEstimateNumber = Number(gasEstimate);
         const gasLimit = Math.floor(gasEstimateNumber * 1.5);
         const tx = await contract.methods
           .listProductForSale(fruitId, priceInWei, quantity)
@@ -435,16 +527,14 @@ export function Web3Provider({ children }) {
       throw new Error("Loại giao dịch không được hỗ trợ!");
     }
   };
-  // Hàm mới để thêm manager
+
   const addManager = async (managerAddress) => {
     if (!web3 || !contract || !account)
       throw new Error("Web3 chưa được khởi tạo!");
 
     try {
-      // Kiểm tra trạng thái node trước khi thực hiện giao dịch
       await checkNodeSync();
 
-      // Kiểm tra xem tài khoản hiện tại có phải là owner không
       const owner = await contract.methods.owner().call();
       if (account.toLowerCase() !== owner.toLowerCase()) {
         throw new Error(
@@ -452,18 +542,15 @@ export function Web3Provider({ children }) {
         );
       }
 
-      // Ước lượng gas
       const gasEstimate = await contract.methods
         .addManager(managerAddress)
         .estimateGas({ from: account });
 
-      // Chuyển BigInt thành số để tính toán
       const gasEstimateNumber = Number(gasEstimate);
       if (isNaN(gasEstimateNumber)) {
         throw new Error("Không thể chuyển đổi gas estimate thành số!");
       }
 
-      // Tính gasLimit (tăng 50%)
       const gasLimit = Math.floor(gasEstimateNumber * 1.5);
       console.log(
         "Gas Estimate for addManager:",
@@ -472,7 +559,6 @@ export function Web3Provider({ children }) {
         gasLimit
       );
 
-      // Thực hiện giao dịch
       const tx = await contract.methods
         .addManager(managerAddress)
         .send({ from: account, gas: gasLimit });
@@ -481,7 +567,6 @@ export function Web3Provider({ children }) {
         tx.transactionHash
       );
 
-      // Kiểm tra lại trạng thái manager
       const isManager = await contract.methods
         .authorizedManagers(managerAddress)
         .call();
@@ -497,7 +582,6 @@ export function Web3Provider({ children }) {
     } catch (error) {
       console.error("Lỗi khi thêm manager:", error);
 
-      // Xử lý lỗi chi tiết hơn
       if (error.message.includes("revert")) {
         throw new Error(
           "Giao dịch bị từ chối bởi hợp đồng thông minh. Kiểm tra logic hợp đồng hoặc quyền truy cập."
@@ -515,19 +599,23 @@ export function Web3Provider({ children }) {
       throw new Error("Không thể thêm manager: " + error.message);
     }
   };
+
   const value = {
     web3,
     account,
     contract,
     connectWallet,
     executeTransaction,
-    addManager, // Thêm hàm addManager vào context
+    addManager,
     loading,
     walletError,
     userError,
+    contractError,
     updateWalletAddress,
     setWalletError,
   };
 
   return <Web3Context.Provider value={value}>{children}</Web3Context.Provider>;
 }
+
+export default Web3Provider;

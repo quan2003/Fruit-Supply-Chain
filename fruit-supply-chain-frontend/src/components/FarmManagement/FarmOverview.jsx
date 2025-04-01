@@ -1,6 +1,13 @@
-// src/components/FarmManagement/FarmOverview.jsx
 import React, { useState, useEffect } from "react";
-import { Typography, Box, Grid, Card, CardContent } from "@mui/material";
+import {
+  Typography,
+  Box,
+  Grid,
+  Card,
+  CardContent,
+  CircularProgress,
+  Alert,
+} from "@mui/material";
 import FarmDetail from "./FarmDetail";
 import UpdateFarmContent from "./UpdateFarmConditions";
 import {
@@ -11,25 +18,36 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  ResponsiveContainer,
 } from "recharts";
-
-// Dữ liệu giả lập cho biểu đồ
-const chartData = [
-  { month: "Tháng 1", yield: 40 },
-  { month: "Tháng 2", yield: 60 },
-  { month: "Tháng 3", yield: 80 },
-  { month: "Tháng 4", yield: 50 },
-  { month: "Tháng 5", yield: 40 },
-];
+import FruitCollection from "../FruitCollection";
+import { useWeb3 } from "../../contexts/Web3Context";
+import { getFarmStats, getYieldData } from "../../services/farmService";
+import InventoryIcon from "@mui/icons-material/Inventory";
+import SellIcon from "@mui/icons-material/Sell";
+import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
+import InfoIcon from "@mui/icons-material/Info";
+import WarningIcon from "@mui/icons-material/Warning";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
 const FarmOverview = () => {
+  const { account } = useWeb3();
+  const user = JSON.parse(localStorage.getItem("user")) || {};
   const [farmData, setFarmData] = useState({
     weather: "Nắng nhẹ, 28°C",
     yield: "500 kg",
     quality: "Tốt",
   });
-
+  const [stats, setStats] = useState({
+    totalProducts: 0,
+    soldProducts: 0,
+    totalRevenue: 0,
+  });
+  const [yieldData, setYieldData] = useState([]);
   const [recommendation, setRecommendation] = useState("");
+  const [recommendationType, setRecommendationType] = useState("info"); // info, warning, success
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const handleUpdateFarmData = (updateData) => {
     const newFarmData = {
@@ -50,24 +68,72 @@ const FarmOverview = () => {
       setRecommendation(
         "Sản lượng cao, cân nhắc mở rộng trồng thêm loại trái cây như xoài hoặc sầu riêng."
       );
+      setRecommendationType("success");
     } else if (data.quality === "Kém") {
       setRecommendation(
         "Chất lượng cây trồng chưa tốt, cần kiểm tra điều kiện đất và nước."
       );
+      setRecommendationType("warning");
     } else {
       setRecommendation(
         "Tình hình ổn định, tiếp tục duy trì chất lượng hiện tại."
       );
+      setRecommendationType("info");
     }
   };
 
   useEffect(() => {
-    const storedFarmData = JSON.parse(localStorage.getItem("farmData"));
-    if (storedFarmData) {
-      setFarmData(storedFarmData);
-      generateRecommendation(storedFarmData);
-    }
-  }, []);
+    const fetchData = async () => {
+      if (!user.email || !account) {
+        setError("Vui lòng đăng nhập và kết nối ví MetaMask!");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+
+        // Lấy thống kê farm
+        const statsData = await getFarmStats(user.email, {
+          "x-ethereum-address": account,
+        });
+        setStats(statsData);
+
+        // Lấy dữ liệu sản lượng
+        const yieldDataResponse = await getYieldData(user.email, {
+          "x-ethereum-address": account,
+        });
+        setYieldData(yieldDataResponse);
+
+        // Lấy dữ liệu farm từ localStorage
+        const storedFarmData = JSON.parse(localStorage.getItem("farmData"));
+        if (storedFarmData) {
+          setFarmData(storedFarmData);
+          generateRecommendation(storedFarmData);
+        }
+
+        setLoading(false);
+      } catch (err) {
+        setError("Không thể tải dữ liệu. Vui lòng thử lại sau.");
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [user.email, account]);
+
+  if (loading) {
+    return (
+      <CircularProgress
+        size={24}
+        sx={{ display: "block", mx: "auto", my: 2 }}
+      />
+    );
+  }
+
+  if (error) {
+    return <Alert severity="error">{error}</Alert>;
+  }
 
   return (
     <>
@@ -85,18 +151,23 @@ const FarmOverview = () => {
             sx={{
               bgcolor: "#E8F5E9",
               boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+              transition: "transform 0.3s ease",
+              "&:hover": { transform: "scale(1.03)" },
             }}
           >
-            <CardContent>
-              <Typography variant="h6" sx={{ color: "#388E3C" }}>
-                Sản phẩm
-              </Typography>
-              <Typography
-                variant="h4"
-                sx={{ fontWeight: "bold", color: "#333" }}
-              >
-                15
-              </Typography>
+            <CardContent sx={{ display: "flex", alignItems: "center" }}>
+              <InventoryIcon sx={{ color: "#388E3C", mr: 2, fontSize: 40 }} />
+              <Box>
+                <Typography variant="h6" sx={{ color: "#388E3C" }}>
+                  Sản phẩm
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{ fontWeight: "bold", color: "#333" }}
+                >
+                  {stats.totalProducts}
+                </Typography>
+              </Box>
             </CardContent>
           </Card>
         </Grid>
@@ -105,18 +176,23 @@ const FarmOverview = () => {
             sx={{
               bgcolor: "#E8F5E9",
               boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+              transition: "transform 0.3s ease",
+              "&:hover": { transform: "scale(1.03)" },
             }}
           >
-            <CardContent>
-              <Typography variant="h6" sx={{ color: "#388E3C" }}>
-                Sản phẩm đã bán
-              </Typography>
-              <Typography
-                variant="h4"
-                sx={{ fontWeight: "bold", color: "#333" }}
-              >
-                1
-              </Typography>
+            <CardContent sx={{ display: "flex", alignItems: "center" }}>
+              <SellIcon sx={{ color: "#388E3C", mr: 2, fontSize: 40 }} />
+              <Box>
+                <Typography variant="h6" sx={{ color: "#388E3C" }}>
+                  Sản phẩm đã bán
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{ fontWeight: "bold", color: "#333" }}
+                >
+                  {stats.soldProducts}
+                </Typography>
+              </Box>
             </CardContent>
           </Card>
         </Grid>
@@ -125,18 +201,23 @@ const FarmOverview = () => {
             sx={{
               bgcolor: "#E8F5E9",
               boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+              transition: "transform 0.3s ease",
+              "&:hover": { transform: "scale(1.03)" },
             }}
           >
-            <CardContent>
-              <Typography variant="h6" sx={{ color: "#388E3C" }}>
-                Tổng doanh thu
-              </Typography>
-              <Typography
-                variant="h4"
-                sx={{ fontWeight: "bold", color: "#333" }}
-              >
-                $80 AGT
-              </Typography>
+            <CardContent sx={{ display: "flex", alignItems: "center" }}>
+              <AttachMoneyIcon sx={{ color: "#388E3C", mr: 2, fontSize: 40 }} />
+              <Box>
+                <Typography variant="h6" sx={{ color: "#388E3C" }}>
+                  Tổng doanh thu
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{ fontWeight: "bold", color: "#333" }}
+                >
+                  ${stats.totalRevenue} AGT
+                </Typography>
+              </Box>
             </CardContent>
           </Card>
         </Grid>
@@ -150,14 +231,28 @@ const FarmOverview = () => {
         >
           Sản lượng theo tháng
         </Typography>
-        <LineChart width={600} height={300} data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="month" />
-          <YAxis />
-          <Tooltip />
-          <Legend />
-          <Line type="monotone" dataKey="yield" stroke="#82ca9d" />
-        </LineChart>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={yieldData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#E8F5E9" />
+            <XAxis dataKey="month" stroke="#388E3C" />
+            <YAxis stroke="#388E3C" />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "#FFFFFF",
+                borderColor: "#388E3C",
+              }}
+              labelStyle={{ color: "#388E3C" }}
+            />
+            <Legend />
+            <Line
+              type="monotone"
+              dataKey="yield"
+              stroke="#82ca9d"
+              strokeWidth={2}
+              dot={{ fill: "#388E3C", r: 4 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </Box>
 
       {/* Thông tin vùng trồng và cập nhật */}
@@ -179,20 +274,36 @@ const FarmOverview = () => {
               borderRadius: 2,
               boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
               border: "1px solid #E8F5E9",
+              display: "flex",
+              alignItems: "center",
             }}
           >
-            <Typography
-              variant="h6"
-              sx={{ mb: 2, fontWeight: "bold", color: "#388E3C" }}
-            >
-              Khuyến nghị từ hệ thống
-            </Typography>
-            <Typography sx={{ color: "#333" }}>
-              {recommendation || "Cập nhật dữ liệu để nhận khuyến nghị."}
-            </Typography>
+            {recommendationType === "success" && (
+              <CheckCircleIcon sx={{ color: "#388E3C", mr: 2, fontSize: 30 }} />
+            )}
+            {recommendationType === "warning" && (
+              <WarningIcon sx={{ color: "#FF6F91", mr: 2, fontSize: 30 }} />
+            )}
+            {recommendationType === "info" && (
+              <InfoIcon sx={{ color: "#1976D2", mr: 2, fontSize: 30 }} />
+            )}
+            <Box>
+              <Typography
+                variant="h6"
+                sx={{ mb: 1, fontWeight: "bold", color: "#388E3C" }}
+              >
+                Khuyến nghị từ hệ thống
+              </Typography>
+              <Typography sx={{ color: "#333" }}>
+                {recommendation || "Cập nhật dữ liệu để nhận khuyến nghị."}
+              </Typography>
+            </Box>
           </Box>
         </Grid>
       </Grid>
+
+      {/* Bộ sưu tập Trái cây */}
+      <FruitCollection />
     </>
   );
 };

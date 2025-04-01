@@ -53,6 +53,9 @@ contract FruitSupplyChain {
     string[] public registeredFarms;
     uint256[] public listingIds;
 
+    // Mapping để lưu trữ hash IPFS dưới dạng string => string
+    mapping(string => string) public fruitHashes;
+
     constructor() {
         owner = msg.sender;
         authorizedManagers[msg.sender] = true;
@@ -63,6 +66,7 @@ contract FruitSupplyChain {
     event ProductListed(uint256 listingId, uint256 fruitId, uint256 price, uint256 quantity, address seller, uint256 timestamp);
     event RecommendationAdded(uint256 fruitId, string recommendation, uint256 timestamp);
     event StepRecorded(uint256 fruitId, string step, address by, uint256 timestamp);
+    event FruitHashUpdated(string fruitType, string ipfsHash, uint256 timestamp);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner can perform this action");
@@ -72,6 +76,16 @@ contract FruitSupplyChain {
     modifier onlyAuthorized() {
         require(authorizedManagers[msg.sender] || msg.sender == owner, "Not authorized");
         _;
+    }
+
+    // Bỏ modifier onlyOwner để bất kỳ tài khoản nào cũng có thể gọi
+    function setFruitHash(string memory fruitType, string memory ipfsHash) public {
+        fruitHashes[fruitType] = ipfsHash;
+        emit FruitHashUpdated(fruitType, ipfsHash, block.timestamp);
+    }
+
+    function getFruitHash(string memory fruitType) public view returns (string memory) {
+        return fruitHashes[fruitType];
     }
 
     function addFruitCatalog(

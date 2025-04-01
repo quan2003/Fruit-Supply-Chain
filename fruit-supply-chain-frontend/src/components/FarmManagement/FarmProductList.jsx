@@ -43,7 +43,32 @@ const FarmProductList = () => {
         const data = await getFruitProducts(user.email, {
           "x-ethereum-address": account,
         });
-        setProducts(data || []);
+
+        // Kiểm tra dữ liệu trả về
+        if (!Array.isArray(data)) {
+          throw new Error("Dữ liệu sản phẩm không hợp lệ!");
+        }
+
+        // Log dữ liệu để kiểm tra
+        console.log("Dữ liệu sản phẩm:", data);
+
+        // Kiểm tra từng sản phẩm để đảm bảo không có giá trị không hợp lệ
+        const sanitizedData = data.map((product) => ({
+          ...product,
+          id: product.id || 0,
+          productcode: product.productcode || "N/A",
+          name: product.name || "Không có tên",
+          imageurl: product.imageurl || "",
+          price: product.price || 0,
+          category: product.category || "N/A",
+          description: product.description || "Không có mô tả",
+          quantity: product.quantity || 0,
+          productdate: product.productdate || new Date().toISOString(),
+          expirydate: product.expirydate || new Date().toISOString(),
+          hash: product.hash || "N/A",
+        }));
+
+        setProducts(sanitizedData);
         setLoading(false);
 
         // Kiểm tra xem có farm không
@@ -62,6 +87,7 @@ const FarmProductList = () => {
           setTimeout(() => navigate("/farms/register"), 3000);
         }
       } catch (err) {
+        console.error("Lỗi khi lấy danh sách sản phẩm:", err);
         setError("Không thể tải danh sách sản phẩm. Vui lòng thử lại sau.");
         setLoading(false);
       }
@@ -180,6 +206,9 @@ const FarmProductList = () => {
                   <TableCell sx={{ fontWeight: "bold", color: "#388E3C" }}>
                     Hạn sử dụng
                   </TableCell>
+                  <TableCell sx={{ fontWeight: "bold", color: "#388E3C" }}>
+                    Hash
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -224,6 +253,7 @@ const FarmProductList = () => {
                       <TableCell>
                         {new Date(product.expirydate).toLocaleDateString()}
                       </TableCell>
+                      <TableCell>{product.hash || "N/A"}</TableCell>
                     </TableRow>
                   ))}
               </TableBody>

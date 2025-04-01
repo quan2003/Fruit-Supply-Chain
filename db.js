@@ -1,6 +1,10 @@
 // backend/db.js
-const { Pool } = require("pg");
-require("dotenv").config();
+import pg from "pg"; // Import default module
+import dotenv from "dotenv";
+
+const { Pool } = pg; // Destructuring Pool từ pg
+
+dotenv.config();
 
 // Kiểm tra các biến môi trường
 const requiredEnvVars = [
@@ -34,4 +38,4 @@ const pool = new Pool({
   port: process.env.DB_PORT,
 });
 
-module.exports = pool;
+export default pool; // Export default pool

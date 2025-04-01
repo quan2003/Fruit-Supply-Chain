@@ -17,6 +17,12 @@ const ProtectedRoute = ({ children, isAllowed }) => {
     return <div>Đang tải...</div>;
   }
 
+  // Nếu không có user, chuyển hướng về trang đăng nhập
+  if (!user || !user.email) {
+    console.log("ProtectedRoute - No user data, redirecting to login");
+    return <Navigate to="/dang-nhap" replace />;
+  }
+
   // Nếu không có account hoặc account không khớp với user.walletAddress
   if (
     !account ||
@@ -24,13 +30,15 @@ const ProtectedRoute = ({ children, isAllowed }) => {
       user.walletAddress &&
       account.toLowerCase() !== user.walletAddress.toLowerCase())
   ) {
-    console.log("ProtectedRoute - No account or account mismatch");
+    console.log(
+      "ProtectedRoute - No account or account mismatch, redirecting to login"
+    );
     return <Navigate to="/dang-nhap" replace />;
   }
 
-  // Nếu không có user hoặc user không thỏa mãn điều kiện isAllowed
-  if (!user || !isAllowed(user)) {
-    console.log("ProtectedRoute - Access denied");
+  // Nếu user không thỏa mãn điều kiện isAllowed
+  if (!isAllowed(user)) {
+    console.log("ProtectedRoute - Access denied, redirecting to unauthorized");
     return <Navigate to="/unauthorized" replace />;
   }
 

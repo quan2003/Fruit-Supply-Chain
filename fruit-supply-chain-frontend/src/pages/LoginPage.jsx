@@ -112,6 +112,7 @@ const LoginPage = () => {
           user.walletAddress = account;
           localStorage.setItem("user", JSON.stringify(user));
 
+          // Chuyển hướng dựa trên vai trò
           if (user.role === "Producer") {
             navigate("/farms");
           } else if (user.role === "Admin") {
@@ -134,6 +135,8 @@ const LoginPage = () => {
             });
           }
         }
+      } else {
+        setError("Không thể kết nối ví MetaMask! Vui lòng thử lại nhé! 😓");
       }
     } catch (error) {
       console.error("Lỗi khi kết nối ví MetaMask:", error);

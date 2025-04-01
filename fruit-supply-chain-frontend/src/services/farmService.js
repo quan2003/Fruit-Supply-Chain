@@ -1,4 +1,3 @@
-// fruit-supply-chain-frontend/src/services/farmService.js
 import axios from "axios";
 
 const API_URL = "http://localhost:3000";
@@ -85,5 +84,35 @@ export const updateFarmConditionsService = async (
       error
     );
     throw new Error(`Không thể cập nhật điều kiện nông trại với ID ${farmId}`);
+  }
+};
+
+// Thêm hàm getFarmStats
+export const getFarmStats = async (email, headers = {}) => {
+  try {
+    const response = await axios.get(`${API_URL}/farms/stats?email=${email}`, {
+      headers: {
+        ...headers,
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching farm stats:", error);
+    throw new Error("Không thể lấy thống kê farm từ API");
+  }
+};
+
+// Thêm hàm getYieldData
+export const getYieldData = async (email, headers = {}) => {
+  try {
+    const response = await axios.get(`${API_URL}/farms/yield?email=${email}`, {
+      headers: {
+        ...headers,
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching yield data:", error);
+    throw new Error("Không thể lấy dữ liệu sản lượng từ API");
   }
 };
