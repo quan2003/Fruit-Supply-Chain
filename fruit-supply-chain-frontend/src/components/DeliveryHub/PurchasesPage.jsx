@@ -137,7 +137,7 @@ const PurchasesPage = () => {
     if (!selectedProduct || !sellingPrice || parseFloat(sellingPrice) <= 0) {
       setAlert({
         open: true,
-        message: "Vui lòng nhập giá bán hợp lệ",
+        message: "Vui lòng nhập giá bán hợp lệ!",
         severity: "error",
       });
       return;
@@ -153,6 +153,7 @@ const PurchasesPage = () => {
       });
       return;
     }
+
     setSellingInProgress(true);
     setTransactionStatus("preparing");
 
@@ -194,7 +195,8 @@ const PurchasesPage = () => {
 
       setAlert({
         open: true,
-        message: "Đã đăng bán sản phẩm thành công!",
+        message:
+          "Đã đăng bán sản phẩm thành công! Đã chuyển sang mục 'Sản phẩm đang bán'.",
         severity: "success",
       });
       handleCloseSellDialog();
@@ -204,7 +206,11 @@ const PurchasesPage = () => {
       setTransactionStatus("failed");
       setAlert({
         open: true,
-        message: `Lỗi khi đăng bán sản phẩm: ${error.message}`,
+        message: error.message.includes("Hardhat Network")
+          ? "Không thể kết nối với Hardhat Network! Vui lòng chạy 'npx hardhat node' trong terminal."
+          : error.message.includes("Bạn không có quyền")
+          ? error.message
+          : `Lỗi khi đăng bán sản phẩm: ${error.message}`,
         severity: "error",
       });
     } finally {
@@ -753,7 +759,7 @@ const PurchasesPage = () => {
                       variant="body2"
                       sx={{ bgcolor: "#f5f5f5", p: 1, borderRadius: 1 }}
                     >
-                      {listingId}
+                      {listingId.toString()}
                     </Typography>
                   </Box>
                 )}

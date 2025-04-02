@@ -71,9 +71,11 @@ const checkAuth = async (req, res, next) => {
   }
 
   try {
+    // Chuẩn hóa địa chỉ ví về chữ thường
+    const normalizedAddress = userAddress.toLowerCase();
     const user = await pool.query(
-      "SELECT * FROM users WHERE wallet_address = $1",
-      [userAddress]
+      "SELECT * FROM users WHERE LOWER(wallet_address) = $1",
+      [normalizedAddress]
     );
     if (user.rows.length === 0) {
       return res.status(401).json({
@@ -106,12 +108,18 @@ const checkRole = (roles) => {
 // ==== API TRẢ VỀ ĐỊA CHỈ HỢP ĐỒNG ====
 app.get("/contract-address", (req, res) => {
   try {
-    if (!CONTRACT_ADDRESS) {
+    const contractAddressPath = "D:\\fruit-supply-chain\\contract-address.txt";
+    if (!fs.existsSync(contractAddressPath)) {
       throw new Error(
-        "Địa chỉ hợp đồng không được thiết lập. Vui lòng kiểm tra file D:\\fruit-supply-chain\\contract-address.txt."
+        `File contract-address.txt không tồn tại tại đường dẫn: ${contractAddressPath}`
       );
     }
-    res.status(200).json({ address: CONTRACT_ADDRESS });
+    const address = fs.readFileSync(contractAddressPath, "utf8").trim();
+    if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
+      throw new Error(`Địa chỉ hợp đồng không hợp lệ trong file: ${address}`);
+    }
+    console.log("Địa chỉ hợp đồng từ file:", address);
+    res.status(200).json({ address });
   } catch (error) {
     console.error("Lỗi khi lấy địa chỉ hợp đồng:", error);
     res
@@ -119,7 +127,6 @@ app.get("/contract-address", (req, res) => {
       .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
   }
 });
-
 // ==== API KIỂM TRA VAI TRÒ NGƯỜI DÙNG ====
 app.get("/check-role", checkAuth, async (req, res) => {
   try {

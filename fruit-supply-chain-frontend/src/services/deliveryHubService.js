@@ -112,6 +112,11 @@ export const sellProductToConsumer = async (productData) => {
       throw new Error("Thiếu thông tin ID sản phẩm trong kho");
     }
 
+    // Chuyển đổi listingId từ BigInt thành string
+    if (typeof productData.listingId === "bigint") {
+      productData.listingId = productData.listingId.toString();
+    }
+
     const endpoint = `${API_URL}/sell-product`;
 
     const response = await axios.post(endpoint, productData, {

@@ -7,8 +7,13 @@ const getContractAddress = async () => {
   try {
     const response = await axios.get("http://localhost:3000/contract-address");
     console.log("Địa chỉ hợp đồng từ backend:", response.data.address);
-    if (!response.data.address) {
-      throw new Error("Địa chỉ hợp đồng không hợp lệ!");
+    if (
+      !response.data.address ||
+      !Web3.utils.isAddress(response.data.address)
+    ) {
+      throw new Error(
+        "Địa chỉ hợp đồng không hợp lệ: " + response.data.address
+      );
     }
     return response.data.address;
   } catch (error) {
@@ -134,16 +139,14 @@ export function Web3Provider({ children }) {
         const web3Instance = new Web3(window.ethereum);
         setWeb3(web3Instance);
 
-        // Kiểm tra chain ID (Hardhat node mặc định là 1337)
         const chainId = await web3Instance.eth.getChainId();
         console.log("Chain ID:", chainId);
         const chainIdNumber = Number(chainId);
         if (chainIdNumber !== 1337) {
-          // Sửa từ 31337 thành 1337
           try {
             await window.ethereum.request({
               method: "wallet_switchEthereumChain",
-              params: [{ chainId: "0x539" }], // 0x539 là 1337
+              params: [{ chainId: "0x539" }],
             });
           } catch (switchError) {
             if (switchError.code === 4902) {
@@ -151,7 +154,7 @@ export function Web3Provider({ children }) {
                 method: "wallet_addEthereumChain",
                 params: [
                   {
-                    chainId: "0x539", // 1337 ở dạng hex
+                    chainId: "0x539",
                     chainName: "Hardhat Localhost",
                     rpcUrls: ["http://127.0.0.1:8545/"],
                     nativeCurrency: {
@@ -177,25 +180,23 @@ export function Web3Provider({ children }) {
           }
         }
 
-        // Không gọi connectWallet tự động, chỉ khởi tạo contract nếu đã có account
+        const accounts = await web3Instance.eth.getAccounts();
+        if (accounts.length === 0) {
+          await connectWallet();
+        } else {
+          setAccount(accounts[0]);
+          await checkUserAndWallet(accounts[0]);
+        }
+
         const address = await getContractAddress();
         setContractAddress(address);
         console.log("Contract Address:", address);
 
         const abi = convertABIIfNeeded(contractABI);
-        if (!abi) {
-          throw new Error("ABI không hợp lệ!");
-        }
+        if (!abi) throw new Error("ABI không hợp lệ!");
         const contractInstance = new web3Instance.eth.Contract(abi, address);
         console.log("Contract methods:", Object.keys(contractInstance.methods));
         setContract(contractInstance);
-
-        // Kiểm tra xem đã có tài khoản kết nối chưa
-        const accounts = await web3Instance.eth.getAccounts();
-        if (accounts.length > 0) {
-          setAccount(accounts[0]);
-          await checkUserAndWallet(accounts[0]);
-        }
 
         window.ethereum.on("accountsChanged", handleAccountsChanged);
         window.ethereum.on("disconnect", handleDisconnect);
@@ -315,41 +316,66 @@ export function Web3Provider({ children }) {
       setWalletError(null);
     } catch (error) {
       console.error("Lỗi khi cập nhật ví:", error);
-      throw new Error("Không thể cập nhật ví!");
+      throw new Error("Không thể cập nhật ví: " + error.message);
     }
   };
 
   const checkNodeSync = async () => {
     try {
+      if (!web3) throw new Error("Web3 chưa được khởi tạo!");
+      const isListening = await web3.eth.net.isListening();
+      if (!isListening) {
+        throw new Error(
+          "Hardhat Network không đang chạy! Vui lòng khởi động node bằng lệnh 'npx hardhat node'."
+        );
+      }
+
       const blockNumber = await web3.eth.getBlockNumber();
       const networkId = await web3.eth.net.getId();
       console.log("Network ID:", networkId, "Block Number:", blockNumber);
-      if (!blockNumber) throw new Error("Node chưa đồng bộ hóa!");
+
+      if (Number(networkId) !== 1337) {
+        throw new Error(
+          `Sai mạng! Đang kết nối với Network ID ${networkId}, yêu cầu Hardhat Network (1337).`
+        );
+      }
+      if (blockNumber === undefined || blockNumber === null) {
+        throw new Error(
+          "Node không phản hồi! Vui lòng kiểm tra Hardhat Network."
+        );
+      }
       return { networkId, blockNumber };
     } catch (error) {
       console.error("Lỗi kiểm tra node:", error);
       throw new Error(
-        "Không thể kết nối với node Ethereum! Vui lòng kiểm tra Hardhat Network."
+        error.message.includes("Hardhat Network không đang chạy") ||
+        error.message.includes("Node không phản hồi")
+          ? error.message
+          : "Không thể kết nối với node Ethereum: " + error.message
       );
     }
   };
 
+  // Định nghĩa hàm testContract trước khi sử dụng
   const testContract = async () => {
     try {
       if (!contract) throw new Error("Contract chưa được khởi tạo đúng!");
       if (!contractAddress)
         throw new Error("Địa chỉ hợp đồng không được định nghĩa!");
       const code = await web3.eth.getCode(contractAddress);
-      console.log("Bytecode tại địa chỉ:", code);
-      if (code === "0x")
-        throw new Error("Hợp đồng không tồn tại tại địa chỉ này!");
+      console.log(`Bytecode tại địa chỉ ${contractAddress}:`, code);
+      if (code === "0x") {
+        throw new Error(
+          `Hợp đồng không tồn tại tại địa chỉ: ${contractAddress}! Vui lòng kiểm tra file D:\\fruit-supply-chain\\contract-address.txt hoặc triển khai lại hợp đồng bằng 'npx hardhat run scripts/deploy.js --network localhost'.`
+        );
+      }
       const owner = await contract.methods.owner().call();
       console.log("Owner:", owner);
       return true;
     } catch (error) {
       console.error("Lỗi kiểm tra hợp đồng:", error);
       throw new Error(
-        "Hợp đồng hoặc ABI không hợp lệ! Chi tiết: " + error.message
+        `Hợp đồng hoặc ABI không hợp lệ! Chi tiết: ${error.message}`
       );
     }
   };
@@ -362,7 +388,7 @@ export function Web3Provider({ children }) {
     inventoryId,
   }) => {
     if (!web3 || !contract || !account)
-      throw new Error("Web3 chưa được khởi tạo!");
+      throw new Error("Web3, contract hoặc account chưa được khởi tạo!");
     if (userError) throw new Error(userError);
     if (walletError) throw new Error(walletError);
 
@@ -373,8 +399,15 @@ export function Web3Provider({ children }) {
 
     if (type === "listProductForSale") {
       try {
-        await checkNodeSync();
-        await testContract();
+        const { networkId, blockNumber } = await checkNodeSync();
+        console.log(
+          "Node synced - Network ID:",
+          networkId,
+          "Block Number:",
+          blockNumber
+        );
+
+        await testContract(); // Gọi hàm đã định nghĩa
 
         const owner = await contract.methods.owner().call();
         const isManager = await contract.methods
@@ -388,23 +421,23 @@ export function Web3Provider({ children }) {
           "Account:",
           account
         );
-
         if (owner.toLowerCase() !== account.toLowerCase() && !isManager) {
           throw new Error(
-            `Bạn không có quyền thêm fruit catalog! Vui lòng chuyển sang tài khoản owner (${owner}) hoặc yêu cầu owner cấp quyền manager cho tài khoản ${account}.`
+            `Bạn không có quyền thực hiện giao dịch này! Owner: ${owner}, Account: ${account}`
           );
         }
 
-        const product = (
-          await axios.get(`http://localhost:3000/products/${productId}`, {
-            headers: { "x-ethereum-address": account },
-          })
-        ).data;
-        const farm = (
-          await axios.get(`http://localhost:3000/farms/${product.farm_id}`, {
-            headers: { "x-ethereum-address": account },
-          })
-        ).data;
+        const productResponse = await axios.get(
+          `http://localhost:3000/products/${productId}`,
+          { headers: { "x-ethereum-address": account } }
+        );
+        const product = productResponse.data;
+        const farmResponse = await axios.get(
+          `http://localhost:3000/farms/${product.farm_id}`,
+          { headers: { "x-ethereum-address": account } }
+        );
+        const farm = farmResponse.data;
+
         const {
           name: fruitType,
           origin = "Việt Nam",
@@ -417,9 +450,9 @@ export function Web3Provider({ children }) {
           const catalog = await contract.methods
             .getFruitCatalog(fruitType)
             .call();
-          catalogExists = catalog && catalog[0];
+          catalogExists = catalog[0].length > 0;
         } catch (e) {
-          console.error("Lỗi khi kiểm tra fruit catalog:", e);
+          console.log("Catalog chưa tồn tại, sẽ thêm mới:", e.message);
         }
 
         if (!catalogExists) {
@@ -433,8 +466,6 @@ export function Web3Provider({ children }) {
               [`${fruitType} Giống 1`, `${fruitType} Giống 2`]
             )
             .estimateGas({ from: account });
-          const gasEstimateNumber = Number(gasEstimate);
-          const gasLimit = Math.floor(gasEstimateNumber * 1.5);
           await contract.methods
             .addFruitCatalog(
               fruitType,
@@ -444,16 +475,19 @@ export function Web3Provider({ children }) {
               "Bảo quản khô ráo",
               [`${fruitType} Giống 1`, `${fruitType} Giống 2`]
             )
-            .send({ from: account, gas: gasLimit });
+            .send({
+              from: account,
+              gas: Math.floor(Number(gasEstimate) * 1.5),
+            });
           console.log("Đã thêm fruit catalog:", fruitType);
         }
 
         let farmExists = false;
         try {
           const farmData = await contract.methods.getFarmData(farmId).call();
-          farmExists = farmData && farmData[0];
+          farmExists = farmData[0].length > 0;
         } catch (e) {
-          console.error("Lỗi khi kiểm tra farm:", e);
+          console.log("Farm chưa tồn tại, sẽ đăng ký mới:", e.message);
         }
 
         if (!farmExists) {
@@ -466,8 +500,6 @@ export function Web3Provider({ children }) {
               farm.current_conditions || "19.65°C"
             )
             .estimateGas({ from: account });
-          const gasEstimateNumber = Number(gasEstimate);
-          const gasLimit = Math.floor(gasEstimateNumber * 1.5);
           await contract.methods
             .registerFarm(
               farmId,
@@ -476,28 +508,30 @@ export function Web3Provider({ children }) {
               "Đất phù sa",
               farm.current_conditions || "19.65°C"
             )
-            .send({ from: account, gas: gasLimit });
+            .send({
+              from: account,
+              gas: Math.floor(Number(gasEstimate) * 1.5),
+            });
           console.log("Đã đăng ký farm:", farmId);
         }
 
-        const inventoryItem = (
-          await axios.get(
-            `http://localhost:3000/inventory/by-id/${inventoryId}`,
-            { headers: { "x-ethereum-address": account } }
-          )
-        ).data;
-        let fruitId = inventoryItem?.fruit_id || 0;
+        const inventoryResponse = await axios.get(
+          `http://localhost:3000/inventory/by-id/${inventoryId}`,
+          { headers: { "x-ethereum-address": account } }
+        );
+        let fruitId = inventoryResponse.data?.fruit_id || 0;
 
         if (!fruitId) {
           const gasEstimate = await contract.methods
             .harvestFruit(fruitType, origin, farmId, quality)
             .estimateGas({ from: account });
-          const gasEstimateNumber = Number(gasEstimate);
-          const gasLimit = Math.floor(gasEstimateNumber * 1.5);
           const tx = await contract.methods
             .harvestFruit(fruitType, origin, farmId, quality)
-            .send({ from: account, gas: gasLimit });
-          fruitId = parseInt(await contract.methods.fruitCount().call(), 10);
+            .send({
+              from: account,
+              gas: Math.floor(Number(gasEstimate) * 1.5),
+            });
+          fruitId = Number(await contract.methods.fruitCount().call());
           await axios.put(
             `http://localhost:3000/inventory/${inventoryId}/fruit-id`,
             { fruitId },
@@ -510,18 +544,21 @@ export function Web3Provider({ children }) {
         const gasEstimate = await contract.methods
           .listProductForSale(fruitId, priceInWei, quantity)
           .estimateGas({ from: account });
-        const gasEstimateNumber = Number(gasEstimate);
-        const gasLimit = Math.floor(gasEstimateNumber * 1.5);
         const tx = await contract.methods
           .listProductForSale(fruitId, priceInWei, quantity)
-          .send({ from: account, gas: gasLimit });
+          .send({ from: account, gas: Math.floor(Number(gasEstimate) * 1.5) });
         const listingId = tx.events.ProductListed.returnValues.listingId;
-        console.log("Đã đăng bán sản phẩm với Listing ID:", listingId);
 
+        console.log("Đã đăng bán sản phẩm với Listing ID:", listingId);
         return { transactionHash: tx.transactionHash, listingId };
       } catch (error) {
         console.error("Lỗi giao dịch chi tiết:", error);
-        throw new Error("Lỗi không xác định: " + error.message);
+        throw new Error(
+          error.message.includes("Hardhat Network") ||
+          error.message.includes("Node không phản hồi")
+            ? error.message
+            : "Không thể thực hiện giao dịch: " + error.message
+        );
       }
     } else {
       throw new Error("Loại giao dịch không được hỗ trợ!");
@@ -581,7 +618,6 @@ export function Web3Provider({ children }) {
       return { transactionHash: tx.transactionHash };
     } catch (error) {
       console.error("Lỗi khi thêm manager:", error);
-
       if (error.message.includes("revert")) {
         throw new Error(
           "Giao dịch bị từ chối bởi hợp đồng thông minh. Kiểm tra logic hợp đồng hoặc quyền truy cập."
@@ -595,7 +631,6 @@ export function Web3Provider({ children }) {
           "Lỗi mạng. Vui lòng kiểm tra kết nối với Hardhat Network hoặc MetaMask."
         );
       }
-
       throw new Error("Không thể thêm manager: " + error.message);
     }
   };
