@@ -365,35 +365,33 @@ app.get(
         });
       }
 
+      // Tính tổng số sản phẩm trong kho
       const productsCount = await pool.query(
         "SELECT COUNT(*) FROM products WHERE farm_id = ANY($1)",
         [farmIds]
       );
       const totalProducts = parseInt(productsCount.rows[0].count);
 
+      // Tính tổng số lượng sản phẩm đã bán (dựa trên outgoing_products)
       const soldProductsResult = await pool.query(
         `
-      SELECT COUNT(*) 
-      FROM outgoing_products op
-      JOIN shipment_products sp ON op.product_id = sp.product_id
-      JOIN shipments s ON sp.shipment_id = s.id
-      WHERE op.product_id IN (SELECT id FROM products WHERE farm_id = ANY($1))
-      AND s.status = 'Delivered'
-      AND s.recipient_type = 'Customer'
-      `,
+        SELECT COALESCE(SUM(op.quantity), 0) as sold_products
+        FROM outgoing_products op
+        JOIN products p ON op.product_id = p.id
+        WHERE p.farm_id = ANY($1)
+        `,
         [farmIds]
       );
-      const soldProducts = parseInt(soldProductsResult.rows[0].count);
+      const soldProducts = parseInt(soldProductsResult.rows[0].sold_products);
 
+      // Tính tổng doanh thu (dựa trên outgoing_products)
       const revenueResult = await pool.query(
         `
-      SELECT COALESCE(SUM(sp.price * sp.quantity), 0) as total_revenue
-      FROM shipment_products sp
-      JOIN shipments s ON sp.shipment_id = s.id
-      WHERE sp.product_id IN (SELECT id FROM products WHERE farm_id = ANY($1))
-      AND s.status = 'Delivered'
-      AND s.recipient_type = 'Customer'
-      `,
+        SELECT COALESCE(SUM(op.price * op.quantity), 0) as total_revenue
+        FROM outgoing_products op
+        JOIN products p ON op.product_id = p.id
+        WHERE p.farm_id = ANY($1)
+        `,
         [farmIds]
       );
       const totalRevenue = parseFloat(revenueResult.rows[0].total_revenue);

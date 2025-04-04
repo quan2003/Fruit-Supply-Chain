@@ -135,8 +135,9 @@ export function Web3Provider({ children }) {
         return;
       }
 
+      let web3Instance = null;
       try {
-        const web3Instance = new Web3(window.ethereum);
+        web3Instance = new Web3(window.ethereum);
         setWeb3(web3Instance);
 
         const chainId = await web3Instance.eth.getChainId();
@@ -182,7 +183,7 @@ export function Web3Provider({ children }) {
 
         const accounts = await web3Instance.eth.getAccounts();
         if (accounts.length === 0) {
-          await connectWallet();
+          setWalletError("Vui lòng kết nối ví MetaMask để tiếp tục!");
         } else {
           setAccount(accounts[0]);
           await checkUserAndWallet(accounts[0]);
@@ -228,30 +229,36 @@ export function Web3Provider({ children }) {
     const newAccount = accounts[0] || null;
     console.log("Tài khoản MetaMask thay đổi:", newAccount);
     setAccount(newAccount);
-    if (newAccount) await checkUserAndWallet(newAccount);
-    else setWalletError("Ví MetaMask đã ngắt kết nối!");
+    if (newAccount) {
+      await checkUserAndWallet(newAccount);
+    } else {
+      setWalletError("Ví MetaMask đã ngắt kết nối! Vui lòng kết nối lại.");
+    }
   };
 
   const handleDisconnect = () => {
     console.log("Ví MetaMask đã ngắt kết nối");
     setAccount(null);
-    setWalletError("Ví MetaMask đã ngắt kết nối!");
+    setWalletError("Ví MetaMask đã ngắt kết nối! Vui lòng kết nối lại.");
   };
 
-  const connectWallet = async () => {
-    if (!web3) throw new Error("Web3 chưa được khởi tạo!");
+  const connectWallet = async (web3Instance = web3) => {
+    if (!web3Instance) throw new Error("Web3 chưa được khởi tạo!");
     try {
       const accounts = await window.ethereum.request({
         method: "eth_requestAccounts",
       });
       console.log("Kết nối ví MetaMask thành công:", accounts);
       setAccount(accounts[0]);
+      setWalletError(null); // Xóa lỗi khi kết nối thành công
       await checkUserAndWallet(accounts[0]);
     } catch (error) {
       console.error("Lỗi khi kết nối ví MetaMask:", error);
-      if (error.code === -32002)
-        throw new Error("Yêu cầu kết nối đang chờ xử lý trong MetaMask!");
-      throw error;
+      if (error.code === -32002) {
+        setWalletError("Yêu cầu kết nối đang chờ xử lý trong MetaMask!");
+      } else {
+        setWalletError("Không thể kết nối ví MetaMask: " + error.message);
+      }
     }
   };
 
@@ -356,7 +363,6 @@ export function Web3Provider({ children }) {
     }
   };
 
-  // Định nghĩa hàm testContract trước khi sử dụng
   const testContract = async () => {
     try {
       if (!contract) throw new Error("Contract chưa được khởi tạo đúng!");
@@ -407,7 +413,7 @@ export function Web3Provider({ children }) {
           blockNumber
         );
 
-        await testContract(); // Gọi hàm đã định nghĩa
+        await testContract();
 
         const owner = await contract.methods.owner().call();
         const isManager = await contract.methods

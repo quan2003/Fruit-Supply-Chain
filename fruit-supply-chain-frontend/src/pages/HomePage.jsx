@@ -8,6 +8,7 @@ import "../assets/styles/Carousel.css";
 import Layout from "../components/common/Layout";
 import Footer from "../components/common/Footer";
 import { Link, useNavigate } from "react-router-dom";
+import { useWeb3 } from "../contexts/Web3Context";
 
 const images = {
   farmer:
@@ -20,6 +21,7 @@ const images = {
 
 const HomePage = () => {
   const navigate = useNavigate();
+  const { walletError, connectWallet, loading } = useWeb3();
 
   const settings = {
     dots: true,
@@ -78,6 +80,110 @@ const HomePage = () => {
       action: () => handleRedirect("Customer", "/truy-xuat"),
     },
   ];
+
+  if (loading) {
+    return (
+      <Layout>
+        <Box
+          sx={{
+            minHeight: "calc(100vh - 140px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Typography variant="h5">Đang tải...</Typography>
+        </Box>
+        <Footer />
+      </Layout>
+    );
+  }
+
+  if (walletError) {
+    return (
+      <Layout>
+        <Box
+          sx={{
+            minHeight: "calc(100vh - 140px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            bgcolor: "#E6F4EA",
+            py: 4,
+          }}
+        >
+          <Container maxWidth="lg">
+            <Grid container spacing={3} alignItems="center">
+              <Grid item xs={12} md={6}>
+                <motion.div
+                  initial={{ opacity: 0, x: -50 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.8 }}
+                >
+                  <Typography
+                    variant="h3"
+                    sx={{
+                      fontWeight: "bold",
+                      color: "black",
+                      mb: 2,
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    Kết nối ví MetaMask để bắt đầu nào! 🚀
+                  </Typography>
+                  <Typography
+                    variant="body1"
+                    color="text.secondary"
+                    sx={{ mb: 3, lineHeight: 1.6 }}
+                  >
+                    {walletError}
+                    <br />
+                    Không kết nối ví MetaMask ư? 😓
+                    <br />
+                    Web3 của bạn chưa được khởi tạo!
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    onClick={() => connectWallet()}
+                    sx={{
+                      bgcolor: "#FF6F91",
+                      color: "white",
+                      borderRadius: "50px",
+                      px: 4,
+                      py: 1.5,
+                      fontWeight: "bold",
+                      "&:hover": { bgcolor: "#E65B7A" },
+                    }}
+                  >
+                    Kết nối ngay! ✨
+                  </Button>
+                </motion.div>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <motion.div
+                  initial={{ opacity: 0, x: 50 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.8 }}
+                >
+                  <Box
+                    component="img"
+                    src="https://images.unsplash.com/photo-1516321497487-e288fb19713f"
+                    alt="MetaMask Connection"
+                    sx={{
+                      width: "100%",
+                      borderRadius: 2,
+                      boxShadow: 3,
+                    }}
+                  />
+                </motion.div>
+              </Grid>
+            </Grid>
+          </Container>
+        </Box>
+        <Footer />
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

@@ -13,6 +13,7 @@ import {
   Alert,
   Tabs,
   Tab,
+  Snackbar, // Thêm Snackbar
 } from "@mui/material";
 import {
   Assessment as AssessmentIcon,
@@ -54,6 +55,8 @@ const DeliveryHubPage = () => {
   const [showShipmentForm, setShowShipmentForm] = useState(false);
   const [selectedShipment, setSelectedShipment] = useState(null);
   const [alertMessage, setAlertMessage] = useState({ type: "", message: "" });
+  const [snackOpen, setSnackOpen] = useState(false); // State cho Snackbar
+  const [snackMessage, setSnackMessage] = useState(""); // Nội dung thông báo
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState("statistics");
 
@@ -79,14 +82,12 @@ const DeliveryHubPage = () => {
     try {
       setLoading(true);
 
-      // Kiểm tra xem ví đã được liên kết chưa
       const walletCheck = await axios.post(
         "http://localhost:3000/check-role",
         {},
         { headers: { "x-ethereum-address": account } }
       );
 
-      // Nếu API trả về lỗi (ví dụ: ví chưa được liên kết), hiển thị thông điệp lỗi từ backend
       if (walletCheck.data.error) {
         setAlertMessage({
           type: "error",
@@ -96,7 +97,6 @@ const DeliveryHubPage = () => {
         return;
       }
 
-      // Kiểm tra role từ API (nếu cần)
       const allowedRoles = ["DeliveryHub", "Admin"];
       if (!allowedRoles.includes(walletCheck.data.role)) {
         setAlertMessage({
@@ -224,10 +224,8 @@ const DeliveryHubPage = () => {
       await fetchData();
 
       setLoading(false);
-      setAlertMessage({
-        type: "success",
-        message: "Đã nhận lô hàng thành công!",
-      });
+      setSnackMessage("Đã nhận lô hàng thành công!"); // Dùng Snackbar
+      setSnackOpen(true);
     } catch (error) {
       console.error("Error receiving shipment:", error);
       setAlertMessage({
@@ -260,10 +258,8 @@ const DeliveryHubPage = () => {
       setShowShipmentForm(false);
       setSelectedShipment(null);
       setLoading(false);
-      setAlertMessage({
-        type: "success",
-        message: "Đã tạo lô hàng gửi đi thành công!",
-      });
+      setSnackMessage("Đã tạo lô hàng gửi đi thành công!"); // Dùng Snackbar
+      setSnackOpen(true);
     } catch (error) {
       console.error("Error creating shipment:", error);
       setAlertMessage({
@@ -298,10 +294,8 @@ const DeliveryHubPage = () => {
       await fetchData();
 
       setLoading(false);
-      setAlertMessage({
-        type: "success",
-        message: "Đã thu hoạch trái cây thành công!",
-      });
+      setSnackMessage("Đã thu hoạch trái cây thành công!"); // Dùng Snackbar
+      setSnackOpen(true);
 
       return transactionResult;
     } catch (error) {
@@ -375,11 +369,10 @@ const DeliveryHubPage = () => {
       setCurrentPage("outgoing-products");
 
       setLoading(false);
-      setAlertMessage({
-        type: "success",
-        message:
-          "Đã mua, đăng bán và chuyển sản phẩm sang mục đang bán thành công!",
-      });
+      setSnackMessage(
+        "Đã mua, đăng bán và chuyển sản phẩm sang mục đang bán thành công!"
+      ); // Dùng Snackbar
+      setSnackOpen(true);
     } catch (error) {
       console.error("Error adding product to inventory after purchase:", error);
       setAlertMessage({
@@ -405,10 +398,8 @@ const DeliveryHubPage = () => {
         walletAddress: account,
       });
       setWalletError(null);
-      setAlertMessage({
-        type: "success",
-        message: response.data.message,
-      });
+      setSnackMessage(response.data.message); // Dùng Snackbar
+      setSnackOpen(true);
       fetchData();
     } catch (error) {
       console.error("Error updating wallet:", error);
@@ -419,6 +410,10 @@ const DeliveryHubPage = () => {
           "Có lỗi khi cập nhật ví. Vui lòng thử lại sau.",
       });
     }
+  };
+
+  const handleCloseSnack = () => {
+    setSnackOpen(false);
   };
 
   const filterData = (data) => {
@@ -680,6 +675,15 @@ const DeliveryHubPage = () => {
             }}
           />
         </Container>
+
+        {/* Thêm Snackbar để hiển thị thông báo thành công */}
+        <Snackbar
+          open={snackOpen}
+          autoHideDuration={6000}
+          onClose={handleCloseSnack}
+          message={snackMessage}
+          anchorOrigin={{ vertical: "top", horizontal: "right" }}
+        />
       </Box>
     </Box>
   );
