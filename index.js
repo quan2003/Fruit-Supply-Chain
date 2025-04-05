@@ -1896,6 +1896,15 @@ app.post(
 );
 
 // ==== API THÊM SẢN PHẨM ====
+const fruitHashMapping = {
+  Thom: "QmeTDW7o2ZHAKJJW8A5Jfbe1mv7RZo8sdcDTxq1mP6X5MN", // Thơm
+  "Vu Sua": "QmXtKxu41xyvx4x9XXz6WRTRFCnKwriWfrHCtiYTHDJF1u", // Vú sữa
+  "Dua Hau": "QmNYb72BzVRhxTcXAefSg4QESHK2fEn2T3hFUE8Gvz6gM5", // Dưa hấu
+  "Mang Cut": "QmdHct5JMUtw3VpDMJg4LYLvFqkVUsoZAVmy8wqgjs8T8d", // Măng cụt
+  "Trai Thanh Long": "QmdTqSueXLd6J6EMbXvemP3VVPpUo3dkkWwbiNmKV4Cegy", // Thanh long
+  "Trai Xoai": "QmcwFdYQXKVsPd7qhCeXowwVDbHrnmMM6hCtsfJ7US4nXT", // Xoài
+};
+
 app.post("/products", checkAuth, checkRole(["Producer"]), async (req, res) => {
   console.log("Dữ liệu nhận được từ frontend:", req.body);
 
@@ -1955,8 +1964,8 @@ app.post("/products", checkAuth, checkRole(["Producer"]), async (req, res) => {
         .json({ message: "Farm không thuộc producer này! 😅" });
     }
 
-    const finalHash = frontendHash;
-    const imageUrl = `http://localhost:8080/ipfs/${finalHash}`; // Sử dụng gateway cục bộ
+    const ipfsHash = frontendHash; // Sử dụng hash từ frontend (từ upload hoặc mặc định)
+    const imageUrl = `https://ipfs.filebase.io/ipfs/${ipfsHash}`;
     const result = await pool.query(
       "INSERT INTO products (name, productcode, category, description, price, quantity, imageurl, productdate, expirydate, farm_id, hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *",
       [
@@ -1970,23 +1979,16 @@ app.post("/products", checkAuth, checkRole(["Producer"]), async (req, res) => {
         productdate,
         expirydate,
         farm_id,
-        finalHash,
+        ipfsHash,
       ]
     );
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error("Lỗi khi lưu sản phẩm vào cơ sở dữ liệu:", error);
-    if (error.code === "ECONNREFUSED" && error.message.includes("ipfs")) {
-      res.status(500).json({
-        error:
-          "Không thể kết nối đến IPFS daemon. Vui lòng kiểm tra xem IPFS daemon có đang chạy không.",
-      });
-    } else {
-      res
-        .status(500)
-        .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
-    }
+    res
+      .status(500)
+      .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
   }
 });
 
