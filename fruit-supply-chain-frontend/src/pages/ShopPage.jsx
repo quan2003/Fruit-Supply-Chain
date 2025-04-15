@@ -22,10 +22,10 @@ import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import { QRCodeSVG } from "qrcode.react"; // Sửa import
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3000";
 
-// Styled components để tùy chỉnh giao diện
 const StyledCard = styled(Card)(({ theme }) => ({
   boxShadow: theme.shadows[3],
   borderRadius: theme.shape.borderRadius * 2,
@@ -44,19 +44,19 @@ const StyledCard = styled(Card)(({ theme }) => ({
 
 const StyledCardMedia = styled(CardMedia)(({ theme }) => ({
   width: "100%",
-  aspectRatio: "1/1", // Tỷ lệ 1:1 để hình ảnh hiển thị đầy đủ
-  objectFit: "contain", // Hiển thị toàn bộ hình ảnh, không cắt
-  padding: "8px", // Thêm padding để tạo khoảng cách
-  backgroundColor: "#f5f5f5", // Nền nhạt để hình ảnh nổi bật
-  borderRadius: "8px", // Bo góc hình ảnh
-  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)", // Thêm bóng nhẹ
-  maxHeight: "200px", // Giới hạn chiều cao tối đa
-  display: "flex", // Căn giữa hình ảnh
+  aspectRatio: "1/1",
+  objectFit: "contain",
+  padding: "8px",
+  backgroundColor: "#f5f5f5",
+  borderRadius: "8px",
+  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+  maxHeight: "200px",
+  display: "flex",
   justifyContent: "center",
   alignItems: "center",
   transition: "transform 0.3s ease-in-out",
   "&:hover": {
-    transform: "scale(1.05)", // Hiệu ứng phóng to khi hover
+    transform: "scale(1.05)",
   },
 }));
 
@@ -130,39 +130,27 @@ const ShopPage = () => {
   }, [account, user]);
 
   const handleBuyProduct = async (product) => {
-    if (!account) {
+    if (!account || !user || user.role !== "Customer") {
       setAlertMessage({
         type: "error",
-        message: "Vui lòng kết nối ví MetaMask để mua hàng!",
-      });
-      return;
-    }
-
-    if (!user || user.role !== "Customer") {
-      setAlertMessage({
-        type: "error",
-        message: "Vui lòng đăng nhập với vai trò người tiêu dùng để mua hàng!",
+        message:
+          "Vui lòng kết nối ví MetaMask và đăng nhập với vai trò người tiêu dùng!",
       });
       return;
     }
 
     try {
       setLoading(true);
-
-      // Tính tổng giá trị giao dịch
       const totalPriceInWei = web3.utils.toWei(
         (product.price * 1).toString(),
         "ether"
       );
-
-      // Gọi giao dịch blockchain
       const tx = await executeTransaction({
         type: "purchaseProduct",
         listingId: product.listing_id,
         totalPrice: totalPriceInWei,
       });
 
-      // Gọi API để lưu giao dịch
       const response = await axios.post(
         `${API_URL}/buy-product`,
         {
@@ -184,18 +172,13 @@ const ShopPage = () => {
         type: "success",
         message: "Mua sản phẩm thành công! Đơn hàng đang được xử lý.",
       });
-
-      // Làm mới danh sách sản phẩm
       await fetchProducts();
-
       setLoading(false);
     } catch (error) {
       console.error("Lỗi khi mua sản phẩm:", error);
       setAlertMessage({
         type: "error",
-        message:
-          error.response?.data?.message ||
-          "Không thể mua sản phẩm. Vui lòng thử lại sau.",
+        message: error.response?.data?.message || "Không thể mua sản phẩm.",
       });
       setLoading(false);
     }
@@ -230,7 +213,7 @@ const ShopPage = () => {
       <Container sx={{ textAlign: "center", mt: 4 }}>
         <CircularProgress sx={{ color: "#FF6F91" }} />
         <Typography variant="body1" sx={{ mt: 2, color: "text.secondary" }}>
-          Đang tải sản phẩm...
+          Đang tải dữ liệu...
         </Typography>
       </Container>
     );
@@ -306,14 +289,7 @@ const ShopPage = () => {
                   <CardContent sx={{ flexGrow: 1, padding: "12px 16px" }}>
                     <Typography
                       variant="h6"
-                      sx={{
-                        fontWeight: "bold",
-                        color: "#333",
-                        mb: 1,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
+                      sx={{ fontWeight: "bold", color: "#333", mb: 1 }}
                     >
                       {product.name}
                     </Typography>
@@ -331,19 +307,11 @@ const ShopPage = () => {
                     >
                       Số lượng: {product.quantity}
                     </Typography>
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <Typography variant="body2" color="text.secondary">
                       Trung tâm phân phối: {product.delivery_hub_name}
                     </Typography>
                   </CardContent>
-                  <CardActions sx={{ justifyContent: "center", pb: 2 }}>
+                  <CardActions sx={{ justifyContent: "space-around", pb: 2 }}>
                     <StyledButton
                       variant="contained"
                       startIcon={<ShoppingCartIcon />}
@@ -352,6 +320,22 @@ const ShopPage = () => {
                     >
                       Mua ngay
                     </StyledButton>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                      }}
+                    >
+                      <Tooltip title="Quét để truy xuất nguồn gốc">
+                        <QRCodeSVG
+                          value={product.traceUrl} // URL từ backend
+                          size={60} // Kích thước mã QR
+                          level="H" // Độ chi tiết cao
+                          includeMargin={true}
+                        />
+                      </Tooltip>
+                    </Box>
                   </CardActions>
                 </StyledCard>
               </Fade>

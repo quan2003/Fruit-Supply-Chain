@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWeb3 } from "../../contexts/Web3Context";
 import { addFruitProduct } from "../../services/fruitService";
+import axios from "axios";
 import {
   Box,
   Typography,
@@ -15,17 +16,17 @@ import {
   Paper,
   CircularProgress,
   Alert,
+  Snackbar,
 } from "@mui/material";
 import "../FruitCatalog/CatalogStyles.css";
 
-// Định nghĩa ánh xạ giữa loại trái cây và mã hash IPFS (dùng làm ảnh mặc định nếu không upload)
 const fruitHashMapping = {
-  Thom: "QmeTDW7o2ZHAKJJW8A5Jfbe1mv7RZo8sdcDTxq1mP6X5MN", // Thơm
-  "Vu Sua": "QmXtKxu41xyvx4x9XXz6WRTRFCnKwriWfrHCtiYTHDJF1u", // Vú sữa
-  "Dua Hau": "QmNYb72BzVRhxTcXAefSg4QESHK2fEn2T3hFUE8Gvz6gM5", // Dưa hấu
-  "Mang Cut": "QmdHct5JMUtw3VpDMJg4LYLvFqkVUsoZAVmy8wqgjs8T8d", // Măng cụt
-  "Trai Thanh Long": "QmdTqSueXLd6J6EMbXvemP3VVPpUo3dkkWwbiNmKV4Cegy", // Thanh long
-  "Trai Xoai": "QmcwFdYQXKVsPd7qhCeXowwVDbHrnmMM6hCtsfJ7US4nXT", // Xoài
+  Thom: "QmeTDW7o2ZHAKJJW8A5Jfbe1mv7RZo8sdcDTxq1mP6X5MN",
+  "Vu Sua": "QmXtKxu41xyvx4x9XXz6WRTRFCnKwriWfrHCtiYTHDJF1u",
+  "Dua Hau": "QmNYb72BzVRhxTcXAefSg4QESHK2fEn2T3hFUE8Gvz6gM5",
+  "Mang Cut": "QmdHct5JMUtw3VpDMJg4LYLvFqkVUsoZAVmy8wqgjs8T8d",
+  "Trai Thanh Long": "QmdTqSueXLd6J6EMbXvemP3VVPpUo3dkkWwbiNmKV4Cegy",
+  "Trai Xoai": "QmcwFdYQXKVsPd7qhCeXowwVDbHrnmMM6hCtsfJ7US4nXT",
 };
 
 const AddFarmProductForm = () => {
@@ -45,9 +46,15 @@ const AddFarmProductForm = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [redirecting, setRedirecting] = useState(false);
-  const [imageFile, setImageFile] = useState(null); // Thêm state cho file ảnh
-  const [imagePreview, setImagePreview] = useState(null); // Thêm state cho preview ảnh
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const [farms, setFarms] = useState([]);
+  const [prediction, setPrediction] = useState(null);
+  const [predictionLoading, setPredictionLoading] = useState(false);
+  const [predictionError, setPredictionError] = useState(null);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState("");
+  const [snackbarSeverity, setSnackbarSeverity] = useState("info");
   const user = JSON.parse(localStorage.getItem("user")) || {};
 
   const validFruits = [
@@ -75,10 +82,7 @@ const AddFarmProductForm = () => {
       navigate("/dang-nhap");
       return;
     }
-
-    if (!account) {
-      return;
-    }
+    if (!account) return;
 
     const fetchFarms = async () => {
       try {
@@ -114,30 +118,213 @@ const AddFarmProductForm = () => {
   useEffect(() => {
     if (success && !redirecting) {
       setRedirecting(true);
-      const timer = setTimeout(() => {
-        navigate("/farms/products");
-      }, 3000);
+      const timer = setTimeout(() => navigate("/farms/products"), 3000);
       return () => clearTimeout(timer);
     }
   }, [success, redirecting, navigate]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setProduct((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setProduct((prev) => ({ ...prev, [name]: value }));
+    if (name === "category") {
+      setPrediction(null);
+      setPredictionError(null);
+      setImageFile(null);
+      setImagePreview(null);
+      setSnackbarOpen(false);
+    }
   };
 
-  const handleImageChange = (e) => {
+  const handleSnackbarClose = (event, reason) => {
+    if (reason === "clickaway") return;
+    setSnackbarOpen(false);
+  };
+
+  const predictImage = async (file, category) => {
+    setPredictionLoading(true);
+    setPredictionError(null);
+    setPrediction(null);
+    setSnackbarOpen(false);
+
+    try {
+      const reader = new FileReader();
+      const base64Image = await new Promise((resolve) => {
+        reader.onloadend = () => resolve(reader.result.split(",")[1]);
+        reader.readAsDataURL(file);
+      });
+
+      let roboflowEndpoint;
+      if (category === "Dua Hau") {
+        roboflowEndpoint = "https://serverless.roboflow.com/watermelon-xztju/5";
+      } else if (category === "Mang Cut") {
+        roboflowEndpoint = "https://detect.roboflow.com/mangosteen-2grlu/4";
+      } else if (category === "Trai Thanh Long") {
+        roboflowEndpoint =
+          "https://detect.roboflow.com/thanh-long-detection-znzlc/3";
+      } else if (category === "Trai Xoai") {
+        roboflowEndpoint = "https://detect.roboflow.com/dataset-s2doa/20";
+      } else if (category === "Vu Sua") {
+        roboflowEndpoint = "https://detect.roboflow.com/anh-vusua/1";
+      } else {
+        throw new Error("Loại trái cây không được hỗ trợ nhận diện!");
+      }
+
+      const roboflowResponse = await axios({
+        method: "POST",
+        url: roboflowEndpoint,
+        params: {
+          api_key: "E8YOwnmbHAOZ5OCaS8GZ",
+        },
+        data: base64Image,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      });
+
+      const roboflowResult = roboflowResponse.data;
+      if (
+        !roboflowResult.predictions ||
+        roboflowResult.predictions.length === 0 ||
+        !roboflowResult.predictions[0]?.class
+      ) {
+        throw new Error("Hình ảnh không phù hợp với loại trái cây được chọn!");
+      }
+
+      let predictionResult = roboflowResult.predictions[0].class;
+
+      if (category === "Trai Thanh Long" && predictionResult === "raw") {
+        predictionResult = "unripe";
+      }
+      if (category === "Trai Xoai") {
+        if (predictionResult === "mango") {
+          predictionResult = "ripe";
+        } else {
+          throw new Error(
+            "Hình ảnh không phù hợp với loại trái cây được chọn!"
+          );
+        }
+      }
+      if (category === "Vu Sua") {
+        if (predictionResult === "0") {
+          predictionResult = "ripe";
+        } else if (predictionResult === "1") {
+          predictionResult = "unripe";
+        } else {
+          throw new Error(
+            "Hình ảnh không phù hợp với loại trái cây được chọn!"
+          );
+        }
+      }
+
+      if (
+        (category === "Dua Hau" &&
+          !["ripe", "unripe"].includes(predictionResult)) ||
+        (category === "Mang Cut" &&
+          !["ripe", "unripe"].includes(predictionResult)) ||
+        (category === "Trai Thanh Long" &&
+          !["ripe", "unripe"].includes(predictionResult)) ||
+        (category === "Trai Xoai" && predictionResult !== "ripe") ||
+        (category === "Vu Sua" &&
+          !["ripe", "unripe"].includes(predictionResult))
+      ) {
+        throw new Error("Hình ảnh không phù hợp với loại trái cây được chọn!");
+      }
+
+      const apiKey = "AIzaSyDiyzVcJ5v9BOpy-_c-60ahkzI-BM0tEvc";
+      const apiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+      const requestBody = {
+        contents: [
+          {
+            parts: [
+              {
+                text: `Tôi có một ${category} với trạng thái chín là ${predictionResult}. Hãy đưa ra khuyến nghị bảo quản chi tiết theo định dạng sau:
+                - Khuyến nghị: [chi tiết cách bảo quản, bao gồm nhiệt độ và thời gian]
+                - Mẹo: [một mẹo cụ thể]
+                Ví dụ:
+                Khuyến nghị: Bảo quản ở 5-10°C trong 2-3 tuần.
+                Mẹo: Bọc kín để tránh mùi.
+                Trả về văn bản không chứa dấu * để tránh định dạng lộn xộn.`,
+              },
+            ],
+          },
+        ],
+      };
+
+      const geminiResponse = await axios({
+        method: "POST",
+        url: apiEndpoint,
+        data: requestBody,
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const geminiResult = geminiResponse.data;
+      let generatedText = geminiResult.candidates[0].content.parts[0].text;
+
+      generatedText = generatedText.replace(/\*/g, "");
+
+      const recommendationMatch = generatedText.match(
+        /Khuyến nghị:\s*([^\n]+)/
+      );
+      const tipMatch = generatedText.match(/Mẹo:\s*([^\n]+)/);
+
+      const formattedMessage = `
+        <div style="line-height: 1.5;">
+          <strong style="color: #1976D2;">Trạng thái:</strong> ${
+            predictionResult === "ripe" ? "Đã chín" : "Chưa chín"
+          }<br />
+          <strong style="color: #1976D2;">Khuyến nghị:</strong> ${
+            recommendationMatch
+              ? recommendationMatch[1].trim()
+              : "Không có thông tin."
+          }<br />
+          <strong style="color: #1976D2;">Mẹo:</strong> ${
+            tipMatch ? tipMatch[1].trim() : "Không có mẹo."
+          }
+        </div>
+      `;
+
+      setSnackbarMessage(formattedMessage);
+      setSnackbarSeverity(predictionResult === "ripe" ? "success" : "warning");
+      setSnackbarOpen(true);
+
+      setPrediction(predictionResult);
+      return predictionResult;
+    } catch (error) {
+      console.error("Lỗi khi gọi API:", error);
+      setPredictionError(
+        "Không thể nhận diện hoặc tạo khuyến nghị: " + error.message
+      );
+      return null;
+    } finally {
+      setPredictionLoading(false);
+    }
+  };
+
+  const handleImageChange = async (e) => {
     const file = e.target.files[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
         setError("Hình ảnh quá lớn! Vui lòng chọn hình ảnh dưới 5MB.");
         return;
       }
+      if (!product.category) {
+        setError("Vui lòng chọn loại trái cây trước khi upload hình ảnh!");
+        return;
+      }
       setImageFile(file);
       setImagePreview(URL.createObjectURL(file));
+      if (
+        [
+          "Dua Hau",
+          "Mang Cut",
+          "Trai Thanh Long",
+          "Trai Xoai",
+          "Vu Sua",
+        ].includes(product.category)
+      ) {
+        await predictImage(file, product.category);
+      }
     }
   };
 
@@ -212,7 +399,6 @@ const AddFarmProductForm = () => {
   const uploadToIPFS = async (file) => {
     const formData = new FormData();
     formData.append("file", file);
-
     try {
       const response = await fetch("http://localhost:3000/ipfs/add", {
         method: "POST",
@@ -241,28 +427,38 @@ const AddFarmProductForm = () => {
       return;
     }
 
+    if (
+      [
+        "Dua Hau",
+        "Mang Cut",
+        "Trai Thanh Long",
+        "Trai Xoai",
+        "Vu Sua",
+      ].includes(product.category) &&
+      imageFile
+    ) {
+      if (!prediction) {
+        setError("Vui lòng chờ nhận diện hình ảnh trước khi thêm sản phẩm!");
+        setLoading(false);
+        return;
+      }
+      if (prediction !== "ripe") {
+        setError("Sản phẩm chưa chín! Vui lòng chọn sản phẩm đã chín để thêm.");
+        setLoading(false);
+        return;
+      }
+    }
+
     try {
       const productCode = generateProductCode(product.name);
       const fruitType = product.category;
-
-      let ipfsHash = "";
-      if (imageFile) {
-        // Nếu người dùng upload ảnh, sử dụng ảnh đó
-        console.log(
-          "Bắt đầu upload ảnh lên IPFS qua backend, kích thước file:",
-          imageFile.size
-        );
-        ipfsHash = await uploadToIPFS(imageFile);
-        console.log(`Uploaded image to IPFS with hash: ${ipfsHash}`);
-      } else {
-        // Nếu không upload ảnh, sử dụng ảnh mặc định từ fruitHashMapping
-        ipfsHash = fruitHashMapping[fruitType];
-        if (!ipfsHash) {
-          throw new Error("Loại trái cây không được hỗ trợ!");
-        }
+      let ipfsHash = imageFile
+        ? await uploadToIPFS(imageFile)
+        : fruitHashMapping[fruitType];
+      if (!ipfsHash) {
+        throw new Error("Loại trái cây không được hỗ trợ!");
       }
 
-      // Gọi smart contract để lưu hash
       let gasLimit;
       try {
         const gasEstimate = await contract.methods
@@ -270,12 +466,13 @@ const AddFarmProductForm = () => {
           .estimateGas({ from: account });
         gasLimit = Math.floor(Number(gasEstimate) * 3);
       } catch (err) {
-        gasLimit = 1000000; // Default gas limit
+        gasLimit = 1000000;
       }
 
-      const tx = await contract.methods
-        .setFruitHash(fruitType, ipfsHash)
-        .send({ from: account, gas: gasLimit });
+      await contract.methods.setFruitHash(fruitType, ipfsHash).send({
+        from: account,
+        gas: gasLimit,
+      });
 
       const productData = {
         name: product.name,
@@ -288,7 +485,7 @@ const AddFarmProductForm = () => {
         expirydate: product.expirydate,
         farm_id: product.farm_id,
         email: user.email,
-        frontendHash: ipfsHash, // Gửi hash (từ upload hoặc mặc định)
+        frontendHash: ipfsHash,
       };
 
       await addFruitProduct(productData, { "x-ethereum-address": account });
@@ -493,6 +690,27 @@ const AddFarmProductForm = () => {
                   />
                 </Box>
               )}
+              {predictionLoading && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  <CircularProgress size={20} sx={{ mr: 1 }} />
+                  Đang nhận diện hình ảnh, vui lòng chờ...
+                </Alert>
+              )}
+              {predictionError && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {predictionError}
+                </Alert>
+              )}
+              {prediction && !predictionLoading && (
+                <Alert
+                  severity={prediction === "ripe" ? "success" : "warning"}
+                  sx={{ mt: 2 }}
+                >
+                  {prediction === "ripe"
+                    ? "Sản phẩm đã chín, sẵn sàng để bán!"
+                    : "Sản phẩm chưa chín, bạn nên chờ thêm trước khi bán."}
+                </Alert>
+              )}
             </Grid>
 
             <Grid item xs={12}>
@@ -549,7 +767,13 @@ const AddFarmProductForm = () => {
                   type="submit"
                   variant="contained"
                   color="primary"
-                  disabled={loading || !account || !contract || web3Loading}
+                  disabled={
+                    loading ||
+                    !account ||
+                    !contract ||
+                    web3Loading ||
+                    predictionLoading
+                  }
                   sx={{
                     textTransform: "none",
                     fontWeight: "bold",
@@ -564,6 +788,21 @@ const AddFarmProductForm = () => {
           </Grid>
         </form>
       </Paper>
+
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={handleSnackbarClose}
+          severity={snackbarSeverity}
+          sx={{ width: "100%" }}
+        >
+          <div dangerouslySetInnerHTML={{ __html: snackbarMessage }} />
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

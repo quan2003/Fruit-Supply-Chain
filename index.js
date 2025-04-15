@@ -8,6 +8,7 @@ import multer from "multer";
 import ipfs from "./ipfsClient.js";
 import { fileURLToPath } from "url";
 
+const API_URL = process.env.API_URL || "http://localhost:3000";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -1793,14 +1794,27 @@ app.get("/products/:id", async (req, res) => {
 app.get("/all-outgoing-products", async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT op.*, p.name, p.productcode, p.imageurl, p.description, p.category, p.price as original_price, u.name as delivery_hub_name
+      `SELECT op.*, 
+              p.name, 
+              p.productcode, 
+              p.imageurl, 
+              p.description, 
+              p.category, 
+              p.price as original_price, 
+              u.name as delivery_hub_name
        FROM outgoing_products op
        JOIN products p ON op.product_id = p.id
        JOIN users u ON op.delivery_hub_id = u.id
        WHERE op.status = 'Available'`
     );
 
-    res.status(200).json(result.rows);
+    // Thêm traceUrl cho từng sản phẩm
+    const productsWithTraceUrl = result.rows.map((product) => ({
+      ...product,
+      traceUrl: `${API_URL}/trace-product/${product.listing_id}`,
+    }));
+
+    res.status(200).json(productsWithTraceUrl);
   } catch (error) {
     console.error("Lỗi khi lấy danh sách sản phẩm đang bán:", error);
     res
@@ -1808,7 +1822,121 @@ app.get("/all-outgoing-products", async (req, res) => {
       .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
   }
 });
+// ==== API TRUY XUẤT NGUỒN GỐC SẢN PHẨM ====
+app.get("/trace-product/:listingId", async (req, res) => {
+  const { listingId } = req.params;
 
+  try {
+    // 1. Lấy thông tin sản phẩm từ bảng outgoing_products
+    const outgoingProductResult = await pool.query(
+      `SELECT op.*, 
+              p.name, 
+              p.productcode, 
+              p.imageurl, 
+              p.description, 
+              p.category, 
+              p.price as original_price, 
+              p.productdate, 
+              p.expirydate, 
+              p.farm_id,
+              u.name as delivery_hub_name
+       FROM outgoing_products op
+       JOIN products p ON op.product_id = p.id
+       JOIN users u ON op.delivery_hub_id = u.id
+       WHERE op.listing_id = $1 AND op.status = 'Available'`,
+      [listingId]
+    );
+
+    if (outgoingProductResult.rows.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "Sản phẩm không tồn tại hoặc đã được bán! 😅" });
+    }
+
+    const outgoingProduct = outgoingProductResult.rows[0];
+
+    // 2. Lấy thông tin nông trại từ bảng farms
+    const farmResult = await pool.query("SELECT * FROM farms WHERE id = $1", [
+      outgoingProduct.farm_id,
+    ]);
+
+    if (farmResult.rows.length === 0) {
+      return res.status(404).json({ message: "Nông trại không tồn tại! 😅" });
+    }
+
+    const farm = farmResult.rows[0];
+
+    // 3. Lấy thông tin producer (nếu cần)
+    const producerResult = await pool.query(
+      "SELECT * FROM users WHERE id = $1 AND role = 'Producer'",
+      [farm.producer_id]
+    );
+
+    if (producerResult.rows.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "Người sản xuất không tồn tại! 😅" });
+    }
+
+    const producer = producerResult.rows[0];
+
+    // 4. Lấy lịch sử vận chuyển từ bảng shipments và shipment_products
+    const shipmentResult = await pool.query(
+      `SELECT s.*, sp.quantity, sp.price
+       FROM shipments s
+       JOIN shipment_products sp ON s.id = sp.shipment_id
+       WHERE sp.product_id = $1`,
+      [outgoingProduct.product_id]
+    );
+
+    const transportHistory = shipmentResult.rows.map((shipment) => ({
+      location: `Từ ${shipment.sender_type} (ID: ${shipment.sender_id}) đến ${shipment.recipient_type} (ID: ${shipment.recipient_id})`,
+      date: shipment.shipment_date.toISOString(),
+    }));
+
+    // 5. Tạo đối tượng nguồn gốc (origin)
+    const origin = {
+      farm_name: farm.farm_name,
+      harvest_date: outgoingProduct.productdate.toISOString(),
+      farm_location: farm.location,
+      certification: farm.quality || "Không có chứng nhận", // Giả sử quality là chứng nhận
+      transport_history:
+        transportHistory.length > 0
+          ? transportHistory
+          : [
+              {
+                location: "Nông trại " + farm.farm_name,
+                date: outgoingProduct.productdate.toISOString(),
+              },
+              {
+                location:
+                  "Trung tâm phân phối " + outgoingProduct.delivery_hub_name,
+                date: new Date().toISOString(),
+              },
+            ],
+    };
+
+    // 6. Tạo đối tượng sản phẩm trả về
+    const product = {
+      listing_id: outgoingProduct.listing_id,
+      name: outgoingProduct.name,
+      price: outgoingProduct.price,
+      quantity: outgoingProduct.quantity,
+      delivery_hub_name: outgoingProduct.delivery_hub_name,
+      imageurl: outgoingProduct.imageurl,
+      productdate: outgoingProduct.productdate.toISOString(),
+      expirydate: outgoingProduct.expirydate.toISOString(),
+      origin: origin,
+    };
+
+    res.status(200).json(product);
+  } catch (error) {
+    console.error("Lỗi khi truy xuất nguồn gốc sản phẩm:", error);
+    res
+      .status(500)
+      .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
+  }
+});
 // ==== API MUA SẢN PHẨM TỪ NGƯỜI TIÊU DÙNG ====
 app.post(
   "/buy-product",
