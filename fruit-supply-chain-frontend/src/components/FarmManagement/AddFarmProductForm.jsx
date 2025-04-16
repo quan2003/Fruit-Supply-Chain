@@ -50,9 +50,9 @@ const predictionConfig = {
     classMapping: { raw: "unripe" },
   },
   "Trai Xoai": {
-    endpoint: "https://serverless.roboflow.com/mango-fruit-iwvzr/2?",
-    validClasses: ["ripe", "unripe"],
-    classMapping: { 0: "ripe", 1: "Semi_Un_Ripe", 2: "unripe" },
+    endpoint: "https://serverless.roboflow.com/mango-fruit-iwvzr/2",
+    validClasses: ["ripe", "semiripe", "unripe"], // Cập nhật để khớp với nhãn sau ánh xạ
+    classMapping: { "Ripe": "ripe", "Semi_Un_Ripe": "semiripe", "Un_Ripe": "unripe" },
   },
   "Vu Sua": {
     endpoint: "https://serverless.roboflow.com/anh-vusua/1?",
@@ -206,7 +206,11 @@ const useImagePrediction = () => {
       const formattedMessage = `
         <div style="line-height: 1.5;">
           <strong style="color: #1976D2;">Trạng thái:</strong> ${
-            predictionResult === "ripe" ? "Đã chín" : "Chưa chín"
+            predictionResult === "ripe"
+              ? "Đã chín"
+              : predictionResult === "semiripe"
+              ? "Chín một phần"
+              : "Chưa chín"
           }<br />
           <strong style="color: #1976D2;">Khuyến nghị:</strong> ${
             recommendationMatch
@@ -220,7 +224,13 @@ const useImagePrediction = () => {
       `;
 
       setSnackbarMessage(formattedMessage);
-      setSnackbarSeverity(predictionResult === "ripe" ? "success" : "warning");
+      setSnackbarSeverity(
+        predictionResult === "ripe"
+          ? "success"
+          : predictionResult === "semiripe"
+          ? "info"
+          : "warning"
+      );
       setPrediction(predictionResult);
       return predictionResult;
     } catch (error) {
@@ -372,11 +382,19 @@ const ProductForm = ({
         )}
         {prediction && !predictionLoading && (
           <Alert
-            severity={prediction === "ripe" ? "success" : "warning"}
+            severity={
+              prediction === "ripe"
+                ? "success"
+                : prediction === "semiripe"
+                ? "info"
+                : "warning"
+            }
             sx={{ mt: 2 }}
           >
             {prediction === "ripe"
               ? "Sản phẩm đã chín, sẵn sàng để bán!"
+              : prediction === "semiripe"
+              ? "Sản phẩm chín một phần, có thể bán nhưng nên kiểm tra kỹ!"
               : "Sản phẩm chưa chín, bạn nên chờ thêm trước khi bán."}
           </Alert>
         )}
@@ -653,7 +671,7 @@ const AddFarmProductForm = () => {
         setError("Vui lòng chờ nhận diện hình ảnh trước khi thêm sản phẩm!");
         return;
       }
-      if (prediction !== "ripe") {
+      if (prediction !== "ripe" && prediction !== "semiripe") {
         setError("Sản phẩm chưa chín! Vui lòng chọn sản phẩm đã chín để thêm.");
         return;
       }
