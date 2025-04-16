@@ -41,8 +41,9 @@ const predictionConfig = {
     validClasses: ["ripe", "unripe"],
   },
   "Mang Cut": {
-    endpoint: "https://serverless.roboflow.com/mangosteen-fruit/1?",
+    endpoint: "https://serverless.roboflow.com/mangosteen-fruit/1",
     validClasses: ["ripe", "unripe"],
+    classMapping: { "Ripe": "ripe", "Un_Ripe": "unripe"},
   },
   "Trai Thanh Long": {
     endpoint: "https://serverless.roboflow.com/thanh-long-detection-znzlc/3?",
