@@ -5,8 +5,20 @@ import pool from "./db.js";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
-import ipfs from "./ipfsClient.js";
+import PinataClient from "@pinata/sdk";
 import { fileURLToPath } from "url";
+import dotenv from "dotenv";
+
+// Load biến môi trường từ file .env
+dotenv.config();
+
+// Kiểm tra xem API Key và Secret của Pinata có được load đúng không
+if (!process.env.PINATA_API_KEY || !process.env.PINATA_API_SECRET) {
+  console.error(
+    "Lỗi: Thiếu PINATA_API_KEY hoặc PINATA_API_SECRET trong file .env"
+  );
+  process.exit(1); // Thoát nếu không tìm thấy API Key/Secret
+}
 
 const API_URL = process.env.API_URL || "http://localhost:3000";
 const __filename = fileURLToPath(import.meta.url);
@@ -35,6 +47,12 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage: storage });
+
+// Khởi tạo Pinata Client với API Key và Secret từ file .env
+const pinata = new PinataClient({
+  pinataApiKey: process.env.PINATA_API_KEY,
+  pinataSecretApiKey: process.env.PINATA_API_SECRET,
+});
 
 // Danh sách role hợp lệ dựa trên database
 const validRoles = [
@@ -128,6 +146,7 @@ app.get("/contract-address", (req, res) => {
       .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
   }
 });
+
 // ==== API KIỂM TRA VAI TRÒ NGƯỜI DÙNG ====
 app.get("/check-role", checkAuth, async (req, res) => {
   try {
@@ -991,7 +1010,7 @@ app.post(
           quantity,
           price,
           defaultProductDate,
-          defaultExpiryDate,
+          defaultProdExpiryDate,
           transactionHash || null,
         ]
       );
@@ -1822,6 +1841,7 @@ app.get("/all-outgoing-products", async (req, res) => {
       .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
   }
 });
+
 // ==== API TRUY XUẤT NGUỒN GỐC SẢN PHẨM ====
 app.get("/trace-product/:listingId", async (req, res) => {
   const { listingId } = req.params;
@@ -1937,6 +1957,7 @@ app.get("/trace-product/:listingId", async (req, res) => {
       .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
   }
 });
+
 // ==== API MUA SẢN PHẨM TỪ NGƯỜI TIÊU DÙNG ====
 app.post(
   "/buy-product",
@@ -2093,7 +2114,7 @@ app.post("/products", checkAuth, checkRole(["Producer"]), async (req, res) => {
     }
 
     const ipfsHash = frontendHash; // Sử dụng hash từ frontend (từ upload hoặc mặc định)
-    const imageUrl = `https://ipfs.filebase.io/ipfs/${ipfsHash}`;
+    const imageUrl = `https://gateway.pinata.cloud/ipfs/${ipfsHash}`; // Sử dụng gateway Pinata
     const result = await pool.query(
       "INSERT INTO products (name, productcode, category, description, price, quantity, imageurl, productdate, expirydate, farm_id, hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *",
       [
@@ -2129,23 +2150,41 @@ app.post("/ipfs/add", upload.single("file"), async (req, res) => {
         .json({ error: "Vui lòng gửi file để upload lên IPFS!" });
     }
 
+    // Đọc file từ thư mục tạm
     const fileBuffer = fs.readFileSync(req.file.path);
-    const result = await ipfs.add(fileBuffer);
-    fs.unlinkSync(req.file.path); // Xóa file tạm sau khi upload
 
-    res.status(200).json({ hash: result.path });
+    // Tải lên Pinata IPFS
+    const options = {
+      pinataMetadata: {
+        name: req.file.filename,
+      },
+      pinataOptions: {
+        cidVersion: 0,
+      },
+    };
+    const result = await pinata.pinFileToIPFS(
+      fs.createReadStream(req.file.path),
+      options
+    );
+
+    // Xóa file tạm sau khi upload
+    fs.unlinkSync(req.file.path);
+
+    console.log(
+      `Tải lên thành công lên IPFS (Pinata), CID: ${result.IpfsHash}`
+    );
+    res.status(200).json({ hash: result.IpfsHash });
   } catch (error) {
-    console.error("Lỗi khi upload lên IPFS:", error);
-    if (error.code === "ECONNREFUSED") {
-      res.status(500).json({
-        error:
-          "Không thể kết nối đến IPFS daemon. Vui lòng kiểm tra xem IPFS daemon có đang chạy không.",
-      });
-    } else {
-      res
-        .status(500)
-        .json({ error: "Lỗi khi upload lên IPFS", details: error.message });
+    console.error("Lỗi khi upload lên IPFS (Pinata):", error);
+    // Xóa file tạm nếu có lỗi
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
     }
+    res.status(500).json({
+      error: "Lỗi khi upload lên IPFS",
+      details: error.message || "Không có chi tiết lỗi",
+      stack: error.stack || "Không có stack trace",
+    });
   }
 });
 

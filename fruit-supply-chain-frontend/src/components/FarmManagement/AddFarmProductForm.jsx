@@ -17,20 +17,71 @@ import {
   CircularProgress,
   Alert,
   Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
+import { useForm } from "react-hook-form";
 import "../FruitCatalog/CatalogStyles.css";
+import MetaMaskSDK from "@metamask/sdk";
+import { ethers } from "ethers";
 
-const fruitHashMapping = {
-  Thom: "QmeTDW7o2ZHAKJJW8A5Jfbe1mv7RZo8sdcDTxq1mP6X5MN",
-  "Vu Sua": "QmXtKxu41xyvx4x9XXz6WRTRFCnKwriWfrHCtiYTHDJF1u",
-  "Dua Hau": "QmNYb72BzVRhxTcXAefSg4QESHK2fEn2T3hFUE8Gvz6gM5",
-  "Mang Cut": "QmdHct5JMUtw3VpDMJg4LYLvFqkVUsoZAVmy8wqgjs8T8d",
-  "Trai Thanh Long": "QmdTqSueXLd6J6EMbXvemP3VVPpUo3dkkWwbiNmKV4Cegy",
-  "Trai Xoai": "QmcwFdYQXKVsPd7qhCeXowwVDbHrnmMM6hCtsfJ7US4nXT",
+// Định nghĩa BACKEND_URL từ biến môi trường
+const BACKEND_URL =
+  process.env.REACT_APP_BACKEND_URL || "http://localhost:3000";
+
+// Định nghĩa IPFS Gateway (Pinata)
+const IPFS_GATEWAY = "https://gateway.pinata.cloud/ipfs/";
+
+// Cấu hình nhận diện hình ảnh
+const predictionConfig = {
+  "Dua Hau": {
+    endpoint: "https://serverless.roboflow.com/watermelon-xztju/5",
+    validClasses: ["ripe", "unripe"],
+  },
+  "Mang Cut": {
+    endpoint: "https://serverless.roboflow.com/mangosteen-fruit/1?",
+    validClasses: ["ripe", "unripe"],
+  },
+  "Trai Thanh Long": {
+    endpoint: "https://serverless.roboflow.com/thanh-long-detection-znzlc/3?",
+    validClasses: ["ripe", "unripe"],
+    classMapping: { raw: "unripe" },
+  },
+  "Trai Xoai": {
+    endpoint: "https://serverless.roboflow.com/mango-fruit-iwvzr/2?",
+    validClasses: ["ripe", "unripe"],
+    classMapping: { 0: "ripe", 1: "Semi_Un_Ripe", 2: "unripe" },
+  },
+  "Vu Sua": {
+    endpoint: "https://serverless.roboflow.com/anh-vusua/1?",
+    validClasses: ["ripe", "unripe"],
+    classMapping: { 0: "ripe", 1: "unripe" },
+  },
 };
 
-const AddFarmProductForm = () => {
-  const navigate = useNavigate();
+// Cập nhật fruitHashMapping với CID mới từ Pinata
+const fruitHashMapping = {
+  Thom: "bafkreialmzlmexrfgud3tp6kg3yced537auuvzioxzbjak44nxuhqg37gy",
+  "Vu Sua": "bafkreibqvvcnsclx4lk4mtbw3eczguyxp7xm3bky6t37bfifonlp2ihr3y",
+  "Dua Hau": "bafkreiez45cp5h5yuiqncthniqpbw6i45vvk24wiwfo2bonsvc2klmju4a",
+  "Mang Cut": "bafkreigvwkm5fh3izkrzodki3rdsnjcqdohbqhxf6v62wipvpajzejm22a",
+  "Trai Thanh Long":
+    "bafkreiaeqi66du64o4qk3wpptt4qwubr5niw3mulc7zh3di2ofwowkv2ki",
+  "Trai Xoai": "bafkreibwq5ir7riyrmy5zz7p2l2xukn2agx7gfh42yyplmdbui6lavr4ki",
+};
+
+// Khởi tạo MetaMask SDK
+const MMSDK = new MetaMaskSDK({
+  dappMetadata: {
+    name: "Fruit Supply Chain",
+    url: window.location.origin,
+  },
+});
+
+// Hook xử lý Web3
+const useWeb3Actions = () => {
   const {
     account,
     contract,
@@ -42,227 +93,111 @@ const AddFarmProductForm = () => {
     contractError,
     setWalletError,
   } = useWeb3();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
-  const [redirecting, setRedirecting] = useState(false);
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [farms, setFarms] = useState([]);
+
+  const handleConnect = async () => {
+    try {
+      const ethereum = MMSDK.getProvider();
+      await ethereum.request({ method: "eth_requestAccounts" });
+      await connectWallet();
+    } catch (err) {
+      throw new Error("Không thể kết nối ví MetaMask: " + err.message);
+    }
+  };
+
+  return {
+    account,
+    contract,
+    handleConnect,
+    updateWalletAddress,
+    web3Loading,
+    walletError,
+    userError,
+    contractError,
+    setWalletError,
+  };
+};
+
+// Hook xử lý nhận diện hình ảnh
+const useImagePrediction = () => {
   const [prediction, setPrediction] = useState(null);
   const [predictionLoading, setPredictionLoading] = useState(false);
   const [predictionError, setPredictionError] = useState(null);
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
   const [snackbarSeverity, setSnackbarSeverity] = useState("info");
-  const user = JSON.parse(localStorage.getItem("user")) || {};
 
-  const validFruits = [
-    "Thom",
-    "Vu Sua",
-    "Dua Hau",
-    "Mang Cut",
-    "Trai Thanh Long",
-    "Trai Xoai",
-  ];
-
-  const [product, setProduct] = useState({
-    name: "",
-    category: "",
-    description: "",
-    price: "",
-    quantity: "",
-    productiondate: "",
-    expirydate: "",
-    farm_id: "",
-  });
-
-  useEffect(() => {
-    if (!user.email) {
-      navigate("/dang-nhap");
-      return;
-    }
-    if (!account) return;
-
-    const fetchFarms = async () => {
-      try {
-        const response = await fetch(
-          `http://localhost:3000/farms/user?email=${user.email}`,
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "x-ethereum-address": account,
-            },
-          }
-        );
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Không thể lấy danh sách farm");
-        }
-        const data = await response.json();
-        if (data.length > 0) {
-          setFarms(data);
-          setProduct((prev) => ({ ...prev, farm_id: data[0].id }));
-        } else {
-          setError("Không tìm thấy farm của bạn! Vui lòng tạo farm trước.");
-          setTimeout(() => navigate("/farms/register"), 3000);
-        }
-      } catch (err) {
-        setError("Không thể lấy danh sách farm: " + err.message);
-      }
-    };
-
-    fetchFarms();
-  }, [user.email, account, navigate]);
-
-  useEffect(() => {
-    if (success && !redirecting) {
-      setRedirecting(true);
-      const timer = setTimeout(() => navigate("/farms/products"), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [success, redirecting, navigate]);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setProduct((prev) => ({ ...prev, [name]: value }));
-    if (name === "category") {
-      setPrediction(null);
-      setPredictionError(null);
-      setImageFile(null);
-      setImagePreview(null);
-      setSnackbarOpen(false);
-    }
-  };
-
-  const handleSnackbarClose = (event, reason) => {
-    if (reason === "clickaway") return;
-    setSnackbarOpen(false);
-  };
-
-  const predictImage = async (file, category) => {
+  const predict = async (file, category) => {
     setPredictionLoading(true);
     setPredictionError(null);
     setPrediction(null);
-    setSnackbarOpen(false);
 
     try {
+      const config = predictionConfig[category];
+      if (!config)
+        throw new Error("Loại trái cây không được hỗ trợ nhận diện!");
+
       const reader = new FileReader();
       const base64Image = await new Promise((resolve) => {
         reader.onloadend = () => resolve(reader.result.split(",")[1]);
         reader.readAsDataURL(file);
       });
 
-      let roboflowEndpoint;
-      if (category === "Dua Hau") {
-        roboflowEndpoint = "https://serverless.roboflow.com/watermelon-xztju/5";
-      } else if (category === "Mang Cut") {
-        roboflowEndpoint = "https://detect.roboflow.com/mangosteen-2grlu/4";
-      } else if (category === "Trai Thanh Long") {
-        roboflowEndpoint =
-          "https://detect.roboflow.com/thanh-long-detection-znzlc/3";
-      } else if (category === "Trai Xoai") {
-        roboflowEndpoint = "https://detect.roboflow.com/dataset-s2doa/20";
-      } else if (category === "Vu Sua") {
-        roboflowEndpoint = "https://detect.roboflow.com/anh-vusua/1";
-      } else {
-        throw new Error("Loại trái cây không được hỗ trợ nhận diện!");
-      }
-
       const roboflowResponse = await axios({
         method: "POST",
-        url: roboflowEndpoint,
+        url: config.endpoint,
         params: {
-          api_key: "E8YOwnmbHAOZ5OCaS8GZ",
+          api_key:
+            process.env.REACT_APP_ROBOFLOW_API_KEY || "E8YOwnmbHAOZ5OCaS8GZ",
         },
         data: base64Image,
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
 
       const roboflowResult = roboflowResponse.data;
       if (
         !roboflowResult.predictions ||
-        roboflowResult.predictions.length === 0 ||
-        !roboflowResult.predictions[0]?.class
+        roboflowResult.predictions.length === 0
       ) {
         throw new Error("Hình ảnh không phù hợp với loại trái cây được chọn!");
       }
 
       let predictionResult = roboflowResult.predictions[0].class;
-
-      if (category === "Trai Thanh Long" && predictionResult === "raw") {
-        predictionResult = "unripe";
-      }
-      if (category === "Trai Xoai") {
-        if (predictionResult === "mango") {
-          predictionResult = "ripe";
-        } else {
-          throw new Error(
-            "Hình ảnh không phù hợp với loại trái cây được chọn!"
-          );
-        }
-      }
-      if (category === "Vu Sua") {
-        if (predictionResult === "0") {
-          predictionResult = "ripe";
-        } else if (predictionResult === "1") {
-          predictionResult = "unripe";
-        } else {
-          throw new Error(
-            "Hình ảnh không phù hợp với loại trái cây được chọn!"
-          );
-        }
+      if (config.classMapping && config.classMapping[predictionResult]) {
+        predictionResult = config.classMapping[predictionResult];
       }
 
-      if (
-        (category === "Dua Hau" &&
-          !["ripe", "unripe"].includes(predictionResult)) ||
-        (category === "Mang Cut" &&
-          !["ripe", "unripe"].includes(predictionResult)) ||
-        (category === "Trai Thanh Long" &&
-          !["ripe", "unripe"].includes(predictionResult)) ||
-        (category === "Trai Xoai" && predictionResult !== "ripe") ||
-        (category === "Vu Sua" &&
-          !["ripe", "unripe"].includes(predictionResult))
-      ) {
+      if (!config.validClasses.includes(predictionResult)) {
         throw new Error("Hình ảnh không phù hợp với loại trái cây được chọn!");
       }
 
-      const apiKey = "AIzaSyDiyzVcJ5v9BOpy-_c-60ahkzI-BM0tEvc";
-      const apiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-
-      const requestBody = {
-        contents: [
-          {
-            parts: [
-              {
-                text: `Tôi có một ${category} với trạng thái chín là ${predictionResult}. Hãy đưa ra khuyến nghị bảo quản chi tiết theo định dạng sau:
-                - Khuyến nghị: [chi tiết cách bảo quản, bao gồm nhiệt độ và thời gian]
-                - Mẹo: [một mẹo cụ thể]
-                Ví dụ:
-                Khuyến nghị: Bảo quản ở 5-10°C trong 2-3 tuần.
-                Mẹo: Bọc kín để tránh mùi.
-                Trả về văn bản không chứa dấu * để tránh định dạng lộn xộn.`,
-              },
-            ],
-          },
-        ],
-      };
-
       const geminiResponse = await axios({
         method: "POST",
-        url: apiEndpoint,
-        data: requestBody,
+        url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${
+          process.env.REACT_APP_GEMINI_API_KEY ||
+          "AIzaSyAY9ZNyI-iddot-okqT0Y5qac-uwwld-QI"
+        }`,
+        data: {
+          contents: [
+            {
+              parts: [
+                {
+                  text: `Tôi có một ${category} với trạng thái chín là ${predictionResult}. Hãy đưa ra khuyến nghị bảo quản chi tiết theo định dạng sau:
+                  - Khuyến nghị: [chi tiết cách bảo quản, bao gồm nhiệt độ và thời gian]
+                  - Mẹo: [một mẹo cụ thể]
+                  Ví dụ:
+                  Khuyến nghị: Bảo quản ở 5-10°C trong 2-3 tuần.
+                  Mẹo: Bọc kín để tránh mùi.
+                  Trả về văn bản không chứa dấu * để tránh định dạng lộn xộn.`,
+                },
+              ],
+            },
+          ],
+        },
         headers: { "Content-Type": "application/json" },
       });
 
       const geminiResult = geminiResponse.data;
-      let generatedText = geminiResult.candidates[0].content.parts[0].text;
-
-      generatedText = generatedText.replace(/\*/g, "");
-
+      let generatedText =
+        geminiResult.candidates[0].content.parts[0].text.replace(/\*/g, "");
       const recommendationMatch = generatedText.match(
         /Khuyến nghị:\s*([^\n]+)/
       );
@@ -286,12 +221,9 @@ const AddFarmProductForm = () => {
 
       setSnackbarMessage(formattedMessage);
       setSnackbarSeverity(predictionResult === "ripe" ? "success" : "warning");
-      setSnackbarOpen(true);
-
       setPrediction(predictionResult);
       return predictionResult;
     } catch (error) {
-      console.error("Lỗi khi gọi API:", error);
       setPredictionError(
         "Không thể nhận diện hoặc tạo khuyến nghị: " + error.message
       );
@@ -300,6 +232,303 @@ const AddFarmProductForm = () => {
       setPredictionLoading(false);
     }
   };
+
+  return {
+    prediction,
+    predictionLoading,
+    predictionError,
+    snackbarMessage,
+    snackbarSeverity,
+    predict,
+  };
+};
+
+// Component Form
+const ProductForm = ({
+  register,
+  errors,
+  handleImageChange,
+  farms,
+  product,
+  imagePreview,
+  prediction,
+  predictionLoading,
+  predictionError,
+}) => {
+  const validFruits = [
+    "Thom",
+    "Vu Sua",
+    "Dua Hau",
+    "Mang Cut",
+    "Trai Thanh Long",
+    "Trai Xoai",
+  ];
+
+  return (
+    <Grid container spacing={2}>
+      <Grid item xs={12}>
+        <TextField
+          fullWidth
+          label="Nhập tên sản phẩm"
+          {...register("name", { required: "Tên sản phẩm là bắt buộc" })}
+          error={!!errors.name}
+          helperText={errors.name?.message}
+          variant="standard"
+          InputLabelProps={{ shrink: true }}
+        />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControl fullWidth variant="standard">
+          <InputLabel shrink>Loại trái cây</InputLabel>
+          <Select
+            {...register("category", { required: "Loại trái cây là bắt buộc" })}
+            error={!!errors.category}
+          >
+            <MenuItem value="" disabled>
+              Chọn loại trái cây
+            </MenuItem>
+            {validFruits.map((fruit) => (
+              <MenuItem key={fruit} value={fruit}>
+                {fruit}
+              </MenuItem>
+            ))}
+          </Select>
+          {errors.category && (
+            <Typography color="error">{errors.category.message}</Typography>
+          )}
+        </FormControl>
+      </Grid>
+      <Grid item xs={12}>
+        <TextField
+          fullWidth
+          label="Nhập giá sản phẩm (AGT token)"
+          type="number"
+          {...register("price", {
+            required: "Giá là bắt buộc",
+            min: { value: 0, message: "Giá phải lớn hơn 0" },
+          })}
+          error={!!errors.price}
+          helperText={errors.price?.message}
+          variant="standard"
+          InputLabelProps={{ shrink: true }}
+        />
+      </Grid>
+      <Grid item xs={12}>
+        <TextField
+          fullWidth
+          label="Nhập số lượng (hộp)"
+          type="number"
+          {...register("quantity", {
+            required: "Số lượng là bắt buộc",
+            min: { value: 1, message: "Số lượng phải lớn hơn 0" },
+          })}
+          error={!!errors.quantity}
+          helperText={errors.quantity?.message}
+          variant="standard"
+          InputLabelProps={{ shrink: true }}
+        />
+      </Grid>
+      <Grid item xs={12}>
+        <TextField
+          fullWidth
+          label="Nhập thông tin mô tả sản phẩm tại đây..."
+          {...register("description", { required: "Mô tả là bắt buộc" })}
+          error={!!errors.description}
+          helperText={errors.description?.message}
+          variant="standard"
+          InputLabelProps={{ shrink: true }}
+          multiline
+          rows={2}
+        />
+      </Grid>
+      <Grid item xs={12}>
+        <TextField
+          fullWidth
+          label="Hình ảnh"
+          type="file"
+          onChange={handleImageChange}
+          InputLabelProps={{ shrink: true }}
+          variant="standard"
+        />
+        {imagePreview && (
+          <Box sx={{ mt: 2 }}>
+            <img
+              src={imagePreview}
+              alt="Product preview"
+              style={{ maxWidth: "200px", borderRadius: "5px" }}
+            />
+          </Box>
+        )}
+        {predictionLoading && (
+          <Alert severity="info" sx={{ mt: 2 }}>
+            <CircularProgress size={20} sx={{ mr: 1 }} />
+            Đang nhận diện hình ảnh, vui lòng chờ...
+          </Alert>
+        )}
+        {predictionError && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {predictionError}
+          </Alert>
+        )}
+        {prediction && !predictionLoading && (
+          <Alert
+            severity={prediction === "ripe" ? "success" : "warning"}
+            sx={{ mt: 2 }}
+          >
+            {prediction === "ripe"
+              ? "Sản phẩm đã chín, sẵn sàng để bán!"
+              : "Sản phẩm chưa chín, bạn nên chờ thêm trước khi bán."}
+          </Alert>
+        )}
+      </Grid>
+      <Grid item xs={12}>
+        <TextField
+          fullWidth
+          label="Ngày sản xuất"
+          type="date"
+          {...register("productiondate", {
+            required: "Ngày sản xuất là bắt buộc",
+          })}
+          error={!!errors.productiondate}
+          helperText={errors.productiondate?.message}
+          InputLabelProps={{ shrink: true }}
+          variant="standard"
+        />
+      </Grid>
+      <Grid item xs={12}>
+        <TextField
+          fullWidth
+          label="Ngày hết hạn"
+          type="date"
+          {...register("expirydate", {
+            required: "Ngày hết hạn là bắt buộc",
+            validate: (value, { productiondate }) =>
+              new Date(value) > new Date(productiondate) ||
+              "Ngày hết hạn phải sau ngày sản xuất",
+          })}
+          error={!!errors.expirydate}
+          helperText={errors.expirydate?.message}
+          InputLabelProps={{ shrink: true }}
+          variant="standard"
+        />
+      </Grid>
+      <Grid item xs={12}>
+        <FormControl fullWidth variant="standard">
+          <InputLabel shrink>Farm</InputLabel>
+          <Select
+            {...register("farm_id", { required: "Farm là bắt buộc" })}
+            error={!!errors.farm_id}
+          >
+            {farms.map((farm) => (
+              <MenuItem key={farm.id} value={farm.id}>
+                {farm.farm_name}
+              </MenuItem>
+            ))}
+          </Select>
+          {errors.farm_id && (
+            <Typography color="error">{errors.farm_id.message}</Typography>
+          )}
+        </FormControl>
+      </Grid>
+    </Grid>
+  );
+};
+
+// Component chính
+const AddFarmProductForm = () => {
+  const navigate = useNavigate();
+  const {
+    account,
+    contract,
+    handleConnect,
+    updateWalletAddress,
+    web3Loading,
+    walletError,
+    userError,
+    contractError,
+    setWalletError,
+  } = useWeb3Actions();
+  const {
+    prediction,
+    predictionLoading,
+    predictionError,
+    snackbarMessage,
+    snackbarSeverity,
+    predict,
+  } = useImagePrediction();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [farms, setFarms] = useState([]);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [openConfirm, setOpenConfirm] = useState(false);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const user = JSON.parse(localStorage.getItem("user")) || {};
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors },
+  } = useForm({
+    defaultValues: {
+      name: "",
+      category: "",
+      price: "",
+      quantity: "",
+      description: "",
+      productiondate: "",
+      expirydate: "",
+      farm_id: "",
+    },
+  });
+
+  const product = watch();
+
+  useEffect(() => {
+    if (!user.email) {
+      navigate("/dang-nhap");
+      return;
+    }
+    if (!account) return;
+
+    const fetchFarms = async () => {
+      try {
+        const response = await fetch(
+          `${BACKEND_URL}/farms/user?email=${user.email}`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              "x-ethereum-address": account,
+            },
+          }
+        );
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Không thể lấy danh sách farm");
+        }
+        const data = await response.json();
+        if (data.length > 0) {
+          setFarms(data);
+        } else {
+          setError("Không tìm thấy farm của bạn! Vui lòng tạo farm trước.");
+          setTimeout(() => navigate("/farms/register"), 3000);
+        }
+      } catch (err) {
+        setError("Không thể lấy danh sách farm: " + err.message);
+      }
+    };
+
+    fetchFarms();
+  }, [user.email, account, navigate]);
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => navigate("/farms/products"), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success, navigate]);
 
   const handleImageChange = async (e) => {
     const file = e.target.files[0];
@@ -323,24 +552,9 @@ const AddFarmProductForm = () => {
           "Vu Sua",
         ].includes(product.category)
       ) {
-        await predictImage(file, product.category);
+        await predict(file, product.category);
+        setSnackbarOpen(true);
       }
-    }
-  };
-
-  const handleConnectWallet = async () => {
-    try {
-      const accounts = await window.ethereum.request({
-        method: "eth_accounts",
-      });
-      if (accounts.length > 0) {
-        setError(null);
-        return;
-      }
-      await connectWallet();
-      setError(null);
-    } catch (err) {
-      setError("Không thể kết nối ví MetaMask: " + err.message);
     }
   };
 
@@ -349,34 +563,26 @@ const AddFarmProductForm = () => {
       await updateWalletAddress(user.email);
       setWalletError(null);
       setError(null);
-      const fetchFarms = async () => {
-        try {
-          const response = await fetch(
-            `http://localhost:3000/farms/user?email=${user.email}`,
-            {
-              headers: {
-                "Content-Type": "application/json",
-                "x-ethereum-address": account || "",
-              },
-            }
-          );
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || "Không thể lấy danh sách farm");
-          }
-          const data = await response.json();
-          if (data.length > 0) {
-            setFarms(data);
-            setProduct((prev) => ({ ...prev, farm_id: data[0].id }));
-          } else {
-            setError("Không tìm thấy farm của bạn! Vui lòng tạo farm trước.");
-            setTimeout(() => navigate("/farms/register"), 3000);
-          }
-        } catch (err) {
-          setError("Không thể lấy danh sách farm: " + err.message);
+      const response = await fetch(
+        `${BACKEND_URL}/farms/user?email=${user.email}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "x-ethereum-address": account || "",
+          },
         }
-      };
-      await fetchFarms();
+      );
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Không thể lấy danh sách farm");
+      }
+      const data = await response.json();
+      if (data.length > 0) {
+        setFarms(data);
+      } else {
+        setError("Không tìm thấy farm của bạn! Vui lòng tạo farm trước.");
+        setTimeout(() => navigate("/farms/register"), 3000);
+      }
     } catch (err) {
       setError("Không thể cập nhật ví: " + err.message);
     }
@@ -400,30 +606,36 @@ const AddFarmProductForm = () => {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const response = await fetch("http://localhost:3000/ipfs/add", {
+      const response = await fetch(`${BACKEND_URL}/ipfs/add`, {
         method: "POST",
         body: formData,
       });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Lỗi khi upload lên IPFS");
+        throw new Error(
+          errorData.error || errorData.details || "Lỗi khi upload lên IPFS"
+        );
       }
       const data = await response.json();
+      if (!data.hash) {
+        throw new Error("Không nhận được hash từ IPFS");
+      }
+      // Kiểm tra xem hash IPFS có hợp lệ không
+      const checkResponse = await fetch(`${IPFS_GATEWAY}${data.hash}`, {
+        method: "HEAD",
+      });
+      if (!checkResponse.ok) {
+        throw new Error("Hash IPFS không hợp lệ hoặc không tồn tại.");
+      }
       return data.hash;
     } catch (error) {
       throw new Error("Không thể upload ảnh lên IPFS: " + error.message);
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-
+  const onSubmit = async (data) => {
     if (!account || !contract) {
       setError("Vui lòng kết nối ví MetaMask và khởi tạo hợp đồng!");
-      setLoading(false);
       return;
     }
 
@@ -434,24 +646,31 @@ const AddFarmProductForm = () => {
         "Trai Thanh Long",
         "Trai Xoai",
         "Vu Sua",
-      ].includes(product.category) &&
+      ].includes(data.category) &&
       imageFile
     ) {
       if (!prediction) {
         setError("Vui lòng chờ nhận diện hình ảnh trước khi thêm sản phẩm!");
-        setLoading(false);
         return;
       }
       if (prediction !== "ripe") {
         setError("Sản phẩm chưa chín! Vui lòng chọn sản phẩm đã chín để thêm.");
-        setLoading(false);
         return;
       }
     }
 
+    setOpenConfirm(true);
+  };
+
+  const confirmSubmit = async (data) => {
+    setOpenConfirm(false);
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
     try {
-      const productCode = generateProductCode(product.name);
-      const fruitType = product.category;
+      const productCode = generateProductCode(data.name);
+      const fruitType = data.category;
       let ipfsHash = imageFile
         ? await uploadToIPFS(imageFile)
         : fruitHashMapping[fruitType];
@@ -464,7 +683,7 @@ const AddFarmProductForm = () => {
         const gasEstimate = await contract.methods
           .setFruitHash(fruitType, ipfsHash)
           .estimateGas({ from: account });
-        gasLimit = Math.floor(Number(gasEstimate) * 3);
+        gasLimit = Math.floor(Number(gasEstimate) * 1.2); // Tăng 20% để an toàn
       } catch (err) {
         gasLimit = 1000000;
       }
@@ -475,24 +694,22 @@ const AddFarmProductForm = () => {
       });
 
       const productData = {
-        name: product.name,
+        name: data.name,
         productcode: productCode,
-        category: product.category,
-        description: product.description,
-        price: product.price,
-        quantity: product.quantity,
-        productdate: product.productiondate,
-        expirydate: product.expirydate,
-        farm_id: product.farm_id,
+        category: data.category,
+        description: data.description,
+        price: data.price,
+        quantity: data.quantity,
+        productdate: data.productiondate,
+        expirydate: data.expirydate,
+        farm_id: data.farm_id,
         email: user.email,
         frontendHash: ipfsHash,
       };
 
       await addFruitProduct(productData, { "x-ethereum-address": account });
-      setLoading(false);
       setSuccess("Thêm sản phẩm thành công!");
     } catch (err) {
-      console.error("Lỗi khi thêm sản phẩm:", err);
       let errorMessage = "Không thể thêm sản phẩm. Vui lòng thử lại sau.";
       if (err.code === -32603) {
         errorMessage = "Lỗi giao dịch blockchain: Kiểm tra Hardhat node.";
@@ -502,8 +719,11 @@ const AddFarmProductForm = () => {
         errorMessage = "Hợp đồng từ chối giao dịch.";
       } else if (err.message.includes("Failed to fetch")) {
         errorMessage = "Không thể kết nối đến backend.";
+      } else if (err.message.includes("IPFS")) {
+        errorMessage = err.message; // Hiển thị lỗi IPFS chi tiết
       }
       setError(errorMessage);
+    } finally {
       setLoading(false);
     }
   };
@@ -539,26 +759,25 @@ const AddFarmProductForm = () => {
         {walletError && (
           <Alert severity="error" sx={{ mb: 3 }}>
             {walletError}
-          </Alert>
-        )}
-        {walletError &&
-          walletError.includes("Địa chỉ ví MetaMask không được liên kết") && (
-            <Box sx={{ mb: 3 }}>
+            {walletError.includes(
+              "Địa chỉ ví MetaMask không được liên kết"
+            ) && (
               <Button
                 variant="contained"
                 color="secondary"
                 onClick={handleUpdateWallet}
                 sx={{
+                  ml: 2,
                   textTransform: "none",
-                  fontWeight: "bold",
                   bgcolor: "#f50057",
                   "&:hover": { bgcolor: "#c51162" },
                 }}
               >
                 Cập nhật ví MetaMask
               </Button>
-            </Box>
-          )}
+            )}
+          </Alert>
+        )}
         {userError && (
           <Alert severity="error" sx={{ mb: 3 }}>
             {userError}
@@ -574,7 +793,7 @@ const AddFarmProductForm = () => {
             <Button
               variant="contained"
               color="primary"
-              onClick={handleConnectWallet}
+              onClick={handleConnect}
               sx={{
                 textTransform: "none",
                 fontWeight: "bold",
@@ -587,222 +806,69 @@ const AddFarmProductForm = () => {
           </Box>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <Grid container spacing={2}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Nhập tên sản phẩm"
-                name="name"
-                value={product.name}
-                onChange={handleChange}
-                required
-                variant="standard"
-                InputLabelProps={{ shrink: true }}
-                sx={{ mb: 2 }}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <FormControl fullWidth variant="standard" sx={{ mb: 2 }}>
-                <InputLabel shrink>Loại trái cây</InputLabel>
-                <Select
-                  name="category"
-                  value={product.category}
-                  onChange={handleChange}
-                  required
-                >
-                  <MenuItem value="" disabled>
-                    Chọn loại trái cây
-                  </MenuItem>
-                  {validFruits.map((fruit) => (
-                    <MenuItem key={fruit} value={fruit}>
-                      {fruit}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Nhập giá sản phẩm (AGT token)"
-                name="price"
-                type="number"
-                value={product.price}
-                onChange={handleChange}
-                required
-                variant="standard"
-                InputLabelProps={{ shrink: true }}
-                sx={{ mb: 2 }}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Nhập số lượng (hộp)"
-                name="quantity"
-                type="number"
-                value={product.quantity}
-                onChange={handleChange}
-                required
-                variant="standard"
-                InputLabelProps={{ shrink: true }}
-                sx={{ mb: 2 }}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Nhập thông tin mô tả sản phẩm tại đây..."
-                name="description"
-                value={product.description}
-                onChange={handleChange}
-                required
-                variant="standard"
-                InputLabelProps={{ shrink: true }}
-                multiline
-                rows={2}
-                sx={{ mb: 2 }}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Hình ảnh"
-                name="imageUpload"
-                type="file"
-                onChange={handleImageChange}
-                InputLabelProps={{ shrink: true }}
-                variant="standard"
-                sx={{ mb: 2 }}
-              />
-              {imagePreview && (
-                <Box sx={{ mt: 2 }}>
-                  <img
-                    src={imagePreview}
-                    alt="Product preview"
-                    style={{ maxWidth: "200px", borderRadius: "5px" }}
-                  />
-                </Box>
-              )}
-              {predictionLoading && (
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  <CircularProgress size={20} sx={{ mr: 1 }} />
-                  Đang nhận diện hình ảnh, vui lòng chờ...
-                </Alert>
-              )}
-              {predictionError && (
-                <Alert severity="error" sx={{ mt: 2 }}>
-                  {predictionError}
-                </Alert>
-              )}
-              {prediction && !predictionLoading && (
-                <Alert
-                  severity={prediction === "ripe" ? "success" : "warning"}
-                  sx={{ mt: 2 }}
-                >
-                  {prediction === "ripe"
-                    ? "Sản phẩm đã chín, sẵn sàng để bán!"
-                    : "Sản phẩm chưa chín, bạn nên chờ thêm trước khi bán."}
-                </Alert>
-              )}
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Ngày sản xuất"
-                name="productiondate"
-                type="date"
-                value={product.productiondate}
-                onChange={handleChange}
-                required
-                InputLabelProps={{ shrink: true }}
-                variant="standard"
-                sx={{ mb: 2 }}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Ngày hết hạn"
-                name="expirydate"
-                type="date"
-                value={product.expirydate}
-                onChange={handleChange}
-                required
-                InputLabelProps={{ shrink: true }}
-                variant="standard"
-                sx={{ mb: 2 }}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <FormControl fullWidth variant="standard" sx={{ mb: 2 }}>
-                <InputLabel shrink>Farm</InputLabel>
-                <Select
-                  name="farm_id"
-                  value={product.farm_id}
-                  onChange={handleChange}
-                  required
-                >
-                  {farms.map((farm) => (
-                    <MenuItem key={farm.id} value={farm.id}>
-                      {farm.farm_name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12}>
-              <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 3 }}>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  color="primary"
-                  disabled={
-                    loading ||
-                    !account ||
-                    !contract ||
-                    web3Loading ||
-                    predictionLoading
-                  }
-                  sx={{
-                    textTransform: "none",
-                    fontWeight: "bold",
-                    bgcolor: "#1976D2",
-                    "&:hover": { bgcolor: "#115293" },
-                  }}
-                >
-                  {loading ? <CircularProgress size={24} /> : "Thêm sản phẩm"}
-                </Button>
-              </Box>
-            </Grid>
-          </Grid>
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <ProductForm
+            register={register}
+            errors={errors}
+            handleImageChange={handleImageChange}
+            farms={farms}
+            product={product}
+            imagePreview={imagePreview}
+            prediction={prediction}
+            predictionLoading={predictionLoading}
+            predictionError={predictionError}
+          />
+          <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 3 }}>
+            <Button
+              type="submit"
+              variant="contained"
+              color="primary"
+              disabled={
+                loading ||
+                !account ||
+                !contract ||
+                web3Loading ||
+                predictionLoading
+              }
+              sx={{
+                textTransform: "none",
+                fontWeight: "bold",
+                bgcolor: "#1976D2",
+                "&:hover": { bgcolor: "#115293" },
+              }}
+            >
+              {loading ? <CircularProgress size={24} /> : "Thêm sản phẩm"}
+            </Button>
+          </Box>
         </form>
       </Paper>
 
       <Snackbar
         open={snackbarOpen}
         autoHideDuration={6000}
-        onClose={handleSnackbarClose}
+        onClose={() => setSnackbarOpen(false)}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert
-          onClose={handleSnackbarClose}
+          onClose={() => setSnackbarOpen(false)}
           severity={snackbarSeverity}
           sx={{ width: "100%" }}
         >
           <div dangerouslySetInnerHTML={{ __html: snackbarMessage }} />
         </Alert>
       </Snackbar>
+
+      <Dialog open={openConfirm} onClose={() => setOpenConfirm(false)}>
+        <DialogTitle>Xác nhận thêm sản phẩm</DialogTitle>
+        <DialogContent>
+          Bạn có chắc muốn thêm sản phẩm này? Giao dịch sẽ được ghi lên
+          blockchain.
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenConfirm(false)}>Hủy</Button>
+          <Button onClick={() => confirmSubmit(product)}>Xác nhận</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
