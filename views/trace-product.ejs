@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Truy xuất nguồn gốc sản phẩm</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <style>
+      body {
+        font-family: "Segoe UI", Arial, sans-serif;
+        margin: 0;
+        padding: 30px;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: #ffffff;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+        display: flex;
+        justify-content: space-between;
+        gap: 30px;
+      }
+      h1 {
+        color: #ff6f91;
+        text-align: center;
+        margin-bottom: 30px;
+        font-size: 2em;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+      }
+      .column {
+        flex: 1;
+        padding: 20px;
+        background: linear-gradient(145deg, #f9f9f9, #e8ecef);
+        border-radius: 10px;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+      }
+      .column:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+      }
+      .product-column {
+        flex: 2;
+        text-align: center;
+        padding: 20px;
+        background: #fff;
+        border-radius: 10px;
+        border: 2px solid #ff6f91;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      }
+      .product-image {
+        width: 100%;
+        max-width: 300px;
+        display: block;
+        margin: 0 auto 20px;
+        border-radius: 10px;
+        border: 3px solid #ff6f91;
+        transition: transform 0.3s ease;
+      }
+      .product-image:hover {
+        transform: scale(1.05);
+      }
+      .info {
+        margin-bottom: 15px;
+        padding: 10px;
+        border-left: 4px solid #ff6f91;
+        background: #fff;
+        border-radius: 5px;
+      }
+      .info label {
+        font-weight: bold;
+        color: #333;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .info label i {
+        color: #ff6f91;
+      }
+      .info p {
+        margin: 5px 0;
+        color: #555;
+        font-size: 0.95em;
+      }
+      /* Tăng kích thước chữ cho thông tin sản phẩm */
+      .product-column .info p {
+        font-size: 1.2em; /* Tăng kích thước chữ */
+        font-weight: 500; /* Làm chữ đậm nhẹ */
+      }
+      .product-column .info label {
+        font-size: 1.1em; /* Tăng kích thước chữ cho label */
+      }
+      .section-title {
+        color: #ff6f91;
+        font-size: 1.5em;
+        margin-bottom: 20px;
+        text-align: center;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      /* Dây chuyền truy xuất */
+      .supply-chain {
+        margin-top: 30px;
+        padding: 20px;
+        background: linear-gradient(145deg, #f9f9f9, #e8ecef);
+        border-radius: 10px;
+      }
+      .supply-chain h3 {
+        color: #ff6f91;
+        margin-bottom: 15px;
+        font-size: 1.3em;
+        text-align: center;
+      }
+      .chain-item {
+        padding: 15px;
+        border-bottom: 1px solid #eee;
+        background: #fff;
+        border-radius: 5px;
+        margin-bottom: 10px;
+        transition: background 0.3s ease;
+      }
+      .chain-item:hover {
+        background: #f9f9f9;
+      }
+      .chain-item:last-child {
+        border-bottom: none;
+      }
+      .chain-item p {
+        margin: 5px 0;
+        color: #555;
+        font-size: 1em;
+      }
+      .chain-item strong {
+        color: #333;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .chain-item strong i {
+        color: #ff6f91;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Phần thông tin nông trại (Farm) -->
+      <div class="column">
+        <div class="section-title">Thông tin nông trại</div>
+        <div class="info">
+          <label><i class="fas fa-warehouse"></i> Nông trại:</label>
+          <p><%= product.origin.farm_name %></p>
+        </div>
+        <div class="info">
+          <label><i class="fas fa-map-marker-alt"></i> Địa điểm:</label>
+          <p><%= product.origin.farm_location %></p>
+        </div>
+        <div class="info">
+          <label><i class="fas fa-calendar-alt"></i> Ngày thu hoạch:</label>
+          <p>
+            <%= new
+            Date(product.origin.harvest_date).toLocaleDateString('vi-VN') %>
+          </p>
+        </div>
+        <div class="info">
+          <label><i class="fas fa-certificate"></i> Chứng nhận:</label>
+          <p><%= product.origin.certification %></p>
+        </div>
+      </div>
+
+      <!-- Phần thông tin sản phẩm (ở giữa) -->
+      <div class="product-column">
+        <h1>Truy xuất nguồn gốc sản phẩm</h1>
+        <img
+          src="<%= product.imageurl %>"
+          alt="<%= product.name %>"
+          class="product-image"
+          onerror="this.src='https://via.placeholder.com/300';"
+        />
+
+        <div class="info">
+          <label><i class="fas fa-apple-alt"></i> Tên sản phẩm:</label>
+          <p><%= product.name %></p>
+        </div>
+
+        <div class="info">
+          <label><i class="fas fa-money-bill-wave"></i> Giá:</label>
+          <p><%= product.price %> AGT</p>
+        </div>
+
+        <div class="info">
+          <label><i class="fas fa-boxes"></i> Số lượng:</label>
+          <p><%= product.quantity %></p>
+        </div>
+
+        <div class="info">
+          <label><i class="fas fa-industry"></i> Ngày sản xuất:</label>
+          <p>
+            <%= new Date(product.productdate).toLocaleDateString('vi-VN') %>
+          </p>
+        </div>
+
+        <div class="info">
+          <label><i class="fas fa-clock"></i> Ngày hết hạn:</label>
+          <p><%= new Date(product.expirydate).toLocaleDateString('vi-VN') %></p>
+        </div>
+
+        <div class="info">
+          <label><i class="fas fa-link"></i> URL hình ảnh:</label>
+          <p><%= product.imageurl %></p>
+        </div>
+
+        <div class="info">
+          <label><i class="fas fa-fingerprint"></i> Hash (IPFS):</label>
+          <p><%= product.hash || 'Không có hash' %></p>
+        </div>
+
+        <!-- Phần dây chuyền truy xuất -->
+        <div class="supply-chain">
+          <h3>Dây chuyền truy xuất</h3>
+          <% product.supplyChain.forEach(chain => { %>
+          <div class="chain-item">
+            <p>
+              <strong
+                ><i class="fas fa-arrow-right"></i> <%= chain.stage %>:</strong
+              >
+            </p>
+            <p><%= chain.details %></p>
+          </div>
+          <% }); %>
+        </div>
+      </div>
+
+      <!-- Phần thông tin đại lý (Delivery Hub) -->
+      <div class="column">
+        <div class="section-title">Thông tin đại lý</div>
+        <div class="info">
+          <label><i class="fas fa-store"></i> Đại lý:</label>
+          <p><%= product.delivery_hub_name %></p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

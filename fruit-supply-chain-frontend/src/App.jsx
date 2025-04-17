@@ -1,4 +1,3 @@
-// App.jsx
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/common/Layout";
@@ -12,6 +11,8 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import DeliveryHubPage from "./pages/DeliveryHubPage";
 import ShopPage from "./pages/ShopPage";
+import ProductDetail from "./pages/ProductDetail";
+import CustomerOrders from "./pages/CustomerOrders";
 import UnauthorizedPage from "./pages/UnauthorizedPage";
 import FarmProductList from "./components/FarmManagement/FarmProductList";
 import AddFarmProductForm from "./components/FarmManagement/AddFarmProductForm";
@@ -26,7 +27,7 @@ import StatisticsPage from "./components/DeliveryHub/StatisticsPage";
 import DeliveryHubShopPage from "./components/DeliveryHub/ShopPage";
 import OrdersPage from "./components/DeliveryHub/OrdersPage";
 import PurchasesPage from "./components/DeliveryHub/PurchasesPage";
-import OutgoingProductsPage from "./components/DeliveryHub/OutgoingProductsPage"; // Đảm bảo import đúng
+import OutgoingProductsPage from "./components/DeliveryHub/OutgoingProductsPage";
 import DashboardPage from "./components/DeliveryHub/DashboardPage";
 
 function App() {
@@ -45,6 +46,9 @@ function App() {
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
         <Route path="/cua-hang" element={<ShopPage />} />
 
+        {/* Route cho trang chi tiết sản phẩm */}
+        <Route path="/product-detail/:listingId" element={<ProductDetail />} />
+        <Route path="/customer/orders" element={<CustomerOrders />} />
         {/* Route cho admin (bảo vệ bởi role Admin) */}
         <Route
           path="/admin"

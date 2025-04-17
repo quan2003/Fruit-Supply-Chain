@@ -5,12 +5,12 @@ const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3000";
 // Hàm lấy header với x-ethereum-address
 const getEthereumHeaders = () => {
   const address = window.ethereum?.selectedAddress;
-  if (!address) {
+  if (!address || !/^(0x)?[0-9a-fA-F]{40}$/.test(address)) {
     throw new Error(
-      "Ví MetaMask chưa được kết nối! Vui lòng kết nối ví để tiếp tục."
+      "Ví MetaMask chưa được kết nối hoặc địa chỉ ví không hợp lệ! Vui lòng kết nối ví để tiếp tục."
     );
   }
-  console.log("Địa chỉ ví gửi trong header:", address); // Debug để kiểm tra
+  console.log("Địa chỉ ví gửi trong header:", address);
   return { "x-ethereum-address": address };
 };
 
@@ -24,7 +24,7 @@ export const getIncomingShipments = async () => {
   } catch (error) {
     console.error("Lỗi khi lấy danh sách lô hàng đến:", error);
     throw new Error(
-      error.response?.data?.error || // Lấy lỗi từ server nếu có
+      error.response?.data?.error ||
         error.message ||
         "Không thể tải danh sách lô hàng đến"
     );
@@ -52,8 +52,9 @@ export const getOutgoingShipments = async () => {
 export const getInventory = async (deliveryHubId) => {
   try {
     console.log("Lấy danh sách kho cho deliveryHubId:", deliveryHubId);
+    const headers = getEthereumHeaders();
     const response = await axios.get(`${API_URL}/inventory/${deliveryHubId}`, {
-      headers: getEthereumHeaders(),
+      headers,
     });
     console.log("Kết quả kho:", response.data);
     return response.data;

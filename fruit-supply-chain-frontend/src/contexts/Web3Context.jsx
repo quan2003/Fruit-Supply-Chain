@@ -392,6 +392,8 @@ export function Web3Provider({ children }) {
     price,
     quantity,
     inventoryId,
+    listingId,
+    totalPrice,
   }) => {
     if (!web3 || !contract || !account)
       throw new Error("Web3, contract hoặc account chưa được khởi tạo!");
@@ -399,8 +401,16 @@ export function Web3Provider({ children }) {
     if (walletError) throw new Error(walletError);
 
     const user = JSON.parse(localStorage.getItem("user"));
-    if (!user || user.role !== "DeliveryHub") {
-      throw new Error("Bạn không có quyền thực hiện hành động này!");
+    if (!user) {
+      throw new Error("Vui lòng đăng nhập để thực hiện hành động này!");
+    }
+
+    // Kiểm tra vai trò người dùng dựa trên loại giao dịch
+    if (type === "listProductForSale" && user.role !== "DeliveryHub") {
+      throw new Error("Chỉ DeliveryHub mới có thể đăng bán sản phẩm!");
+    }
+    if (type === "purchaseProduct" && user.role !== "Customer") {
+      throw new Error("Chỉ Customer mới có thể mua sản phẩm!");
     }
 
     if (type === "listProductForSale") {
@@ -564,6 +574,81 @@ export function Web3Provider({ children }) {
           error.message.includes("Node không phản hồi")
             ? error.message
             : "Không thể thực hiện giao dịch: " + error.message
+        );
+      }
+    } else if (type === "purchaseProduct") {
+      try {
+        const { networkId, blockNumber } = await checkNodeSync();
+        console.log(
+          "Node synced - Network ID:",
+          networkId,
+          "Block Number:",
+          blockNumber
+        );
+
+        await testContract();
+
+        // Kiểm tra sản phẩm có tồn tại và còn khả dụng hay không
+        const productResponse = await contract.methods
+          .getListedProduct(listingId)
+          .call();
+        console.log("Listed Product:", productResponse);
+        if (!productResponse.isActive) {
+          throw new Error(
+            `Sản phẩm với Listing ID ${listingId} không còn khả dụng!`
+          );
+        }
+        if (productResponse.quantity <= 0) {
+          throw new Error(`Sản phẩm với Listing ID ${listingId} đã hết hàng!`);
+        }
+        if (
+          web3.utils.fromWei(totalPrice.toString(), "ether") <
+          web3.utils.fromWei(productResponse.price.toString(), "ether")
+        ) {
+          throw new Error(
+            `Số tiền không đủ để mua sản phẩm! Cần ít nhất ${web3.utils.fromWei(
+              productResponse.price.toString(),
+              "ether"
+            )} ETH`
+          );
+        }
+
+        // Kiểm tra số dư ví
+        const balance = await web3.eth.getBalance(account);
+        console.log("Số dư ví:", web3.utils.fromWei(balance, "ether"), "ETH");
+        if (balance < totalPrice) {
+          throw new Error(
+            `Số dư ví không đủ! Cần ít nhất ${web3.utils.fromWei(
+              totalPrice.toString(),
+              "ether"
+            )} ETH, nhưng ví chỉ có ${web3.utils.fromWei(balance, "ether")} ETH`
+          );
+        }
+
+        const gasEstimate = await contract.methods
+          .purchaseProduct(listingId)
+          .estimateGas({ from: account, value: totalPrice });
+        const tx = await contract.methods.purchaseProduct(listingId).send({
+          from: account,
+          value: totalPrice,
+          gas: Math.floor(Number(gasEstimate) * 1.5),
+        });
+
+        console.log("Đã mua sản phẩm với Listing ID:", listingId);
+        return { transactionHash: tx.transactionHash };
+      } catch (error) {
+        console.error("Lỗi giao dịch chi tiết:", error);
+        if (error.message.includes("revert")) {
+          throw new Error(
+            "Giao dịch bị từ chối bởi hợp đồng thông minh: " +
+              (error.message.match(/revert (.*)/)?.[1] || error.message)
+          );
+        }
+        throw new Error(
+          error.message.includes("Hardhat Network") ||
+          error.message.includes("Node không phản hồi")
+            ? error.message
+            : "Không thể thực hiện giao dịch mua sản phẩm: " + error.message
         );
       }
     } else {

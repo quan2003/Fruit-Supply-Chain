@@ -1,0 +1,41 @@
+console.log("Listed Product 2:", listedProduct2);
+const listedProduct2 = await FruitSupplyChain.getListedProduct(2);
+console.log("Listed Product 1:", listedProduct1);
+const listedProduct1 = await FruitSupplyChain.getListedProduct(1);
+console.log("Listing Count:", listingCount);
+const listingCount = (await FruitSupplyChain.listingCount()).toString();
+// Kiểm tra trạng thái blockchain
+await FruitSupplyChain.connect(deployer).listProductForSale(fruitId2, ethers.utils.parseEther("141.45"), 2);
+console.log("Fruit ID for product 2:", fruitId2);
+const fruitId2 = (await FruitSupplyChain.fruitCount()).toString();
+await FruitSupplyChain.connect(deployer).harvestFruit("Dưa hấu", "Việt Nam", "Farm1", "Tốt");
+// Thu hoạch và đăng bán sản phẩm 2 (giá 141.45 ETH, số lượng 2)
+await FruitSupplyChain.connect(deployer).listProductForSale(fruitId1, ethers.utils.parseEther("13.80"), 2);
+// Bước 3: Đăng bán sản phẩm 1 (giá 13.80 ETH, số lượng 2)
+console.log("Fruit ID for product 1:", fruitId1);
+const fruitId1 = (await FruitSupplyChain.fruitCount()).toString();
+await FruitSupplyChain.connect(deployer).harvestFruit("Dưa hấu", "Việt Nam", "Farm1", "Tốt");
+// Bước 2: Thu hoạch trái cây
+console.log("Fruit Catalog:", catalog);
+const catalog = await FruitSupplyChain.getFruitCatalog("Dưa hấu");
+// Kiểm tra xem loại trái cây đã được đăng ký chưa
+);
+  ["Dưa hấu đỏ", "Dưa hấu không hạt"]
+  "Bảo quản nơi khô ráo, thoáng mát",
+  "Chứa nhiều vitamin A, C",
+  "Mùa hè",
+  "Dưa hấu đỏ, ngọt, nhiều nước",
+  "Dưa hấu",
+await FruitSupplyChain.connect(deployer).addFruitCatalog(
+// Bước 1: Đăng ký loại trái cây "Dưa hấu"
+const [
+const FruitSupplyChain = await ethers.getContractAt("FruitSupplyChain", "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512");
+// Kết nối với hợp đồng
+console.log("Fruit ID for product 1:", fruitId1);
+const fruitId1 = (await FruitSupplyChain.fruitCount()).toString();
+await FruitSupplyChain.connect(deployer).harvestFruit("Dưa hấu", "Việt Nam", "Farm1", "Tốt");
+const [deployer] = await ethers.getSigners();
+const FruitSupplyChain = await ethers.getContractAt("FruitSupplyChain", "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512");
+await FruitSupplyChain.getListedProduct(1);
+(await FruitSupplyChain.listingCount()).toString();
+const FruitSupplyChain = await ethers.getContractAt("FruitSupplyChain", "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512");

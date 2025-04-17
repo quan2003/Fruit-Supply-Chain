@@ -16,7 +16,6 @@ import {
   Paper,
   CircularProgress,
   Alert,
-  Snackbar,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -41,23 +40,29 @@ const predictionConfig = {
     validClasses: ["ripe", "unripe"],
   },
   "Mang Cut": {
-    endpoint: "https://serverless.roboflow.com/mangosteen-fruit/1?",
+    endpoint: "https://serverless.roboflow.com/mangosteen-fruit/1",
     validClasses: ["ripe", "unripe"],
+    classMapping: { Ripe: "ripe", Un_Ripe: "unripe" },
   },
   "Trai Thanh Long": {
-    endpoint: "https://serverless.roboflow.com/thanh-long-detection-znzlc/3?",
+    endpoint: "https://serverless.roboflow.com/thanh-long-detection-znzlc/3",
     validClasses: ["ripe", "unripe"],
     classMapping: { raw: "unripe" },
   },
   "Trai Xoai": {
-    endpoint: "https://serverless.roboflow.com/mango-fruit-iwvzr/2?",
-    validClasses: ["ripe", "unripe"],
-    classMapping: { 0: "ripe", 1: "Semi_Un_Ripe", 2: "unripe" },
+    endpoint: "https://serverless.roboflow.com/mango-fruit-iwvzr/2",
+    validClasses: ["ripe", "semiripe", "unripe"],
+    classMapping: { Ripe: "ripe", Semi_Un_Ripe: "semiripe", Un_Ripe: "unripe" },
   },
   "Vu Sua": {
-    endpoint: "https://serverless.roboflow.com/anh-vusua/1?",
+    endpoint: "https://serverless.roboflow.com/anh-vusua/1",
     validClasses: ["ripe", "unripe"],
     classMapping: { 0: "ripe", 1: "unripe" },
+  },
+  Thom: {
+    endpoint: "https://serverless.roboflow.com/pineapple-axcxg/1",
+    validClasses: ["ripe", "unripe", "semiripe"],
+    classMapping: { Ripe: "ripe", Semi_Ripe: "semiripe", Un_Ripe: "unripe" },
   },
 };
 
@@ -117,23 +122,27 @@ const useWeb3Actions = () => {
   };
 };
 
-// Hook xử lý nhận diện hình ảnh
+// Hook xử lý nhận diện hình ảnh (Đã cập nhật với Gemini API)
 const useImagePrediction = () => {
   const [prediction, setPrediction] = useState(null);
   const [predictionLoading, setPredictionLoading] = useState(false);
   const [predictionError, setPredictionError] = useState(null);
-  const [snackbarMessage, setSnackbarMessage] = useState("");
-  const [snackbarSeverity, setSnackbarSeverity] = useState("info");
+  const [formattedMessage, setFormattedMessage] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [fruitConfidences, setFruitConfidences] = useState({});
 
   const predict = async (file, category) => {
     setPredictionLoading(true);
     setPredictionError(null);
     setPrediction(null);
+    setFormattedMessage("");
+    setDialogOpen(false);
 
     try {
       const config = predictionConfig[category];
-      if (!config)
+      if (!config) {
         throw new Error("Loại trái cây không được hỗ trợ nhận diện!");
+      }
 
       const reader = new FileReader();
       const base64Image = await new Promise((resolve) => {
@@ -141,109 +150,246 @@ const useImagePrediction = () => {
         reader.readAsDataURL(file);
       });
 
+      console.log("Roboflow API Key:", process.env.REACT_APP_ROBOFLOW_API_KEY);
+      if (!process.env.REACT_APP_ROBOFLOW_API_KEY) {
+        throw new Error(
+          "API key cho Roboflow không được định nghĩa. Đảm bảo tệp .env nằm trong thư mục gốc của frontend (cùng cấp với package.json) và ứng dụng đã được khởi động lại."
+        );
+      }
+
+      console.log("Gửi yêu cầu đến Roboflow API:", config.endpoint);
       const roboflowResponse = await axios({
         method: "POST",
         url: config.endpoint,
         params: {
-          api_key:
-            process.env.REACT_APP_ROBOFLOW_API_KEY || "E8YOwnmbHAOZ5OCaS8GZ",
+          api_key: process.env.REACT_APP_ROBOFLOW_API_KEY,
         },
         data: base64Image,
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
 
       const roboflowResult = roboflowResponse.data;
+      console.log("Phản hồi từ Roboflow API:", roboflowResult);
+
       if (
         !roboflowResult.predictions ||
         roboflowResult.predictions.length === 0
       ) {
-        throw new Error("Hình ảnh không phù hợp với loại trái cây được chọn!");
+        throw new Error(
+          "Không nhận diện được trạng thái trái cây từ hình ảnh!"
+        );
       }
 
-      let predictionResult = roboflowResult.predictions[0].class;
-      if (config.classMapping && config.classMapping[predictionResult]) {
-        predictionResult = config.classMapping[predictionResult];
-      }
-
-      if (!config.validClasses.includes(predictionResult)) {
-        throw new Error("Hình ảnh không phù hợp với loại trái cây được chọn!");
-      }
-
-      const geminiResponse = await axios({
-        method: "POST",
-        url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${
-          process.env.REACT_APP_GEMINI_API_KEY ||
-          "AIzaSyAY9ZNyI-iddot-okqT0Y5qac-uwwld-QI"
-        }`,
-        data: {
-          contents: [
-            {
-              parts: [
-                {
-                  text: `Tôi có một ${category} với trạng thái chín là ${predictionResult}. Hãy đưa ra khuyến nghị bảo quản chi tiết theo định dạng sau:
-                  - Khuyến nghị: [chi tiết cách bảo quản, bao gồm nhiệt độ và thời gian]
-                  - Mẹo: [một mẹo cụ thể]
-                  Ví dụ:
-                  Khuyến nghị: Bảo quản ở 5-10°C trong 2-3 tuần.
-                  Mẹo: Bọc kín để tránh mùi.
-                  Trả về văn bản không chứa dấu * để tránh định dạng lộn xộn.`,
-                },
-              ],
-            },
-          ],
-        },
-        headers: { "Content-Type": "application/json" },
+      const predictions = roboflowResult.predictions.map((pred) => {
+        let predictionResult = pred.class;
+        if (config.classMapping && config.classMapping[predictionResult]) {
+          predictionResult = config.classMapping[predictionResult];
+        }
+        if (!config.validClasses.includes(predictionResult)) {
+          console.log(
+            `Trạng thái không hợp lệ cho quả tại vị trí (${pred.x}, ${pred.y}): ${predictionResult}, sử dụng trạng thái mặc định: unripe`
+          );
+          predictionResult = "unripe";
+        }
+        return { ...pred, mappedClass: predictionResult };
       });
 
-      const geminiResult = geminiResponse.data;
-      let generatedText =
-        geminiResult.candidates[0].content.parts[0].text.replace(/\*/g, "");
-      const recommendationMatch = generatedText.match(
-        /Khuyến nghị:\s*([^\n]+)/
-      );
-      const tipMatch = generatedText.match(/Mẹo:\s*([^\n]+)/);
+      const confidence =
+        predictions.length > 0
+          ? (predictions.reduce((sum, pred) => sum + pred.confidence, 0) /
+              predictions.length) *
+            100
+          : 0;
+      const roundedConfidence = confidence.toFixed(0);
 
-      const formattedMessage = `
-        <div style="line-height: 1.5;">
-          <strong style="color: #1976D2;">Trạng thái:</strong> ${
-            predictionResult === "ripe" ? "Đã chín" : "Chưa chín"
-          }<br />
-          <strong style="color: #1976D2;">Khuyến nghị:</strong> ${
-            recommendationMatch
-              ? recommendationMatch[1].trim()
-              : "Không có thông tin."
-          }<br />
-          <strong style="color: #1976D2;">Mẹo:</strong> ${
-            tipMatch ? tipMatch[1].trim() : "Không có mẹo."
+      setFruitConfidences((prev) => ({
+        ...prev,
+        [category]: roundedConfidence,
+      }));
+
+      // Tạo khuyến nghị cho từng quả
+      let formattedMessage = `<div style="line-height: 1.5; max-height: 400px; overflow-y: auto;">`;
+      formattedMessage += `<strong style="color: #1976D2;">Hình ảnh chứa ${predictions.length} quả. Dưới đây là trạng thái và khuyến nghị bảo quản:</strong><br /><br />`;
+
+      for (let i = 0; i < predictions.length; i++) {
+        const pred = predictions[i];
+        const predictionResult = pred.mappedClass;
+        const confidence = pred.confidence.toFixed(2);
+
+        let recommendation = "";
+        let tip = "";
+        try {
+          console.log(`Gửi yêu cầu đến Gemini API cho quả ${i + 1}...`);
+          const geminiResponse = await axios({
+            method: "POST",
+            url: "https://api.google.ai/v1/models/gemini-1.5-pro:generateText", // Endpoint giả định cho Gemini
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer AIzaSyCFF_FW6_0DMkI4xAHLBUk4qB8eKEM2T7M`, // Sử dụng API key bạn cung cấp
+            },
+            data: {
+              prompt: `Tôi có một ${category} với trạng thái chín là ${predictionResult}. Hãy đưa ra khuyến nghị bảo quản chi tiết bằng tiếng Việt theo định dạng sau:
+              - Khuyến nghị: [chi tiết cách bảo quản, bao gồm nhiệt độ và thời gian]
+              - Mẹo: [một mẹo cụ thể]
+              Ví dụ:
+              - Khuyến nghị: Bảo quản ở 5-10 độ C trong 2-3 tuần.
+              - Mẹo: Bọc kín để tránh mùi.
+              Trả về văn bản thuần, không chứa dấu * hoặc định dạng markdown.`,
+              maxTokens: 150,
+              temperature: 0.7,
+            },
+          });
+
+          let generatedText = geminiResponse.data?.candidates[0]?.output || "";
+          console.log(
+            `Phản hồi từ Gemini API cho quả ${i + 1}:`,
+            generatedText
+          );
+          if (!generatedText) {
+            throw new Error("Không nhận được phản hồi từ Gemini API.");
           }
-        </div>
-      `;
 
-      setSnackbarMessage(formattedMessage);
-      setSnackbarSeverity(predictionResult === "ripe" ? "success" : "warning");
-      setPrediction(predictionResult);
-      return predictionResult;
-    } catch (error) {
-      setPredictionError(
-        "Không thể nhận diện hoặc tạo khuyến nghị: " + error.message
+          generatedText = generatedText.trim();
+
+          const recommendationMatch = generatedText.match(
+            /Khuyến nghị:\s*([^\n]+)/
+          );
+          const tipMatch = generatedText.match(/Mẹo:\s*([^\n]+)/);
+
+          recommendation = recommendationMatch
+            ? recommendationMatch[1].trim()
+            : "Bảo quản ở nhiệt độ phòng trong 1-2 tuần.";
+          tip = tipMatch ? tipMatch[1].trim() : "Giữ nơi khô ráo, thoáng mát.";
+        } catch (geminiError) {
+          console.log(
+            `Lỗi khi gọi Gemini API cho quả ${i + 1}:`,
+            geminiError.message
+          );
+          let errorMessage = "Không thể lấy khuyến nghị từ Gemini API.";
+          if (geminiError.response?.status === 404) {
+            errorMessage =
+              "Endpoint hoặc mô hình Gemini không tồn tại hoặc không khả dụng.";
+          } else if (geminiError.response?.status === 401) {
+            errorMessage =
+              "Xác thực thất bại: API key không hợp lệ. Kiểm tra lại key.";
+          } else if (geminiError.response?.status === 429) {
+            errorMessage =
+              "Đã vượt giới hạn yêu cầu của Gemini API. Vui lòng thử lại sau.";
+          } else if (geminiError.response?.status === 503) {
+            errorMessage = "Gemini API đang quá tải. Vui lòng thử lại sau.";
+          }
+          console.log(errorMessage);
+
+          if (predictionResult === "ripe") {
+            recommendation =
+              "Bảo quản ở 5-7 độ C trong tủ lạnh, sử dụng trong vòng 3-5 ngày để giữ độ tươi.";
+            tip =
+              "Bọc kín bằng màng bọc thực phẩm để tránh mùi lan sang các thực phẩm khác.";
+          } else if (predictionResult === "unripe") {
+            recommendation =
+              "Để ở nhiệt độ phòng (25-30 độ C) trong 3-5 ngày để quả chín tự nhiên, tránh ánh nắng trực tiếp.";
+            tip =
+              "Đặt gần các loại trái cây như chuối hoặc táo để đẩy nhanh quá trình chín nhờ khí ethylene.";
+          } else if (predictionResult === "semiripe") {
+            recommendation =
+              "Để ở nhiệt độ phòng (25-30 độ C) trong 1-2 ngày để quả chín hoàn toàn, sau đó bảo quản ở 5-7 độ C trong tủ lạnh.";
+            tip = "Kiểm tra độ mềm của quả mỗi ngày để tránh chín quá mức.";
+          }
+        }
+
+        const confidenceAdvice =
+          confidence >= 0.85
+            ? `Với phần trăm cao (${(confidence * 100).toFixed(
+                0
+              )}%), bạn có thể yên tâm áp dụng phương pháp bảo quản này mà không cần kiểm tra thêm.`
+            : confidence >= 0.7
+            ? `Với phần trăm trung bình (${(confidence * 100).toFixed(
+                0
+              )}%), bạn nên kiểm tra thủ công để xác nhận trạng thái trước khi bảo quản.`
+            : `Với phần trăm thấp (${(confidence * 100).toFixed(
+                0
+              )}%), kết quả có thể không chính xác, hãy kiểm tra thủ công để xác nhận.`;
+
+        formattedMessage += `
+          <strong style="color: #1976D2;">Quả ${i + 1}:</strong><br />
+          Trạng thái: ${
+            predictionResult === "ripe"
+              ? "Đã chín"
+              : predictionResult === "semiripe"
+              ? "Chín một phần"
+              : "Chưa chín"
+          } (${(confidence * 100).toFixed(0)}%)<br />
+          Khuyến nghị: ${recommendation}<br />
+          Mẹo: ${tip}<br />
+          Lời khuyên: ${confidenceAdvice}<br /><br />
+        `;
+      }
+
+      // Thêm hướng dẫn tách quả chín
+      const hasRipe = predictions.some((pred) => pred.mappedClass === "ripe");
+      const hasUnripe = predictions.some(
+        (pred) =>
+          pred.mappedClass === "unripe" || pred.mappedClass === "semiripe"
       );
+      if (hasRipe && hasUnripe) {
+        formattedMessage += `
+          <strong style="color: #1976D2;">Hướng dẫn bổ sung:</strong><br />
+          Hình ảnh chứa cả quả chín và chưa chín. Hãy tách các quả chín để bảo quản riêng trong tủ lạnh (5-7 độ C), và để các quả chưa chín ở nhiệt độ phòng (25-30 độ C) để tiếp tục chín tự nhiên.<br />
+        `;
+      }
+
+      formattedMessage += `</div>`;
+
+      setFormattedMessage(formattedMessage);
+      setDialogOpen(true);
+
+      const firstPrediction = predictions[0].mappedClass;
+      setPrediction(firstPrediction);
+      return firstPrediction;
+    } catch (error) {
+      let errorMessage =
+        "Không thể nhận diện hoặc tạo khuyến nghị: " + error.message;
+      if (error.response?.status === 401) {
+        errorMessage =
+          "Xác thực thất bại: API key không hợp lệ hoặc không được cung cấp. Kiểm tra biến REACT_APP_ROBOFLOW_API_KEY trong .env.";
+      } else if (error.response?.status === 429) {
+        errorMessage =
+          "Đã vượt giới hạn yêu cầu của Roboflow. Vui lòng thử lại sau.";
+      } else if (error.response?.status === 503) {
+        errorMessage = "Roboflow API đang quá tải. Vui lòng thử lại sau.";
+      } else if (error.message.includes("Network Error")) {
+        errorMessage =
+          "Lỗi mạng: Có thể do CORS. Kiểm tra quyền truy cập từ Roboflow.";
+      }
+      setPredictionError(errorMessage);
+      setFormattedMessage(errorMessage);
+      setDialogOpen(true);
       return null;
     } finally {
       setPredictionLoading(false);
     }
   };
 
+  const formatConfidences = () => {
+    return Object.entries(fruitConfidences)
+      .map(([fruit, confidence]) => `${fruit}(${confidence}%)`)
+      .join(", ");
+  };
+
   return {
     prediction,
     predictionLoading,
     predictionError,
-    snackbarMessage,
-    snackbarSeverity,
+    formattedMessage,
+    dialogOpen,
+    setDialogOpen,
     predict,
+    fruitConfidences,
+    formatConfidences,
   };
 };
 
-// Component Form
+// Component Form (Giữ nguyên)
 const ProductForm = ({
   register,
   errors,
@@ -254,6 +400,7 @@ const ProductForm = ({
   prediction,
   predictionLoading,
   predictionError,
+  formatConfidences,
 }) => {
   const validFruits = [
     "Thom",
@@ -372,12 +519,25 @@ const ProductForm = ({
         )}
         {prediction && !predictionLoading && (
           <Alert
-            severity={prediction === "ripe" ? "success" : "warning"}
+            severity={
+              prediction === "ripe"
+                ? "success"
+                : prediction === "semiripe"
+                ? "info"
+                : "warning"
+            }
             sx={{ mt: 2 }}
           >
             {prediction === "ripe"
               ? "Sản phẩm đã chín, sẵn sàng để bán!"
+              : prediction === "semiripe"
+              ? "Sản phẩm chín một phần, có thể bán nhưng nên kiểm tra kỹ!"
               : "Sản phẩm chưa chín, bạn nên chờ thêm trước khi bán."}
+          </Alert>
+        )}
+        {formatConfidences() && (
+          <Alert severity="info" sx={{ mt: 2 }}>
+            {formatConfidences()}
           </Alert>
         )}
       </Grid>
@@ -434,7 +594,7 @@ const ProductForm = ({
   );
 };
 
-// Component chính
+// Component chính (Giữ nguyên)
 const AddFarmProductForm = () => {
   const navigate = useNavigate();
   const {
@@ -452,9 +612,11 @@ const AddFarmProductForm = () => {
     prediction,
     predictionLoading,
     predictionError,
-    snackbarMessage,
-    snackbarSeverity,
+    formattedMessage,
+    dialogOpen,
+    setDialogOpen,
     predict,
+    formatConfidences,
   } = useImagePrediction();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -463,7 +625,6 @@ const AddFarmProductForm = () => {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [openConfirm, setOpenConfirm] = useState(false);
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
   const user = JSON.parse(localStorage.getItem("user")) || {};
 
   const {
@@ -550,10 +711,10 @@ const AddFarmProductForm = () => {
           "Trai Thanh Long",
           "Trai Xoai",
           "Vu Sua",
+          "Thom",
         ].includes(product.category)
       ) {
-        await predict(file, product.category);
-        setSnackbarOpen(true);
+        const result = await predict(file, product.category);
       }
     }
   };
@@ -620,7 +781,6 @@ const AddFarmProductForm = () => {
       if (!data.hash) {
         throw new Error("Không nhận được hash từ IPFS");
       }
-      // Kiểm tra xem hash IPFS có hợp lệ không
       const checkResponse = await fetch(`${IPFS_GATEWAY}${data.hash}`, {
         method: "HEAD",
       });
@@ -646,6 +806,7 @@ const AddFarmProductForm = () => {
         "Trai Thanh Long",
         "Trai Xoai",
         "Vu Sua",
+        "Thom",
       ].includes(data.category) &&
       imageFile
     ) {
@@ -653,7 +814,7 @@ const AddFarmProductForm = () => {
         setError("Vui lòng chờ nhận diện hình ảnh trước khi thêm sản phẩm!");
         return;
       }
-      if (prediction !== "ripe") {
+      if (prediction !== "ripe" && prediction !== "semiripe") {
         setError("Sản phẩm chưa chín! Vui lòng chọn sản phẩm đã chín để thêm.");
         return;
       }
@@ -683,7 +844,7 @@ const AddFarmProductForm = () => {
         const gasEstimate = await contract.methods
           .setFruitHash(fruitType, ipfsHash)
           .estimateGas({ from: account });
-        gasLimit = Math.floor(Number(gasEstimate) * 1.2); // Tăng 20% để an toàn
+        gasLimit = Math.floor(Number(gasEstimate) * 1.2);
       } catch (err) {
         gasLimit = 1000000;
       }
@@ -720,7 +881,7 @@ const AddFarmProductForm = () => {
       } else if (err.message.includes("Failed to fetch")) {
         errorMessage = "Không thể kết nối đến backend.";
       } else if (err.message.includes("IPFS")) {
-        errorMessage = err.message; // Hiển thị lỗi IPFS chi tiết
+        errorMessage = err.message;
       }
       setError(errorMessage);
     } finally {
@@ -817,6 +978,7 @@ const AddFarmProductForm = () => {
             prediction={prediction}
             predictionLoading={predictionLoading}
             predictionError={predictionError}
+            formatConfidences={formatConfidences}
           />
           <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 3 }}>
             <Button
@@ -843,20 +1005,25 @@ const AddFarmProductForm = () => {
         </form>
       </Paper>
 
-      <Snackbar
-        open={snackbarOpen}
-        autoHideDuration={6000}
-        onClose={() => setSnackbarOpen(false)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      {/* Dialog cho thông báo nhận diện */}
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
       >
-        <Alert
-          onClose={() => setSnackbarOpen(false)}
-          severity={snackbarSeverity}
-          sx={{ width: "100%" }}
-        >
-          <div dangerouslySetInnerHTML={{ __html: snackbarMessage }} />
-        </Alert>
-      </Snackbar>
+        <DialogTitle>
+          <strong style={{ color: "#1976D2" }}>Kết quả nhận diện</strong>
+        </DialogTitle>
+        <DialogContent dividers>
+          <div dangerouslySetInnerHTML={{ __html: formattedMessage }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDialogOpen(false)} color="primary">
+            Đóng
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={openConfirm} onClose={() => setOpenConfirm(false)}>
         <DialogTitle>Xác nhận thêm sản phẩm</DialogTitle>

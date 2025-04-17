@@ -32,6 +32,8 @@ import { useOutletContext } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useWeb3 } from "../../contexts/Web3Context";
 import { sellProductToConsumer } from "../../services/deliveryHubService";
+import axios from "axios";
+import OutgoingProductsPage from "./OutgoingProductsPage";
 
 const PurchasesPage = () => {
   const { user } = useAuth();
@@ -48,7 +50,6 @@ const PurchasesPage = () => {
 
   const outletContext = useOutletContext() || {};
   const contextInventory = outletContext.inventory || [];
-  const contextOutgoingProducts = outletContext.outgoingProducts || [];
   const contextHandleRefresh = outletContext.handleRefresh || (() => {});
   const formatImageUrl = outletContext.formatImageUrl || ((url) => url);
 
@@ -66,11 +67,38 @@ const PurchasesPage = () => {
   const [transactionHash, setTransactionHash] = useState(null);
   const [transactionStatus, setTransactionStatus] = useState(null);
   const [listingId, setListingId] = useState(null);
-
-  // State cho chức năng thêm manager
+  const [outgoingProducts, setOutgoingProducts] = useState([]);
   const [managerDialogOpen, setManagerDialogOpen] = useState(false);
-  const [managerAddress, setManagerAddress] = useState(""); // Không mặc định địa chỉ
+  const [managerAddress, setManagerAddress] = useState("");
   const [addingManager, setAddingManager] = useState(false);
+
+  const fetchOutgoingProducts = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get(
+        "http://localhost:3000/outgoing-products",
+        {
+          headers: { "x-ethereum-address": account },
+        }
+      );
+      setOutgoingProducts(response.data);
+    } catch (error) {
+      console.error("Lỗi khi lấy danh sách sản phẩm đang bán:", error);
+      setAlert({
+        open: true,
+        message: "Không thể tải danh sách sản phẩm đang bán.",
+        severity: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (account && user && user.role === "DeliveryHub") {
+      fetchOutgoingProducts();
+    }
+  }, [account, user]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -154,6 +182,17 @@ const PurchasesPage = () => {
       return;
     }
 
+    // Kiểm tra số lượng trước khi đăng bán
+    const quantityToSell = parseInt(selectedProduct.quantity || 1, 10);
+    if (quantityToSell <= 0 || selectedProduct.quantity < quantityToSell) {
+      setAlert({
+        open: true,
+        message: "Số lượng trong kho không đủ để đăng bán!",
+        severity: "error",
+      });
+      return;
+    }
+
     setSellingInProgress(true);
     setTransactionStatus("preparing");
 
@@ -161,7 +200,7 @@ const PurchasesPage = () => {
       const productData = {
         inventoryId: selectedProduct.id,
         productId: selectedProduct.product_id,
-        quantity: parseInt(selectedProduct.quantity || 1, 10),
+        quantity: quantityToSell,
         price: parseFloat(sellingPrice),
       };
 
@@ -191,7 +230,23 @@ const PurchasesPage = () => {
       productData.transactionHash = transactionResult.transactionHash;
       productData.listingId = transactionResult.listingId;
 
-      await sellProductToConsumer(productData);
+      try {
+        await sellProductToConsumer(productData);
+      } catch (sellError) {
+        console.error("Lỗi khi gọi sellProductToConsumer:", sellError);
+        // Đồng bộ dữ liệu nếu giao dịch blockchain thành công nhưng sellProductToConsumer thất bại
+        await axios.post(
+          "http://localhost:3000/sync-product",
+          {
+            listingId: productData.listingId,
+            quantity: productData.quantity,
+            status: "Available",
+          },
+          {
+            headers: { "x-ethereum-address": account },
+          }
+        );
+      }
 
       setAlert({
         open: true,
@@ -200,6 +255,7 @@ const PurchasesPage = () => {
         severity: "success",
       });
       handleCloseSellDialog();
+      fetchOutgoingProducts();
       contextHandleRefresh();
     } catch (error) {
       console.error("Lỗi khi đăng bán sản phẩm:", error);
@@ -218,7 +274,6 @@ const PurchasesPage = () => {
     }
   };
 
-  // Hàm xử lý thêm manager
   const handleOpenManagerDialog = () => {
     if (!account) {
       setAlert({
@@ -229,7 +284,7 @@ const PurchasesPage = () => {
       return;
     }
     setManagerDialogOpen(true);
-    setManagerAddress(""); // Reset địa chỉ khi mở dialog
+    setManagerAddress("");
     setTransactionHash(null);
     setTransactionStatus(null);
   };
@@ -387,7 +442,10 @@ const PurchasesPage = () => {
           <Button
             startIcon={<RefreshIcon />}
             variant="outlined"
-            onClick={contextHandleRefresh}
+            onClick={() => {
+              fetchOutgoingProducts();
+              contextHandleRefresh();
+            }}
             disabled={loading}
           >
             Làm mới
@@ -413,7 +471,8 @@ const PurchasesPage = () => {
       ) : (
         <>
           {tabValue === 0 &&
-            (contextInventory && contextInventory.length > 0 ? (
+            (contextInventory &&
+            contextInventory.filter((item) => item.quantity > 0).length > 0 ? (
               <TableContainer component={Paper} sx={{ mb: 4 }}>
                 <Table sx={{ minWidth: 650 }}>
                   <TableHead>
@@ -430,59 +489,61 @@ const PurchasesPage = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {contextInventory.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>{item.id}</TableCell>
-                        <TableCell>
-                          <Box sx={{ display: "flex", alignItems: "center" }}>
-                            {item.imageurl && (
-                              <Box
-                                component="img"
-                                src={
-                                  formatImageUrl
-                                    ? formatImageUrl(item.imageurl)
-                                    : item.imageurl
-                                }
-                                alt={item.name}
-                                sx={{
-                                  width: 40,
-                                  height: 40,
-                                  mr: 1,
-                                  objectFit: "cover",
-                                }}
-                                onError={(e) => {
-                                  e.target.src =
-                                    "https://via.placeholder.com/40";
-                                }}
-                              />
-                            )}
-                            {item.name || "Sản phẩm"}
-                          </Box>
-                        </TableCell>
-                        <TableCell>{item.category || "Trái cây"}</TableCell>
-                        <TableCell>{item.origin || "Việt Nam"}</TableCell>
-                        <TableCell align="center">
-                          {item.quantity || 1}
-                        </TableCell>
-                        <TableCell align="right">
-                          {item.price || "N/A"}
-                        </TableCell>
-                        <TableCell>{formatDate(item.productdate)}</TableCell>
-                        <TableCell>{formatDate(item.expirydate)}</TableCell>
-                        <TableCell align="center">
-                          <Button
-                            variant="contained"
-                            color="primary"
-                            size="small"
-                            onClick={() => handleOpenSellDialog(item)}
-                            sx={{ borderRadius: 2 }}
-                            startIcon={<ShoppingBagIcon />}
-                          >
-                            Đăng bán
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {contextInventory
+                      .filter((item) => item.quantity > 0) // Lọc các sản phẩm có quantity > 0
+                      .map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell>{item.id}</TableCell>
+                          <TableCell>
+                            <Box sx={{ display: "flex", alignItems: "center" }}>
+                              {item.imageurl && (
+                                <Box
+                                  component="img"
+                                  src={
+                                    formatImageUrl
+                                      ? formatImageUrl(item.imageurl)
+                                      : item.imageurl
+                                  }
+                                  alt={item.name}
+                                  sx={{
+                                    width: 40,
+                                    height: 40,
+                                    mr: 1,
+                                    objectFit: "cover",
+                                  }}
+                                  onError={(e) => {
+                                    e.target.src =
+                                      "https://via.placeholder.com/40";
+                                  }}
+                                />
+                              )}
+                              {item.name || "Sản phẩm"}
+                            </Box>
+                          </TableCell>
+                          <TableCell>{item.category || "Trái cây"}</TableCell>
+                          <TableCell>{item.origin || "Việt Nam"}</TableCell>
+                          <TableCell align="center">
+                            {item.quantity || 1}
+                          </TableCell>
+                          <TableCell align="right">
+                            {item.price || "N/A"}
+                          </TableCell>
+                          <TableCell>{formatDate(item.productdate)}</TableCell>
+                          <TableCell>{formatDate(item.expirydate)}</TableCell>
+                          <TableCell align="center">
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              size="small"
+                              onClick={() => handleOpenSellDialog(item)}
+                              sx={{ borderRadius: 2 }}
+                              startIcon={<ShoppingBagIcon />}
+                            >
+                              Đăng bán
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -510,132 +571,12 @@ const PurchasesPage = () => {
               </Box>
             ))}
 
-          {tabValue === 1 &&
-            (contextOutgoingProducts && contextOutgoingProducts.length > 0 ? (
-              <TableContainer component={Paper} sx={{ mb: 4 }}>
-                <Table sx={{ minWidth: 650 }}>
-                  <TableHead>
-                    <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
-                      <TableCell>ID</TableCell>
-                      <TableCell>Tên sản phẩm</TableCell>
-                      <TableCell>Loại</TableCell>
-                      <TableCell align="center">Số lượng</TableCell>
-                      <TableCell align="right">Giá bán (AGT)</TableCell>
-                      <TableCell>Ngày đăng</TableCell>
-                      <TableCell>Trạng thái</TableCell>
-                      <TableCell>Mã giao dịch</TableCell>
-                      <TableCell>Listing ID</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {contextOutgoingProducts.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>{item.id}</TableCell>
-                        <TableCell>
-                          <Box sx={{ display: "flex", alignItems: "center" }}>
-                            {item.imageurl && (
-                              <Box
-                                component="img"
-                                src={
-                                  formatImageUrl
-                                    ? formatImageUrl(item.imageurl)
-                                    : item.imageurl
-                                }
-                                alt={item.name}
-                                sx={{
-                                  width: 40,
-                                  height: 40,
-                                  mr: 1,
-                                  objectFit: "cover",
-                                }}
-                                onError={(e) => {
-                                  e.target.src =
-                                    "https://via.placeholder.com/40";
-                                }}
-                              />
-                            )}
-                            {item.name || "Sản phẩm"}
-                          </Box>
-                        </TableCell>
-                        <TableCell>{item.category || "Trái cây"}</TableCell>
-                        <TableCell align="center">
-                          {item.quantity || 1}
-                        </TableCell>
-                        <TableCell align="right">
-                          {item.price || "N/A"}
-                        </TableCell>
-                        <TableCell>{formatDate(item.listed_date)}</TableCell>
-                        <TableCell>
-                          <Box
-                            sx={{
-                              bgcolor:
-                                item.status === "Available"
-                                  ? "success.light"
-                                  : "info.light",
-                              color:
-                                item.status === "Available"
-                                  ? "success.dark"
-                                  : "info.dark",
-                              py: 0.5,
-                              px: 1,
-                              borderRadius: 1,
-                              display: "inline-block",
-                              fontSize: "0.75rem",
-                            }}
-                          >
-                            {item.status === "Available"
-                              ? "Đang bán"
-                              : item.status}
-                          </Box>
-                        </TableCell>
-                        <TableCell>
-                          {item.transaction_hash ? (
-                            <Typography
-                              variant="body2"
-                              sx={{ fontSize: "0.75rem" }}
-                            >
-                              {`${item.transaction_hash.substring(
-                                0,
-                                6
-                              )}...${item.transaction_hash.substring(
-                                item.transaction_hash.length - 4
-                              )}`}
-                            </Typography>
-                          ) : (
-                            "N/A"
-                          )}
-                        </TableCell>
-                        <TableCell>{item.listingId || "N/A"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            ) : (
-              <Box
-                sx={{
-                  textAlign: "center",
-                  my: 5,
-                  py: 5,
-                  bgcolor: "#f5f5f5",
-                  borderRadius: 2,
-                }}
-              >
-                <Typography variant="h6" color="text.secondary">
-                  Bạn chưa có sản phẩm nào đang bán
-                </Typography>
-                {contextInventory && contextInventory.length > 0 && (
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    sx={{ mt: 2 }}
-                    onClick={() => setTabValue(0)}
-                  >
-                    Đăng bán sản phẩm
-                  </Button>
-                )}
-              </Box>
-            ))}
+          {tabValue === 1 && (
+            <OutgoingProductsPage
+              outgoingProducts={outgoingProducts}
+              formatImageUrl={formatImageUrl}
+            />
+          )}
         </>
       )}
 
@@ -684,7 +625,7 @@ const PurchasesPage = () => {
                       Giá mua: {selectedProduct.price || "N/A"} AGT
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Số lượng: {selectedProduct.quantity || 1}
+                      Số lượng khả dụng: {selectedProduct.quantity || 1}
                     </Typography>
                   </Box>
                 </Box>

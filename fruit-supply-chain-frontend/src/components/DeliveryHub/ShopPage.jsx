@@ -159,7 +159,7 @@ const ShopPage = () => {
           );
         } catch (error) {
           console.error("Producer not found, using default info:", error);
-          producer = null;
+          producer = { name: "Không có thông tin", wallet_address: null };
         }
       }
 
@@ -213,11 +213,16 @@ const ShopPage = () => {
       return;
     }
 
+    // Kiểm tra xem account có phải là địa chỉ Ethereum hợp lệ
+    if (!web3.utils.isAddress(account)) {
+      alert("Địa chỉ ví MetaMask không hợp lệ!");
+      return;
+    }
+
     setPurchaseLoading(true);
     try {
       const quantity = 2;
 
-      // Đảm bảo header x-ethereum-address được gửi đúng cách
       const headers = {
         "x-ethereum-address": account,
         Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
@@ -262,10 +267,9 @@ const ShopPage = () => {
 
       const transactionHash = transactionResult.transactionHash;
 
-      // Truyền transaction hash và headers vào options
       await addToInventory(productId, deliveryHubId, qty, price, {
         transactionHash,
-        headers,
+        headers, // Đảm bảo truyền headers đúng
       });
 
       await handleRefresh();

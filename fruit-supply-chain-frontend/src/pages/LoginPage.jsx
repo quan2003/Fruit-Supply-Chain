@@ -27,7 +27,7 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const { connectWallet, account } = useWeb3();
   const { login } = useAuth();
-  const [role, setRole] = useState("");
+  const [role, setRole] = useState("Customer"); // Đặt giá trị mặc định là "Customer"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -51,92 +51,92 @@ const LoginPage = () => {
     e.preventDefault();
     setError("");
 
-    if (!email || !password || !role) {
+    // Kiểm tra dữ liệu đầu vào
+    if (!email.trim() || !password.trim() || !role.trim()) {
       setError("Vui lòng điền đầy đủ thông tin! 😅");
       return;
     }
 
-    try {
-      const response = await fetch("http://localhost:3000/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password, role }),
-      });
+    // Kiểm tra định dạng email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Email không hợp lệ! 😅");
+      return;
+    }
 
-      const data = await response.json();
-      if (response.ok) {
-        setIsLoggedIn(true);
-        setExpectedWallet(data.user.walletAddress?.toLowerCase() || "");
-        login(data.user);
-        localStorage.setItem(
-          "user",
-          JSON.stringify({
-            id: data.user.id,
-            name: data.user.name,
-            email: data.user.email,
-            role: data.user.role,
-            walletAddress: data.user.walletAddress,
-          })
-        );
-      } else {
-        setError(data.message);
-      }
+    try {
+      console.log("Dữ liệu gửi đi:", { email, password, role });
+      // Gọi hàm login từ useAuth
+      const userData = await login(email, password, role);
+      setIsLoggedIn(true);
+      setExpectedWallet(userData.walletAddress?.toLowerCase() || "");
+
+      // Lưu dữ liệu người dùng vào localStorage
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          id: userData.id,
+          name: userData.name,
+          email: userData.email,
+          role: userData.role,
+          walletAddress: userData.walletAddress,
+        })
+      );
     } catch (error) {
       console.error("Lỗi khi đăng nhập:", error);
-      setError("Có lỗi xảy ra! Vui lòng thử lại nhé! 😓");
+      setError(error.message || "Đăng nhập thất bại! 😓");
     }
   };
 
   const handleConnectWallet = async () => {
     try {
       await connectWallet();
-      if (account) {
-        if (!expectedWallet || account.toLowerCase() === expectedWallet) {
-          const response = await fetch("http://localhost:3000/update-wallet", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ email, walletAddress: account }),
-          });
+      if (!account) {
+        setError("Không thể kết nối ví MetaMask! Vui lòng thử lại nhé! 😓");
+        return;
+      }
 
-          const data = await response.json();
-          if (!response.ok) {
-            throw new Error(data.message || "Không thể cập nhật ví MetaMask!");
-          }
+      if (!expectedWallet || account.toLowerCase() === expectedWallet) {
+        const response = await fetch("http://localhost:3000/update-wallet", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email, walletAddress: account }),
+        });
 
-          // Cập nhật lại user trong localStorage với walletAddress mới
-          const user = JSON.parse(localStorage.getItem("user")) || {};
-          user.walletAddress = account;
-          localStorage.setItem("user", JSON.stringify(user));
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.message || "Không thể cập nhật ví MetaMask!");
+        }
 
-          // Chuyển hướng dựa trên vai trò
-          if (user.role === "Producer") {
-            navigate("/farms");
-          } else if (user.role === "Admin") {
-            navigate("/quan-ly");
-          } else if (user.role === "Customer") {
-            navigate("/");
-          } else if (user.role === "ThirdParty") {
-            navigate("/third-party");
-          } else if (user.role === "DeliveryHub") {
-            navigate("/delivery-hub");
-          }
-        } else {
-          setError(
-            "Ví MetaMask không khớp với ví đã đăng ký! Vui lòng chọn đúng ví nhé! 😓"
-          );
-          if (window.ethereum) {
-            await window.ethereum.request({
-              method: "wallet_requestPermissions",
-              params: [{ eth_accounts: {} }],
-            });
-          }
+        // Cập nhật lại user trong localStorage với walletAddress mới
+        const user = JSON.parse(localStorage.getItem("user")) || {};
+        user.walletAddress = account;
+        localStorage.setItem("user", JSON.stringify(user));
+
+        // Chuyển hướng dựa trên vai trò
+        if (user.role === "Producer") {
+          navigate("/farms");
+        } else if (user.role === "Admin") {
+          navigate("/quan-ly");
+        } else if (user.role === "Customer") {
+          navigate("/");
+        } else if (user.role === "ThirdParty") {
+          navigate("/third-party");
+        } else if (user.role === "DeliveryHub") {
+          navigate("/delivery-hub");
         }
       } else {
-        setError("Không thể kết nối ví MetaMask! Vui lòng thử lại nhé! 😓");
+        setError(
+          "Ví MetaMask không khớp với ví đã đăng ký! Vui lòng chọn đúng ví nhé! 😓"
+        );
+        if (window.ethereum) {
+          await window.ethereum.request({
+            method: "wallet_requestPermissions",
+            params: [{ eth_accounts: {} }],
+          });
+        }
       }
     } catch (error) {
       console.error("Lỗi khi kết nối ví MetaMask:", error);
@@ -223,6 +223,7 @@ const LoginPage = () => {
                       sx={{ mb: 2 }}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      required
                     />
                     <TextField
                       fullWidth
@@ -232,6 +233,7 @@ const LoginPage = () => {
                       sx={{ mb: 2 }}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      required
                     />
 
                     <FormControl fullWidth sx={{ mb: 2 }}>
@@ -240,6 +242,7 @@ const LoginPage = () => {
                         value={role}
                         onChange={handleRoleChange}
                         label="Bạn là ai? 🌟"
+                        required
                       >
                         <MenuItem value="Producer">Người dân</MenuItem>
                         <MenuItem value="Admin">Nhà quản lý</MenuItem>
@@ -256,7 +259,7 @@ const LoginPage = () => {
                         to="/forgot-password"
                         style={{ color: "#42A5F5", textDecoration: "none" }}
                       >
-                        Forgot password?
+                        Quên mật khẩu?
                       </Link>
                     </Box>
 

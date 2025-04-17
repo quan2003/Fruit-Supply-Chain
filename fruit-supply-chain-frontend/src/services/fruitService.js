@@ -70,13 +70,18 @@ export const purchaseProduct = async (
   headers = {}
 ) => {
   try {
+    // Kiểm tra buyerAddress hợp lệ
+    if (!buyerAddress || !/^(0x)?[0-9a-fA-F]{40}$/.test(buyerAddress)) {
+      throw new Error("Địa chỉ ví người mua không hợp lệ");
+    }
+
     // Đảm bảo có header x-ethereum-address
     const finalHeaders = {
       ...headers,
-      "x-ethereum-address": headers["x-ethereum-address"] || buyerAddress,
+      "x-ethereum-address": buyerAddress,
     };
 
-    console.log("Headers being sent:", finalHeaders);
+    console.log("Headers being sent to purchase-product:", finalHeaders);
 
     const response = await axiosInstance.post(
       "/purchase-product",
@@ -109,11 +114,14 @@ export const addToInventory = async (
   try {
     const { transactionHash, headers = {} } = options;
 
-    // Đảm bảo có header x-ethereum-address
+    // Kiểm tra xem headers có x-ethereum-address hay không
+    if (!headers["x-ethereum-address"]) {
+      throw new Error("Thiếu địa chỉ ví trong headers");
+    }
+
     const finalHeaders = {
       ...headers,
-      "x-ethereum-address":
-        headers["x-ethereum-address"] || localStorage.getItem("walletAddress"),
+      "x-ethereum-address": headers["x-ethereum-address"],
     };
 
     console.log("Headers being sent to add-to-inventory:", finalHeaders);

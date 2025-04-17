@@ -64,6 +64,7 @@ contract FruitSupplyChain {
     event CatalogAdded(string fruitType, address by, uint256 timestamp);
     event FarmUpdated(string farmId, string conditions, uint256 timestamp);
     event ProductListed(uint256 listingId, uint256 fruitId, uint256 price, uint256 quantity, address seller, uint256 timestamp);
+    event ProductPurchased(uint256 listingId, address buyer, uint256 timestamp);
     event RecommendationAdded(uint256 fruitId, string recommendation, uint256 timestamp);
     event StepRecorded(uint256 fruitId, string step, address by, uint256 timestamp);
     event FruitHashUpdated(string fruitType, string ipfsHash, uint256 timestamp);
@@ -78,7 +79,29 @@ contract FruitSupplyChain {
         _;
     }
 
-    // Bỏ modifier onlyOwner để bất kỳ tài khoản nào cũng có thể gọi
+    // Hàm để mua sản phẩm
+    function purchaseProduct(uint256 _listingId) public payable {
+        require(_listingId > 0 && _listingId <= listingCount, "Invalid Listing ID");
+        ListedProduct storage product = listedProducts[_listingId];
+        require(product.isActive, "Product is not available for purchase");
+        require(msg.value >= product.price, "Insufficient payment");
+        require(product.quantity > 0, "Product is out of stock");
+
+        // Chuyển tiền cho người bán
+        payable(product.seller).transfer(product.price);
+
+        // Cập nhật trạng thái sản phẩm
+        product.quantity -= 1;
+        if (product.quantity == 0) {
+            product.isActive = false;
+        }
+
+        // Ghi lại lịch sử
+        fruits[product.fruitId].history.push("Purchased by Customer");
+        emit ProductPurchased(_listingId, msg.sender, block.timestamp);
+        emit StepRecorded(product.fruitId, "Purchased", msg.sender, block.timestamp);
+    }
+
     function setFruitHash(string memory fruitType, string memory ipfsHash) public {
         fruitHashes[fruitType] = ipfsHash;
         emit FruitHashUpdated(fruitType, ipfsHash, block.timestamp);

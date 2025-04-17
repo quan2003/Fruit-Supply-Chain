@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { useWeb3 } from "./Web3Context";
+import { useWeb3 } from "./Web3Context"; // Sửa đường dẫn
+import axios from "axios";
 
 const AuthContext = createContext();
 
@@ -16,7 +17,18 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState(null);
   const [user, setUser] = useState(() => {
     const savedUser = localStorage.getItem("user");
-    return savedUser ? JSON.parse(savedUser) : null;
+    if (savedUser) {
+      const parsedUser = JSON.parse(savedUser);
+      console.log("User loaded from localStorage:", parsedUser);
+      // Validate that user.id exists
+      if (!parsedUser || !parsedUser.id) {
+        console.error("Invalid user data in localStorage, clearing...");
+        localStorage.removeItem("user");
+        return null;
+      }
+      return parsedUser;
+    }
+    return null;
   });
 
   useEffect(() => {
@@ -30,12 +42,14 @@ export function AuthProvider({ children }) {
         }
 
         if (!user) {
+          console.log("Không có user trong AuthContext");
           setIsFarmer(false);
           setIsManager(false);
           setUserFarms([]);
           return;
         }
 
+        console.log("User trong AuthContext:", user);
         setIsFarmer(user.role === "Producer");
         setIsManager(user.role === "Admin");
 
@@ -72,16 +86,39 @@ export function AuthProvider({ children }) {
     checkUserRole();
   }, [user, account, web3Loading]);
 
-  const login = (userData) => {
-    setUser(userData);
-    localStorage.setItem("user", JSON.stringify(userData));
+  const login = async (email, password, role) => {
+    try {
+      console.log("Đăng nhập với thông tin:", { email, role });
+      const response = await axios.post("http://localhost:3000/login", {
+        email,
+        password,
+        role,
+      });
+      const userData = response.data.user;
+      if (!userData || !userData.id) {
+        console.error("Dữ liệu người dùng không hợp lệ:", userData);
+        throw new Error("Dữ liệu người dùng không hợp lệ!");
+      }
+      console.log("Đăng nhập thành công, userData:", userData);
+      setUser(userData);
+      localStorage.setItem("user", JSON.stringify(userData));
+      return userData;
+    } catch (error) {
+      console.error("Lỗi khi đăng nhập:", error);
+      const errorMessage =
+        error.response?.data?.message || "Đăng nhập thất bại!";
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
   };
 
   const logout = () => {
+    console.log("Đăng xuất người dùng");
     setUser(null);
     setUserFarms([]);
     setIsFarmer(false);
     setIsManager(false);
+    setError(null);
     localStorage.removeItem("user");
   };
 
@@ -101,3 +138,5 @@ export function AuthProvider({ children }) {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
+
+export default AuthProvider;
