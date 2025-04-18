@@ -42,7 +42,11 @@ const predictionConfig = {
   "Mang Cut": {
     endpoint: "https://serverless.roboflow.com/mangosteen-fruit/1",
     validClasses: ["ripe", "unripe"],
+
     classMapping: { Ripe: "ripe", Un_Ripe: "unripe" },
+
+    classMapping: { "Ripe": "ripe", "Un_Ripe": "unripe"},
+
   },
   "Trai Thanh Long": {
     endpoint: "https://serverless.roboflow.com/thanh-long-detection-znzlc/3",
@@ -51,8 +55,13 @@ const predictionConfig = {
   },
   "Trai Xoai": {
     endpoint: "https://serverless.roboflow.com/mango-fruit-iwvzr/2",
+
     validClasses: ["ripe", "semiripe", "unripe"],
     classMapping: { Ripe: "ripe", Semi_Un_Ripe: "semiripe", Un_Ripe: "unripe" },
+
+    validClasses: ["ripe", "semiripe", "unripe"], // Cập nhật để khớp với nhãn sau ánh xạ
+    classMapping: { "Ripe": "ripe", "Semi_Un_Ripe": "semiripe", "Un_Ripe": "unripe" },
+
   },
   "Vu Sua": {
     endpoint: "https://serverless.roboflow.com/anh-vusua/1",
@@ -202,6 +211,7 @@ const useImagePrediction = () => {
           : 0;
       const roundedConfidence = confidence.toFixed(0);
 
+
       setFruitConfidences((prev) => ({
         ...prev,
         [category]: roundedConfidence,
@@ -247,7 +257,26 @@ const useImagePrediction = () => {
           );
           if (!generatedText) {
             throw new Error("Không nhận được phản hồi từ Gemini API.");
+
+      const formattedMessage = `
+        <div style="line-height: 1.5;">
+          <strong style="color: #1976D2;">Trạng thái:</strong> ${
+            predictionResult === "ripe"
+              ? "Đã chín"
+              : predictionResult === "semiripe"
+              ? "Chín một phần"
+              : "Chưa chín"
+          }<br />
+          <strong style="color: #1976D2;">Khuyến nghị:</strong> ${
+            recommendationMatch
+              ? recommendationMatch[1].trim()
+              : "Không có thông tin."
+          }<br />
+          <strong style="color: #1976D2;">Mẹo:</strong> ${
+            tipMatch ? tipMatch[1].trim() : "Không có mẹo."
+
           }
+
 
           generatedText = generatedText.trim();
 
@@ -330,6 +359,21 @@ const useImagePrediction = () => {
       const hasUnripe = predictions.some(
         (pred) =>
           pred.mappedClass === "unripe" || pred.mappedClass === "semiripe"
+
+      setSnackbarMessage(formattedMessage);
+      setSnackbarSeverity(
+        predictionResult === "ripe"
+          ? "success"
+          : predictionResult === "semiripe"
+          ? "info"
+          : "warning"
+      );
+      setPrediction(predictionResult);
+      return predictionResult;
+    } catch (error) {
+      setPredictionError(
+        "Không thể nhận diện hoặc tạo khuyến nghị: " + error.message
+
       );
       if (hasRipe && hasUnripe) {
         formattedMessage += `

@@ -71,7 +71,7 @@ const validRoles = [
 // Đọc CONTRACT_ADDRESS từ file
 let CONTRACT_ADDRESS = "";
 try {
-  const contractAddressPath = "D:\\fruit-supply-chain\\contract-address.txt";
+  const contractAddressPath = "D:/Code/Prj/final/Fruit-Supply-Chain/contract-address.txt";
   if (fs.existsSync(contractAddressPath)) {
     CONTRACT_ADDRESS = fs.readFileSync(contractAddressPath, "utf8").trim();
     console.log("Địa chỉ hợp đồng từ file:", CONTRACT_ADDRESS);
@@ -148,7 +148,7 @@ const checkRole = (roles) => {
 // ==== API TRẢ VỀ ĐỊA CHỈ HỢP ĐỒNG ====
 app.get("/contract-address", (req, res) => {
   try {
-    const contractAddressPath = "D:\\fruit-supply-chain\\contract-address.txt";
+    const contractAddressPath = "D:/Code/Prj/final/Fruit-Supply-Chain/contract-address.txt";
     if (!fs.existsSync(contractAddressPath)) {
       throw new Error(
         `File contract-address.txt không tồn tại tại đường dẫn: ${contractAddressPath}`
