@@ -42,11 +42,7 @@ const predictionConfig = {
   "Mang Cut": {
     endpoint: "https://serverless.roboflow.com/mangosteen-fruit/1",
     validClasses: ["ripe", "unripe"],
-
     classMapping: { Ripe: "ripe", Un_Ripe: "unripe" },
-
-    classMapping: { "Ripe": "ripe", "Un_Ripe": "unripe"},
-
   },
   "Trai Thanh Long": {
     endpoint: "https://serverless.roboflow.com/thanh-long-detection-znzlc/3",
@@ -55,13 +51,8 @@ const predictionConfig = {
   },
   "Trai Xoai": {
     endpoint: "https://serverless.roboflow.com/mango-fruit-iwvzr/2",
-
     validClasses: ["ripe", "semiripe", "unripe"],
     classMapping: { Ripe: "ripe", Semi_Un_Ripe: "semiripe", Un_Ripe: "unripe" },
-
-    validClasses: ["ripe", "semiripe", "unripe"], // Cập nhật để khớp với nhãn sau ánh xạ
-    classMapping: { "Ripe": "ripe", "Semi_Un_Ripe": "semiripe", "Un_Ripe": "unripe" },
-
   },
   "Vu Sua": {
     endpoint: "https://serverless.roboflow.com/anh-vusua/1",
@@ -211,13 +202,11 @@ const useImagePrediction = () => {
           : 0;
       const roundedConfidence = confidence.toFixed(0);
 
-
       setFruitConfidences((prev) => ({
         ...prev,
         [category]: roundedConfidence,
       }));
 
-      // Tạo khuyến nghị cho từng quả
       let formattedMessage = `<div style="line-height: 1.5; max-height: 400px; overflow-y: auto;">`;
       formattedMessage += `<strong style="color: #1976D2;">Hình ảnh chứa ${predictions.length} quả. Dưới đây là trạng thái và khuyến nghị bảo quản:</strong><br /><br />`;
 
@@ -232,10 +221,10 @@ const useImagePrediction = () => {
           console.log(`Gửi yêu cầu đến Gemini API cho quả ${i + 1}...`);
           const geminiResponse = await axios({
             method: "POST",
-            url: "https://api.google.ai/v1/models/gemini-1.5-pro:generateText", // Endpoint giả định cho Gemini
+            url: "https://api.google.ai/v1/models/gemini-1.5-pro:generateText",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer AIzaSyCFF_FW6_0DMkI4xAHLBUk4qB8eKEM2T7M`, // Sử dụng API key bạn cung cấp
+              Authorization: `Bearer AIzaSyCFF_FW6_0DMkI4xAHLBUk4qB8eKEM2T7M`,
             },
             data: {
               prompt: `Tôi có một ${category} với trạng thái chín là ${predictionResult}. Hãy đưa ra khuyến nghị bảo quản chi tiết bằng tiếng Việt theo định dạng sau:
@@ -257,29 +246,9 @@ const useImagePrediction = () => {
           );
           if (!generatedText) {
             throw new Error("Không nhận được phản hồi từ Gemini API.");
-
-      const formattedMessage = `
-        <div style="line-height: 1.5;">
-          <strong style="color: #1976D2;">Trạng thái:</strong> ${
-            predictionResult === "ripe"
-              ? "Đã chín"
-              : predictionResult === "semiripe"
-              ? "Chín một phần"
-              : "Chưa chín"
-          }<br />
-          <strong style="color: #1976D2;">Khuyến nghị:</strong> ${
-            recommendationMatch
-              ? recommendationMatch[1].trim()
-              : "Không có thông tin."
-          }<br />
-          <strong style="color: #1976D2;">Mẹo:</strong> ${
-            tipMatch ? tipMatch[1].trim() : "Không có mẹo."
-
           }
 
-
           generatedText = generatedText.trim();
-
           const recommendationMatch = generatedText.match(
             /Khuyến nghị:\s*([^\n]+)/
           );
@@ -354,27 +323,12 @@ const useImagePrediction = () => {
         `;
       }
 
-      // Thêm hướng dẫn tách quả chín
       const hasRipe = predictions.some((pred) => pred.mappedClass === "ripe");
       const hasUnripe = predictions.some(
         (pred) =>
           pred.mappedClass === "unripe" || pred.mappedClass === "semiripe"
-
-      setSnackbarMessage(formattedMessage);
-      setSnackbarSeverity(
-        predictionResult === "ripe"
-          ? "success"
-          : predictionResult === "semiripe"
-          ? "info"
-          : "warning"
       );
-      setPrediction(predictionResult);
-      return predictionResult;
-    } catch (error) {
-      setPredictionError(
-        "Không thể nhận diện hoặc tạo khuyến nghị: " + error.message
 
-      );
       if (hasRipe && hasUnripe) {
         formattedMessage += `
           <strong style="color: #1976D2;">Hướng dẫn bổ sung:</strong><br />
@@ -386,6 +340,8 @@ const useImagePrediction = () => {
 
       setFormattedMessage(formattedMessage);
       setDialogOpen(true);
+      setPrediction(predictionResult);
+      return predictionResult;
 
       const firstPrediction = predictions[0].mappedClass;
       setPrediction(firstPrediction);
