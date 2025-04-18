@@ -71,7 +71,7 @@ const validRoles = [
 // Đọc CONTRACT_ADDRESS từ file
 let CONTRACT_ADDRESS = "";
 try {
-  const contractAddressPath = "D:/Code/Prj/final/Fruit-Supply-Chain/contract-address.txt";
+  const contractAddressPath = "D:/fruit-supply-chain/contract-address.txt";
   if (fs.existsSync(contractAddressPath)) {
     CONTRACT_ADDRESS = fs.readFileSync(contractAddressPath, "utf8").trim();
     console.log("Địa chỉ hợp đồng từ file:", CONTRACT_ADDRESS);
@@ -148,7 +148,7 @@ const checkRole = (roles) => {
 // ==== API TRẢ VỀ ĐỊA CHỈ HỢP ĐỒNG ====
 app.get("/contract-address", (req, res) => {
   try {
-    const contractAddressPath = "D:/Code/Prj/final/Fruit-Supply-Chain/contract-address.txt";
+    const contractAddressPath = "D:/fruit-supply-chain/contract-address.txt";
     if (!fs.existsSync(contractAddressPath)) {
       throw new Error(
         `File contract-address.txt không tồn tại tại đường dẫn: ${contractAddressPath}`
@@ -620,7 +620,7 @@ app.post(
         quantity,
       });
 
-      if (!productId || !buyerAddress || !quantity) {
+      if (!productId || !buyerAddress || !quantity || quantity <= 0) {
         console.log("Thiếu các trường bắt buộc");
         return res
           .status(400)
@@ -637,6 +637,16 @@ app.post(
       }
       const product = productResult.rows[0];
       console.log("Tìm thấy sản phẩm:", product);
+
+      // Kiểm tra số lượng yêu cầu có khớp với số lượng trong products
+      if (quantity !== product.quantity) {
+        console.log(
+          `Số lượng yêu cầu (${quantity}) không khớp với số lượng trong products (${product.quantity})`
+        );
+        return res.status(400).json({
+          message: `Số lượng thu mua phải đúng ${product.quantity} kg như người dân đăng bán! 😅`,
+        });
+      }
 
       const farmResult = await pool.query("SELECT * FROM farms WHERE id = $1", [
         product.farm_id,
@@ -853,7 +863,7 @@ app.post(
       }
 
       let inventoryResult = await pool.query(
-        "SELECT * FROM inventory WHERE id = $1",
+        "SELECT i.*, p.quantity as product_quantity FROM inventory i JOIN products p ON i.product_id = p.id WHERE i.id = $1",
         [inventoryId]
       );
       if (inventoryResult.rows.length === 0) {
@@ -872,6 +882,17 @@ app.post(
         inventoryItem.quantity
       );
       console.log("Số lượng yêu cầu (quantity):", quantity);
+
+      // Kiểm tra số lượng bán phải khớp với số lượng trong products
+      const productQuantity = inventoryItem.product_quantity;
+      if (quantity !== productQuantity) {
+        console.log(
+          `Số lượng bán (${quantity}) không khớp với số lượng trong products (${productQuantity})`
+        );
+        return res.status(400).json({
+          message: `Số lượng bán phải đúng ${productQuantity} kg như người dân đăng bán! 😅`,
+        });
+      }
 
       if (inventoryItem.quantity < quantity) {
         console.log("Không đủ số lượng trong kho để đăng bán");
@@ -901,11 +922,9 @@ app.post(
       );
 
       if (newQuantity === 0) {
-        // Xóa bản ghi trong inventory nếu số lượng về 0
         await pool.query("DELETE FROM inventory WHERE id = $1", [inventoryId]);
         console.log(`Đã xóa bản ghi inventory với id=${inventoryId} vì số lượng về 0`);
       } else {
-        // Cập nhật số lượng nếu chưa về 0
         const updateResult = await pool.query(
           "UPDATE inventory SET quantity = $1 WHERE id = $2 RETURNING *",
           [newQuantity, inventoryId]
@@ -1074,6 +1093,21 @@ app.post(
 
       if (req.user.id !== parseInt(deliveryHubId)) {
         return res.status(403).json({ message: "Không có quyền truy cập! 😅" });
+      }
+
+      // Kiểm tra số lượng với products
+      const productResult = await pool.query(
+        "SELECT quantity FROM products WHERE id = $1",
+        [productId]
+      );
+      if (productResult.rows.length === 0) {
+        return res.status(404).json({ message: "Sản phẩm không tồn tại! 😅" });
+      }
+      const productQuantity = productResult.rows[0].quantity;
+      if (quantity !== productQuantity) {
+        return res.status(400).json({
+          message: `Số lượng thêm vào kho phải đúng ${productQuantity} kg như người dân đăng bán! 😅`,
+        });
       }
 
       const defaultProductDate = productdate || new Date().toISOString();
@@ -2331,18 +2365,21 @@ app.post(
       listingId,
       customerId,
       quantity,
-      price,
+      price, // Giá mỗi hộp (AGT)
       deliveryHubId,
       shippingAddress,
       transactionHash,
+      shippingFee, // Bỏ qua
+      paymentMethod, // Bỏ qua
     } = req.body;
 
-    const client = await pool.connect(); // Sử dụng client để thực hiện giao dịch
+    const client = await pool.connect();
     try {
-      await client.query("BEGIN"); // Bắt đầu giao dịch
+      await client.query("BEGIN");
 
       console.log("Dữ liệu nhận được từ /buy-product:", req.body);
 
+      // Kiểm tra các trường bắt buộc
       if (
         !listingId ||
         !customerId ||
@@ -2352,137 +2389,32 @@ app.post(
         !deliveryHubId ||
         !shippingAddress
       ) {
-        console.log("Dữ liệu đầu vào không hợp lệ:", req.body);
         await client.query("ROLLBACK");
         return res.status(400).json({
           message: "Vui lòng cung cấp đầy đủ thông tin! 😅",
         });
       }
 
-      // Bước 1: Khóa hàng trong outgoing_products để tránh xung đột
-      console.log(`Kiểm tra sản phẩm với listingId: ${listingId}`);
-      const outgoingProductResult = await client.query(
-        "SELECT * FROM outgoing_products WHERE listing_id = $1 AND status = 'Available' FOR UPDATE",
-        [listingId]
-      );
-      if (outgoingProductResult.rows.length === 0) {
-        console.log(`Không tìm thấy sản phẩm với listingId: ${listingId}`);
-        await client.query("ROLLBACK");
-        return res.status(404).json({
-          message: "Sản phẩm không tồn tại hoặc đã được bán! 😅",
-        });
-      }
-      const outgoingProduct = outgoingProductResult.rows[0];
-      console.log("Thông tin sản phẩm:", outgoingProduct);
-
-      console.log(`Kiểm tra product_id: ${outgoingProduct.product_id}`);
-      const productResult = await client.query(
-        "SELECT * FROM products WHERE id = $1",
-        [outgoingProduct.product_id]
-      );
-      if (productResult.rows.length === 0) {
-        console.log(
-          `Không tìm thấy sản phẩm với product_id: ${outgoingProduct.product_id}`
-        );
-        await client.query("ROLLBACK");
-        return res.status(404).json({
-          message: "Sản phẩm không tồn tại trong danh mục sản phẩm! 😅",
-        });
-      }
-
-      console.log(`Kiểm tra khách hàng với customerId: ${customerId}`);
-      const customerResult = await client.query(
-        "SELECT * FROM users WHERE id = $1 AND role = 'Customer'",
-        [customerId]
-      );
-      if (customerResult.rows.length === 0) {
-        console.log(`Không tìm thấy khách hàng với customerId: ${customerId}`);
-        await client.query("ROLLBACK");
-        return res.status(404).json({
-          message: "Khách hàng không tồn tại! 😅",
-        });
-      }
-
-      console.log(`Kiểm tra đại lý với deliveryHubId: ${deliveryHubId}`);
-      const deliveryHubResult = await client.query(
-        "SELECT * FROM users WHERE id = $1 AND role = 'DeliveryHub'",
-        [deliveryHubId]
-      );
-      if (deliveryHubResult.rows.length === 0) {
-        console.log(
-          `Không tìm thấy đại lý với deliveryHubId: ${deliveryHubId}`
-        );
-        await client.query("ROLLBACK");
-        return res.status(404).json({
-          message: "Trung tâm phân phối không tồn tại! 😅",
-        });
-      }
-
-      console.log(
-        `Kiểm tra số lượng khả dụng: ${outgoingProduct.quantity} vs ${quantity}`
-      );
-      if (outgoingProduct.quantity < quantity) {
-        console.log("Số lượng khả dụng không đủ!");
-        await client.query("ROLLBACK");
-        return res.status(400).json({
-          message: "Số lượng sản phẩm không đủ để mua! 😅",
-        });
-      }
-
-      // Bước 2: Tạo đơn hàng trong cơ sở dữ liệu
-      console.log("Tạo đơn hàng...");
-      let order;
-      try {
-        const orderResult = await client.query(
-          "INSERT INTO orders (product_id, customer_id, quantity, order_date, status, shipping_address, transaction_hash) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, 'Pending', $4, $5) RETURNING *",
-          [
-            outgoingProduct.product_id,
-            customerId,
-            quantity,
-            shippingAddress,
-            transactionHash || null,
-          ]
-        );
-        order = orderResult.rows[0];
-        console.log("Kết quả tạo đơn hàng:", order);
-      } catch (insertError) {
-        console.error("Lỗi khi tạo đơn hàng trong bảng orders:", insertError);
-        await client.query("ROLLBACK");
-        return res.status(500).json({
-          error: "Không thể tạo đơn hàng",
-          details: insertError.message,
-        });
-      }
-
-      // Bước 3: Kiểm tra trạng thái blockchain
+      // Kiểm tra sản phẩm trên blockchain
       let isActive = false;
       let blockchainQuantity = 0;
+      let blockchainPrice = 0;
       try {
         const productResponse = await contract.methods
           .getListedProduct(listingId)
           .call();
-        console.log("Listed Product từ blockchain:", productResponse);
+        console.log("Dữ liệu blockchain:", productResponse);
         isActive = productResponse.isActive;
         blockchainQuantity = parseInt(productResponse.quantity);
-
+        blockchainPrice = parseInt(productResponse.price); // Giá tổng (Wei)
         if (!isActive || blockchainQuantity < quantity) {
-          console.log("Sản phẩm không còn khả dụng trên blockchain!");
-          await client.query("DELETE FROM orders WHERE id = $1", [order.id]);
-          await client.query(
-            "UPDATE outgoing_products SET status = 'Sold', quantity = 0 WHERE listing_id = $1",
-            [listingId]
-          );
-          await client.query("COMMIT");
+          await client.query("ROLLBACK");
           return res.status(400).json({
-            message: "Sản phẩm không còn khả dụng để mua! Đã hủy đơn hàng. 😅",
+            message: `Sản phẩm không còn khả dụng trên blockchain! Số lượng khả dụng: ${blockchainQuantity} 😅`,
           });
         }
       } catch (blockchainError) {
-        console.error(
-          "Lỗi khi kiểm tra trạng thái từ blockchain:",
-          blockchainError
-        );
-        await client.query("DELETE FROM orders WHERE id = $1", [order.id]);
+        console.error("Lỗi khi kiểm tra blockchain:", blockchainError);
         await client.query("ROLLBACK");
         return res.status(500).json({
           error: "Lỗi khi kiểm tra trạng thái blockchain",
@@ -2490,37 +2422,105 @@ app.post(
         });
       }
 
-      // Bước 4: Cập nhật số lượng trong outgoing_products
-      const newQuantity = outgoingProduct.quantity - quantity;
-      console.log(
-        `Cập nhật số lượng sản phẩm: listingId=${listingId}, newQuantity=${newQuantity}`
+      // Khóa hàng trong outgoing_products
+      const outgoingProductResult = await client.query(
+        "SELECT * FROM outgoing_products WHERE listing_id = $1 AND status = 'Available' FOR UPDATE",
+        [listingId]
       );
+      if (outgoingProductResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({
+          message: "Sản phẩm không tồn tại hoặc đã được bán! 😅",
+        });
+      }
+      const outgoingProduct = outgoingProductResult.rows[0];
+
+      // Xác thực giá mỗi hộp
+      const expectedPricePerUnit = parseFloat(outgoingProduct.price) / outgoingProduct.quantity; // Giá mỗi hộp (AGT)
+      const requestedPrice = parseFloat(price);
+      if (Math.abs(requestedPrice - expectedPricePerUnit) > 0.01) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({
+          message: `Giá mỗi hộp không khớp! Giá mong đợi: ${expectedPricePerUnit.toFixed(2)} AGT/hộp, giá gửi lên: ${requestedPrice} AGT/hộp 😅`,
+        });
+      }
+
+      // Kiểm tra số lượng trong outgoing_products
+      if (outgoingProduct.quantity < quantity) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({
+          message: `Số lượng sản phẩm không đủ để mua! Số lượng khả dụng: ${outgoingProduct.quantity} 😅`,
+        });
+      }
+
+      // Kiểm tra sản phẩm
+      const productResult = await client.query(
+        "SELECT * FROM products WHERE id = $1",
+        [outgoingProduct.product_id]
+      );
+      if (productResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({
+          message: "Sản phẩm không tồn tại trong danh mục sản phẩm! 😅",
+        });
+      }
+
+      // Kiểm tra khách hàng
+      const customerResult = await client.query(
+        "SELECT * FROM users WHERE id = $1 AND role = 'Customer'",
+        [customerId]
+      );
+      if (customerResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({
+          message: "Khách hàng không tồn tại! 😅",
+        });
+      }
+
+      // Kiểm tra trung tâm phân phối
+      const deliveryHubResult = await client.query(
+        "SELECT * FROM users WHERE id = $1 AND role = 'DeliveryHub'",
+        [deliveryHubId]
+      );
+      if (deliveryHubResult.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({
+          message: "Trung tâm phân phối không tồn tại! 😅",
+        });
+      }
+
+      // Tính tổng giá cho đơn hàng
+      const totalOrderPrice = (expectedPricePerUnit * quantity).toFixed(2);
+
+      // Tạo đơn hàng với giá tổng
+      const orderResult = await client.query(
+        "INSERT INTO orders (product_id, customer_id, quantity, price, order_date, status, shipping_address, transaction_hash) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, 'Pending', $5, $6) RETURNING *",
+        [
+          outgoingProduct.product_id,
+          customerId,
+          quantity,
+          totalOrderPrice,
+          shippingAddress,
+          transactionHash || null,
+        ]
+      );
+      const order = orderResult.rows[0];
+
+      // Cập nhật số lượng
+      const newQuantity = outgoingProduct.quantity - quantity;
       await client.query(
         "UPDATE outgoing_products SET quantity = $1 WHERE listing_id = $2",
         [newQuantity, listingId]
       );
 
-      // Chỉ đặt trạng thái thành 'Sold' nếu số lượng về 0
-      if (newQuantity === 0) {
-        console.log(
-          `Số lượng còn lại là 0, cập nhật trạng thái thành 'Sold' cho listingId: ${listingId}`
-        );
-        await client.query(
-          "UPDATE outgoing_products SET status = 'Sold' WHERE listing_id = $1",
-          [listingId]
-        );
-      } else {
-        // Đảm bảo trạng thái vẫn là 'Available' nếu còn số lượng
-        console.log(
-          `Số lượng còn lại là ${newQuantity}, giữ trạng thái 'Available' cho listingId: ${listingId}`
-        );
-        await client.query(
-          "UPDATE outgoing_products SET status = 'Available' WHERE listing_id = $1",
-          [listingId]
-        );
-      }
+      // Cập nhật trạng thái
+      const newStatus = newQuantity === 0 ? "Sold" : "Available";
+      await client.query(
+        "UPDATE outgoing_products SET status = $1 WHERE listing_id = $2",
+        [newStatus, listingId]
+      );
 
-      await client.query("COMMIT"); // Hoàn tất giao dịch
+      await client.query("COMMIT");
 
       res.status(200).json({
         message: "Mua sản phẩm thành công! Đơn hàng đã được tạo.",
@@ -2534,11 +2534,31 @@ app.post(
         details: error.message,
       });
     } finally {
-      client.release(); // Giải phóng client
+      client.release();
     }
   }
 );
+app.get("/products/:id/user-rating", async (req, res) => {
+  const listingId = req.params.id;
+  const { userId } = req.query;
 
+  try {
+    const result = await pool.query(
+      "SELECT rating FROM product_ratings WHERE listing_id = $1 AND customer_id = $2",
+      [listingId, userId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(200).json({ rating: null });
+    }
+    res.status(200).json({ rating: result.rows[0].rating });
+  } catch (error) {
+    console.error("Lỗi khi lấy đánh giá người dùng:", error);
+    res.status(500).json({
+      error: "Lỗi máy chủ nội bộ",
+      details: error.message,
+    });
+  }
+});
 // ==== API THÊM SẢN PHẨM ====
 const fruitHashMapping = {
   Thom: "QmeTDW7o2ZHAKJJW8A5Jfbe1mv7RZo8sdcDTxq1mP6X5MN",
@@ -2828,27 +2848,60 @@ app.get("/orders/check-purchase", async (req, res) => {
 
 // ==== API ĐỒNG BỘ DỮ LIỆU SẢN PHẨM ====
 app.post("/sync-product", checkAuth, async (req, res) => {
-  const { listingId, quantity, status } = req.body;
+  const { listingId } = req.body;
 
   try {
-    console.log("Đồng bộ dữ liệu sản phẩm:", { listingId, quantity, status });
+    console.log("Đồng bộ dữ liệu sản phẩm:", { listingId });
 
-    if (!listingId || quantity === undefined || !status) {
+    if (!listingId) {
       return res.status(400).json({
-        message: "Vui lòng cung cấp đầy đủ thông tin để đồng bộ!",
+        message: "Vui lòng cung cấp listingId để đồng bộ!",
       });
     }
 
+    // Kiểm tra sản phẩm trong cơ sở dữ liệu
+    const outgoingProductResult = await pool.query(
+      "SELECT * FROM outgoing_products WHERE listing_id = $1",
+      [listingId]
+    );
+    if (outgoingProductResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "Sản phẩm không tồn tại trong cơ sở dữ liệu!",
+      });
+    }
+
+    // Lấy dữ liệu sản phẩm từ blockchain
+    let productResponse;
+    try {
+      productResponse = await contract.methods.getListedProduct(listingId).call();
+      console.log("Dữ liệu blockchain:", productResponse);
+    } catch (error) {
+      console.error(`Lỗi khi lấy dữ liệu blockchain cho listingId=${listingId}:`, error);
+      if (error.message.includes("Invalid Listing ID")) {
+        // Đánh dấu sản phẩm là Sold nếu không tìm thấy trên blockchain
+        await pool.query(
+          "UPDATE outgoing_products SET quantity = 0, status = 'Sold' WHERE listing_id = $1",
+          [listingId]
+        );
+        return res.status(200).json({
+          message: "Sản phẩm không tồn tại trên blockchain, đã đánh dấu là Sold trong cơ sở dữ liệu.",
+        });
+      }
+      return res.status(500).json({
+        error: "Lỗi khi lấy dữ liệu từ blockchain",
+        details: error.message,
+      });
+    }
+
+    const isActive = productResponse.isActive;
+    const blockchainQuantity = parseInt(productResponse.quantity);
+    const status = isActive && blockchainQuantity > 0 ? "Available" : "Sold";
+
+    // Cập nhật cơ sở dữ liệu
     const result = await pool.query(
       "UPDATE outgoing_products SET quantity = $1, status = $2 WHERE listing_id = $3 RETURNING *",
-      [quantity, status, listingId]
+      [blockchainQuantity, status, listingId]
     );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        message: "Không tìm thấy sản phẩm để đồng bộ!",
-      });
-    }
 
     res.status(200).json({
       message: "Đồng bộ dữ liệu thành công!",
@@ -2862,7 +2915,66 @@ app.post("/sync-product", checkAuth, async (req, res) => {
     });
   }
 });
+// // ==== API Proxy cho Nominatim OpenStreetMap ====
+// app.get("/api/nominatim", async (req, res) => {
+//   const { q } = req.query;
 
+//   if (!q) {
+//     return res.status(400).json({ error: "Thiếu tham số 'q' để tìm kiếm địa chỉ!" });
+//   }
+
+//   const maxRetries = 3;
+//   let attempt = 0;
+
+//   while (attempt < maxRetries) {
+//     try {
+//       // Loại bỏ ký tự đặc biệt không hợp lệ và mã hóa query
+//       const sanitizedQuery = encodeURIComponent(q.replace(/[^\w\s,]/g, "").trim());
+//       const response = await axios.get(
+//         "https://nominatim.openstreetmap.org/search",
+//         {
+//           params: {
+//             q: sanitizedQuery,
+//             format: "json",
+//             addressdetails: 1,
+//             countrycodes: "vn",
+//           },
+//           headers: {
+//             "User-Agent": "FruitSupplyChain/1.0",
+//           },
+//           timeout: 10000, // Tăng timeout lên 10 giây
+//         }
+//       );
+
+//       return res.status(200).json(response.data);
+//     } catch (error) {
+//       attempt++;
+//       console.error(`Lỗi khi gọi Nominatim API (thử ${attempt}/${maxRetries}):`, {
+//         message: error.message,
+//         status: error.response?.status,
+//         data: error.response?.data,
+//         query: q,
+//       });
+
+//       if (attempt === maxRetries) {
+//         let errorMessage = "Không thể tìm kiếm địa chỉ từ Nominatim.";
+//         if (error.response?.status === 429) {
+//           errorMessage = "Quá nhiều yêu cầu đến Nominatim. Vui lòng thử lại sau.";
+//         } else if (error.response?.status === 400) {
+//           errorMessage = "Yêu cầu tìm kiếm địa chỉ không hợp lệ.";
+//         } else if (error.code === "ECONNABORTED") {
+//           errorMessage = "Yêu cầu đến Nominatim bị timeout. Vui lòng kiểm tra mạng.";
+//         }
+//         return res.status(500).json({
+//           error: errorMessage,
+//           details: error.message,
+//         });
+//       }
+//       // Đợi 1 giây trước khi thử lại
+//       await new Promise((resolve) => setTimeout(resolve, 1000));
+//     }
+//   }
+// });
 // Phục vụ file tĩnh từ thư mục uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 

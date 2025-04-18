@@ -213,7 +213,6 @@ const ShopPage = () => {
       return;
     }
 
-    // Kiểm tra xem account có phải là địa chỉ Ethereum hợp lệ
     if (!web3.utils.isAddress(account)) {
       alert("Địa chỉ ví MetaMask không hợp lệ!");
       return;
@@ -221,7 +220,7 @@ const ShopPage = () => {
 
     setPurchaseLoading(true);
     try {
-      const quantity = 2;
+      const quantity = product.quantity; // Lấy số lượng từ product
 
       const headers = {
         "x-ethereum-address": account,
@@ -267,10 +266,20 @@ const ShopPage = () => {
 
       const transactionHash = transactionResult.transactionHash;
 
-      await addToInventory(productId, deliveryHubId, qty, price, {
+      // Gọi addToInventory với headers chứa x-ethereum-address
+      await addToInventory(
+        productId,
+        deliveryHubId,
+        qty,
+        price,
+        product.productdate || new Date().toISOString(),
+        product.expirydate ||
+          new Date(
+            new Date().setMonth(new Date().getMonth() + 1)
+          ).toISOString(),
         transactionHash,
-        headers, // Đảm bảo truyền headers đúng
-      });
+        headers // Truyền headers đúng
+      );
 
       await handleRefresh();
 
@@ -486,7 +495,8 @@ const ShopPage = () => {
                           Giá: {selectedProduct.price} AGT
                         </Typography>
                         <Typography variant="body2" sx={{ mt: 1 }}>
-                          Số lượng: {selectedProduct.quantity || 2} Kg
+                          Số lượng: {selectedProduct.quantity} hộp (Bắt buộc thu
+                          mua toàn bộ)
                         </Typography>
                         <Box sx={{ mt: 2 }}>
                           <Button

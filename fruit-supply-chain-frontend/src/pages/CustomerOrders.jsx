@@ -264,8 +264,8 @@ const CustomerOrders = () => {
                   <ListItemText
                     primary={`${order.product_name}`}
                     secondary={`Số lượng: ${order.quantity} - Giá: ${
-                      order.price || "Không có thông tin"
-                    } AGT`}
+                      order.price ? `${order.price} AGT` : "Giá không khả dụng"
+                    }`}
                   />
                 </ListItem>
               </List>

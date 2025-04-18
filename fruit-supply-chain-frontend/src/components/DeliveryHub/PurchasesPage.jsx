@@ -182,12 +182,11 @@ const PurchasesPage = () => {
       return;
     }
 
-    // Kiểm tra số lượng trước khi đăng bán
-    const quantityToSell = parseInt(selectedProduct.quantity || 1, 10);
+    const quantityToSell = selectedProduct.quantity; // Lấy số lượng từ inventory
     if (quantityToSell <= 0 || selectedProduct.quantity < quantityToSell) {
       setAlert({
         open: true,
-        message: "Số lượng trong kho không đủ để đăng bán!",
+        message: `Số lượng trong kho không đủ để đăng bán! Số lượng khả dụng: ${selectedProduct.quantity}`,
         severity: "error",
       });
       return;
@@ -203,16 +202,6 @@ const PurchasesPage = () => {
         quantity: quantityToSell,
         price: parseFloat(sellingPrice),
       };
-
-      if (
-        isNaN(productData.productId) ||
-        isNaN(productData.quantity) ||
-        isNaN(productData.price)
-      ) {
-        throw new Error(
-          "Dữ liệu không hợp lệ: productId, quantity hoặc price không phải là số!"
-        );
-      }
 
       setTransactionStatus("pending");
       const transactionResult = await executeTransaction({
@@ -230,23 +219,7 @@ const PurchasesPage = () => {
       productData.transactionHash = transactionResult.transactionHash;
       productData.listingId = transactionResult.listingId;
 
-      try {
-        await sellProductToConsumer(productData);
-      } catch (sellError) {
-        console.error("Lỗi khi gọi sellProductToConsumer:", sellError);
-        // Đồng bộ dữ liệu nếu giao dịch blockchain thành công nhưng sellProductToConsumer thất bại
-        await axios.post(
-          "http://localhost:3000/sync-product",
-          {
-            listingId: productData.listingId,
-            quantity: productData.quantity,
-            status: "Available",
-          },
-          {
-            headers: { "x-ethereum-address": account },
-          }
-        );
-      }
+      await sellProductToConsumer(productData);
 
       setAlert({
         open: true,
@@ -262,11 +235,7 @@ const PurchasesPage = () => {
       setTransactionStatus("failed");
       setAlert({
         open: true,
-        message: error.message.includes("Hardhat Network")
-          ? "Không thể kết nối với Hardhat Network! Vui lòng chạy 'npx hardhat node' trong terminal."
-          : error.message.includes("Bạn không có quyền")
-          ? error.message
-          : `Lỗi khi đăng bán sản phẩm: ${error.message}`,
+        message: error.message || "Không thể đăng bán sản phẩm!",
         severity: "error",
       });
     } finally {

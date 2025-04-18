@@ -109,11 +109,12 @@ export const addToInventory = async (
   deliveryHubId,
   quantity,
   price,
-  options = {}
+  productdate,
+  expirydate,
+  transactionHash,
+  headers = {}
 ) => {
   try {
-    const { transactionHash, headers = {} } = options;
-
     // Kiểm tra xem headers có x-ethereum-address hay không
     if (!headers["x-ethereum-address"]) {
       throw new Error("Thiếu địa chỉ ví trong headers");
@@ -133,6 +134,8 @@ export const addToInventory = async (
         deliveryHubId,
         quantity,
         price,
+        productdate,
+        expirydate,
         transactionHash,
       },
       {

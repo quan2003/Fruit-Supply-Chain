@@ -33,7 +33,7 @@ contract FruitSupplyChain {
 
     struct ListedProduct {
         uint256 fruitId;
-        uint256 price;
+        uint256 price; // Giá tổng cho toàn bộ số lượng
         uint256 quantity;
         address seller;
         bool isActive;
@@ -64,7 +64,7 @@ contract FruitSupplyChain {
     event CatalogAdded(string fruitType, address by, uint256 timestamp);
     event FarmUpdated(string farmId, string conditions, uint256 timestamp);
     event ProductListed(uint256 listingId, uint256 fruitId, uint256 price, uint256 quantity, address seller, uint256 timestamp);
-    event ProductPurchased(uint256 listingId, address buyer, uint256 timestamp);
+    event ProductPurchased(uint256 listingId, address buyer, uint256 quantity, uint256 timestamp);
     event RecommendationAdded(uint256 fruitId, string recommendation, uint256 timestamp);
     event StepRecorded(uint256 fruitId, string step, address by, uint256 timestamp);
     event FruitHashUpdated(string fruitType, string ipfsHash, uint256 timestamp);
@@ -79,27 +79,48 @@ contract FruitSupplyChain {
         _;
     }
 
-    // Hàm để mua sản phẩm
-    function purchaseProduct(uint256 _listingId) public payable {
-        require(_listingId > 0 && _listingId <= listingCount, "Invalid Listing ID");
-        ListedProduct storage product = listedProducts[_listingId];
-        require(product.isActive, "Product is not available for purchase");
-        require(msg.value >= product.price, "Insufficient payment");
-        require(product.quantity > 0, "Product is out of stock");
+    // Hàm để mua sản phẩm (đã sửa để hỗ trợ mua nhiều hộp)
+    function purchaseProduct(uint256 _listingId, uint256 _quantity) public payable {
+  require(_listingId > 0 && _listingId <= listingCount, "Invalid Listing ID");
+  ListedProduct storage product = listedProducts[_listingId];
+  require(product.isActive, "Product is not available for purchase");
+  require(_quantity > 0 && _quantity <= product.quantity, "Invalid quantity");
+  uint256 totalPrice = (product.price * _quantity) / product.quantity;
+  require(msg.value >= totalPrice, "Insufficient payment");
 
-        // Chuyển tiền cho người bán
-        payable(product.seller).transfer(product.price);
+  payable(product.seller).transfer(totalPrice);
+  product.quantity -= _quantity;
+  if (product.quantity == 0) {
+    product.isActive = false;
+  }
 
-        // Cập nhật trạng thái sản phẩm
-        product.quantity -= 1;
-        if (product.quantity == 0) {
-            product.isActive = false;
+  fruits[product.fruitId].history.push(
+    string(abi.encodePacked("Purchased ", uint2str(_quantity), " units by Customer"))
+  );
+  emit ProductPurchased(_listingId, msg.sender, _quantity, block.timestamp);
+  emit StepRecorded(product.fruitId, "Purchased", msg.sender, block.timestamp);
+}
+
+    // Hàm phụ để chuyển uint sang string
+    function uint2str(uint256 _i) internal pure returns (string memory) {
+        if (_i == 0) {
+            return "0";
         }
-
-        // Ghi lại lịch sử
-        fruits[product.fruitId].history.push("Purchased by Customer");
-        emit ProductPurchased(_listingId, msg.sender, block.timestamp);
-        emit StepRecorded(product.fruitId, "Purchased", msg.sender, block.timestamp);
+        uint256 j = _i;
+        uint256 len;
+        while (j != 0) {
+            len++;
+            j /= 10;
+        }
+        bytes memory bstr = new bytes(len);
+        uint256 k = len;
+        while (_i != 0) {
+            k = k - 1;
+            uint8 temp = uint8(48 + (_i % 10));
+            bstr[k] = bytes1(temp);
+            _i /= 10;
+        }
+        return string(bstr);
     }
 
     function setFruitHash(string memory fruitType, string memory ipfsHash) public {

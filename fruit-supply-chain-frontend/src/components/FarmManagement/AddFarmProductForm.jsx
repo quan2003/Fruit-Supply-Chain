@@ -340,8 +340,8 @@ const useImagePrediction = () => {
 
       setFormattedMessage(formattedMessage);
       setDialogOpen(true);
-      setPrediction(predictionResult);
-      return predictionResult;
+      // setPrediction(predictionResult);
+      // return predictionResult;
 
       const firstPrediction = predictions[0].mappedClass;
       setPrediction(firstPrediction);
