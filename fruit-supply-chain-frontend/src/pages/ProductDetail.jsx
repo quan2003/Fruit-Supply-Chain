@@ -286,7 +286,7 @@ const ProductDetail = () => {
 
     setPurchaseLoading(true);
     try {
-      // Tính giá mỗi hộp từ product.price và product.quantity (chỉ để hiển thị)
+      // Tính giá mỗi hộp từ product.price và product.quantity (cho giao diện)
       const pricePerUnit = parseFloat(product.price) / product.quantity; // Giá mỗi hộp (AGT)
       const totalProductPrice = pricePerUnit * quantityToBuy; // Tổng giá sản phẩm (AGT)
 
@@ -302,6 +302,7 @@ const ProductDetail = () => {
       };
       console.log("Dữ liệu gửi đến /buy-product:", buyData);
 
+      let transactionHash;
       if (paymentMethod === "MetaMask") {
         if (!account || !web3 || !contract) {
           setMessage({
@@ -318,10 +319,7 @@ const ProductDetail = () => {
           .call();
         const blockchainQuantity = parseInt(productResponse.quantity);
         const isActive = productResponse.isActive;
-        const blockchainPrice = web3.utils.fromWei(
-          productResponse.price,
-          "ether"
-        ); // Giá tổng từ blockchain (ETH)
+        const blockchainPrice = parseInt(productResponse.price); // Giá tổng (Wei)
         console.log("Trạng thái sản phẩm trên blockchain:", productResponse);
 
         if (!isActive || blockchainQuantity < quantityToBuy) {
@@ -333,21 +331,16 @@ const ProductDetail = () => {
           return;
         }
 
-        // Giá tổng từ blockchain (ETH) - hợp đồng yêu cầu gửi toàn bộ product.price
-        const totalPricePerTransaction = parseFloat(blockchainPrice); // Giá tổng cho mỗi giao dịch (ETH)
-        const totalPriceWithShipping =
-          totalPricePerTransaction * quantityToBuy + SHIPPING_FEE; // Tổng giá bao gồm phí vận chuyển (ETH)
+        // Tính giá mỗi đơn vị (Wei) theo công thức hợp đồng
+        const pricePerUnitInWei = blockchainPrice / blockchainQuantity;
+        const totalPriceInWei = pricePerUnitInWei * quantityToBuy; // Tổng giá cho quantityToBuy (Wei)
 
         // Kiểm tra số dư ví
         const balance = await web3.eth.getBalance(account);
-        const totalPriceInWei = web3.utils.toWei(
-          totalPriceWithShipping.toString(),
-          "ether"
-        );
         console.log("Số dư ví:", web3.utils.fromWei(balance, "ether"), "ETH");
         console.log(
           "Số tiền cần thiết:",
-          web3.utils.fromWei(totalPriceInWei, "ether"),
+          web3.utils.fromWei(totalPriceInWei.toString(), "ether"),
           "ETH"
         );
 
@@ -360,37 +353,28 @@ const ProductDetail = () => {
           return;
         }
 
-        // Thực hiện giao dịch cho từng hộp
-        let transactionHash;
-        for (let i = 0; i < quantityToBuy; i++) {
-          const gasEstimate = await contract.methods
-            .purchaseProduct(product.listing_id)
-            .estimateGas({
-              from: account,
-              value: web3.utils.toWei(
-                totalPricePerTransaction.toString(),
-                "ether"
-              ),
-            });
-          console.log("Ước tính gas cho giao dịch", i + 1, ":", gasEstimate);
+        // Thực hiện giao dịch duy nhất với quantityToBuy
+        const gasEstimate = await contract.methods
+          .purchaseProduct(product.listing_id, quantityToBuy)
+          .estimateGas({
+            from: account,
+            value: totalPriceInWei,
+          });
+        console.log("Ước tính gas:", gasEstimate);
 
-          const transactionResult = await contract.methods
-            .purchaseProduct(product.listing_id)
-            .send({
-              from: account,
-              value: web3.utils.toWei(
-                totalPricePerTransaction.toString(),
-                "ether"
-              ),
-              gas: gasEstimate,
-            });
-          transactionHash = transactionResult.transactionHash; // Lưu hash của giao dịch cuối cùng
-          console.log("Giao dịch", i + 1, "thành công:", transactionHash);
-        }
-
+        const transactionResult = await contract.methods
+          .purchaseProduct(product.listing_id, quantityToBuy)
+          .send({
+            from: account,
+            value: totalPriceInWei,
+            gas: Math.floor(Number(gasEstimate) * 1.5),
+          });
+        transactionHash = transactionResult.transactionHash;
+        console.log("Giao dịch thành công:", transactionHash);
         buyData.transactionHash = transactionHash;
       }
 
+      // Gửi yêu cầu đến backend
       const response = await axios.post(
         "http://localhost:3000/buy-product",
         buyData,

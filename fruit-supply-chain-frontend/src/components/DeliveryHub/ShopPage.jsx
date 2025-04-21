@@ -133,18 +133,24 @@ const ShopPage = () => {
     setLoadingFarmInfo(true);
     setApiErrorInfo(null);
 
-    try {
-      const headers = {
-        "x-ethereum-address": account,
-      };
+    if (!account) {
+      setApiErrorInfo({
+        errors: ["Vui lòng kết nối ví MetaMask để xem thông tin nông trại."],
+        timestamp: new Date().toISOString(),
+      });
+      setLoadingFarmInfo(false);
+      return;
+    }
 
-      const allFarms = await getAllFarmsService(headers);
+    try {
+      // Gọi API với account trực tiếp
+      const allFarms = await getAllFarmsService(account);
 
       let farmData = null;
       let producer = null;
 
       if (product.farm_id) {
-        farmData = await getFarmByIdService(product.farm_id, headers);
+        farmData = await getFarmByIdService(product.farm_id, account);
       }
 
       if (!farmData && allFarms.length > 0) {
@@ -155,10 +161,13 @@ const ShopPage = () => {
         try {
           producer = await getProducerByIdService(
             farmData.producer_id,
-            headers
+            account
           );
         } catch (error) {
-          console.error("Producer not found, using default info:", error);
+          console.error(
+            "Không tìm thấy nhà sản xuất, sử dụng thông tin mặc định:",
+            error
+          );
           producer = { name: "Không có thông tin", wallet_address: null };
         }
       }
@@ -178,7 +187,7 @@ const ShopPage = () => {
         });
       }
     } catch (error) {
-      console.error("Error fetching farm info:", error);
+      console.error("Lỗi khi tải thông tin nông trại:", error);
       setApiErrorInfo({
         errors: [error.message || "Lỗi khi tải thông tin nông trại."],
         timestamp: new Date().toISOString(),
@@ -247,9 +256,10 @@ const ShopPage = () => {
         productId,
         quantity: qty,
         price,
+        fruitId, // Lấy fruitId từ purchaseInfo
       } = purchaseInfo;
 
-      if (!totalPriceInWei || !producerAddress || !deliveryHubId) {
+      if (!totalPriceInWei || !producerAddress || !deliveryHubId || !fruitId) {
         throw new Error("Thông tin giao dịch không đầy đủ!");
       }
 
@@ -266,7 +276,7 @@ const ShopPage = () => {
 
       const transactionHash = transactionResult.transactionHash;
 
-      // Gọi addToInventory với headers chứa x-ethereum-address
+      // Gọi addToInventory với headers chứa x-ethereum-address và fruitId
       await addToInventory(
         productId,
         deliveryHubId,
@@ -278,7 +288,8 @@ const ShopPage = () => {
             new Date().setMonth(new Date().getMonth() + 1)
           ).toISOString(),
         transactionHash,
-        headers // Truyền headers đúng
+        fruitId, // Truyền fruitId vào addToInventory
+        headers
       );
 
       await handleRefresh();

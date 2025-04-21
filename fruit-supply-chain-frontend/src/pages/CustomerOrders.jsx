@@ -41,9 +41,11 @@ const StatusTypography = styled(Typography)(({ theme, status }) => ({
   color:
     status === "Delivered"
       ? theme.palette.success.main
+      : status === "Shipped"
+      ? theme.palette.info.main
       : status === "Processing"
       ? theme.palette.warning.main
-      : theme.palette.info.main,
+      : theme.palette.error.main,
   fontWeight: "bold",
 }));
 
@@ -68,13 +70,13 @@ const CustomerOrders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [alertMessage, setAlertMessage] = useState({ type: "", message: "" });
+  const [receiveLoading, setReceiveLoading] = useState({}); // Trạng thái loading cho nút nhận hàng
 
   useEffect(() => {
     const fetchOrders = async () => {
       console.log("User tại thời điểm gọi fetchOrders:", user);
       console.log("Account tại thời điểm gọi fetchOrders:", account);
 
-      // Kiểm tra xem user có tồn tại và có vai trò Customer không
       if (!user || user.role !== "Customer" || !user.id) {
         console.log("User không hợp lệ hoặc không phải Customer:", user);
         setAlertMessage({
@@ -85,7 +87,6 @@ const CustomerOrders = () => {
         return;
       }
 
-      // Kiểm tra xem ví MetaMask đã được kết nối chưa
       if (!account) {
         console.log("Account không tồn tại, yêu cầu kết nối ví MetaMask.");
         setAlertMessage({
@@ -96,7 +97,6 @@ const CustomerOrders = () => {
         return;
       }
 
-      // Kiểm tra xem user có walletAddress không
       if (!user.walletAddress) {
         console.log("User không có walletAddress:", user);
         setAlertMessage({
@@ -108,7 +108,6 @@ const CustomerOrders = () => {
         return;
       }
 
-      // So sánh account và user.walletAddress một cách an toàn
       const accountLower = account ? account.toLowerCase() : "";
       const walletAddressLower = user.walletAddress
         ? user.walletAddress.toLowerCase()
@@ -151,7 +150,6 @@ const CustomerOrders = () => {
       }
     };
 
-    // Đợi cả authLoading và web3Loading hoàn tất trước khi gọi fetchOrders
     if (!authLoading && !web3Loading) {
       fetchOrders();
     }
@@ -166,6 +164,47 @@ const CustomerOrders = () => {
         type: "error",
         message: "Không thể kết nối ví MetaMask. Vui lòng thử lại.",
       });
+    }
+  };
+
+  const handleReceiveOrder = async (orderId) => {
+    setReceiveLoading((prev) => ({ ...prev, [orderId]: true }));
+    try {
+      const response = await axios.post(
+        `${API_URL}/receive-order`,
+        { orderId },
+        {
+          headers: { "x-ethereum-address": account },
+        }
+      );
+
+      setAlertMessage({
+        type: "success",
+        message: response.data.message,
+      });
+
+      // Lấy lại danh sách đơn hàng sau khi nhận hàng thành công
+      const updatedOrders = await axios.get(`${API_URL}/customer/orders`, {
+        headers: { "x-ethereum-address": account },
+      });
+      setOrders(updatedOrders.data);
+    } catch (error) {
+      console.error("Lỗi khi xác nhận nhận hàng:", error);
+      let errorMessage = "Lỗi khi xác nhận nhận hàng: Lỗi không xác định";
+      if (error.response) {
+        errorMessage =
+          error.response.data.message ||
+          error.response.data.error ||
+          errorMessage;
+      } else {
+        errorMessage = error.message || errorMessage;
+      }
+      setAlertMessage({
+        type: "error",
+        message: errorMessage,
+      });
+    } finally {
+      setReceiveLoading((prev) => ({ ...prev, [orderId]: false }));
     }
   };
 
@@ -248,11 +287,11 @@ const CustomerOrders = () => {
                   Trạng thái:
                   {order.status === "Pending"
                     ? "Đang chờ xử lý"
-                    : order.status === "Processing"
-                    ? "Đang xử lý"
+                    : order.status === "Shipped"
+                    ? "Đã vận chuyển"
                     : order.status === "Delivered"
-                    ? "Đã giao"
-                    : order.status}
+                    ? "Đã nhận hàng"
+                    : "Đã hủy"}
                 </StatusTypography>
               </Box>
               <Divider sx={{ mb: 2 }} />
@@ -274,6 +313,21 @@ const CustomerOrders = () => {
                 Địa chỉ giao hàng:{" "}
                 {order.shipping_address || "Không có thông tin"}
               </Typography>
+              {order.status === "Shipped" && (
+                <Box sx={{ mt: 2, textAlign: "center" }}>
+                  <StyledButton
+                    variant="contained"
+                    onClick={() => handleReceiveOrder(order.id)}
+                    disabled={receiveLoading[order.id]}
+                  >
+                    {receiveLoading[order.id] ? (
+                      <CircularProgress size={24} />
+                    ) : (
+                      "Xác nhận nhận hàng"
+                    )}
+                  </StyledButton>
+                </Box>
+              )}
             </CardContent>
           </StyledCard>
         ))

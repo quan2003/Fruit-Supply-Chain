@@ -1,4 +1,4 @@
-// fruit-supply-chain-frontend/src/services/fruitService.js
+// Trong fruitService.js
 import axios from "axios";
 
 const API_URL = "http://localhost:3000";
@@ -112,6 +112,7 @@ export const addToInventory = async (
   productdate,
   expirydate,
   transactionHash,
+  fruitId, // Thêm fruitId vào tham số
   headers = {}
 ) => {
   try {
@@ -137,6 +138,7 @@ export const addToInventory = async (
         productdate,
         expirydate,
         transactionHash,
+        fruitId, // Thêm fruitId vào dữ liệu gửi lên
       },
       {
         headers: finalHeaders,

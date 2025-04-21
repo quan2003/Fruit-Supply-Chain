@@ -13,7 +13,7 @@ import {
   Alert,
   Tabs,
   Tab,
-  Snackbar, // Thêm Snackbar
+  Snackbar,
 } from "@mui/material";
 import {
   Assessment as AssessmentIcon,
@@ -55,8 +55,8 @@ const DeliveryHubPage = () => {
   const [showShipmentForm, setShowShipmentForm] = useState(false);
   const [selectedShipment, setSelectedShipment] = useState(null);
   const [alertMessage, setAlertMessage] = useState({ type: "", message: "" });
-  const [snackOpen, setSnackOpen] = useState(false); // State cho Snackbar
-  const [snackMessage, setSnackMessage] = useState(""); // Nội dung thông báo
+  const [snackOpen, setSnackOpen] = useState(false);
+  const [snackMessage, setSnackMessage] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState("statistics");
 
@@ -82,11 +82,9 @@ const DeliveryHubPage = () => {
     try {
       setLoading(true);
 
-      const walletCheck = await axios.post(
-        "http://localhost:3000/check-role",
-        {},
-        { headers: { "x-ethereum-address": account } }
-      );
+      const walletCheck = await axios.get("http://localhost:3000/check-role", {
+        headers: { "x-ethereum-address": account },
+      });
 
       if (walletCheck.data.error) {
         setAlertMessage({
@@ -115,16 +113,16 @@ const DeliveryHubPage = () => {
       setOutgoingShipments(outgoing);
 
       const inv = await getInventory(user.id);
-      console.log("Fetched inventory data:", inv);
+      console.log("Dữ liệu kho đã lấy:", inv);
       setInventory(inv);
 
       const outgoingProds = await getOutgoingProducts(user.id);
-      console.log("Fetched outgoing products data:", outgoingProds);
+      console.log("Dữ liệu sản phẩm đang bán đã lấy:", outgoingProds);
       setOutgoingProducts(outgoingProds);
 
       setLoading(false);
     } catch (error) {
-      console.error("Error loading delivery hub data:", error);
+      console.error("Lỗi khi tải dữ liệu trung tâm phân phối:", error);
       setAlertMessage({
         type: "error",
         message:
@@ -224,7 +222,7 @@ const DeliveryHubPage = () => {
       await fetchData();
 
       setLoading(false);
-      setSnackMessage("Đã nhận lô hàng thành công!"); // Dùng Snackbar
+      setSnackMessage("Đã nhận lô hàng thành công!");
       setSnackOpen(true);
     } catch (error) {
       console.error("Error receiving shipment:", error);
@@ -258,7 +256,7 @@ const DeliveryHubPage = () => {
       setShowShipmentForm(false);
       setSelectedShipment(null);
       setLoading(false);
-      setSnackMessage("Đã tạo lô hàng gửi đi thành công!"); // Dùng Snackbar
+      setSnackMessage("Đã tạo lô hàng gửi đi thành công!");
       setSnackOpen(true);
     } catch (error) {
       console.error("Error creating shipment:", error);
@@ -294,7 +292,7 @@ const DeliveryHubPage = () => {
       await fetchData();
 
       setLoading(false);
-      setSnackMessage("Đã thu hoạch trái cây thành công!"); // Dùng Snackbar
+      setSnackMessage("Đã thu hoạch trái cây thành công!");
       setSnackOpen(true);
 
       return transactionResult;
@@ -315,11 +313,13 @@ const DeliveryHubPage = () => {
     productId,
     quantity,
     price,
-    transactionHash
+    transactionHash,
+    fruitId // Thêm fruitId vào tham số
   ) => {
     try {
       setLoading(true);
 
+      // Thêm vào inventory với fruitId
       await addToInventory(
         productId,
         user.id,
@@ -327,7 +327,9 @@ const DeliveryHubPage = () => {
         price,
         new Date().toISOString(),
         new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
-        transactionHash
+        transactionHash,
+        fruitId,
+        { "x-ethereum-address": account }
       );
 
       const updatedInventory = await getInventory(user.id);
@@ -343,10 +345,9 @@ const DeliveryHubPage = () => {
 
       const transactionResult = await executeTransaction({
         type: "listProductForSale",
-        productId,
-        price,
-        quantity,
-        inventoryId,
+        fruitId: fruitId, // Sử dụng fruitId thay vì productId
+        price: web3.utils.toWei(price.toString(), "ether"),
+        quantity: quantity,
       });
 
       await sellProductToConsumer({
@@ -355,6 +356,7 @@ const DeliveryHubPage = () => {
         price,
         transactionHash: transactionResult.transactionHash,
         listingId: transactionResult.listingId,
+        fruitId, // Truyền fruitId vào sellProductToConsumer
       });
 
       setInventory((prevInventory) =>
@@ -371,7 +373,7 @@ const DeliveryHubPage = () => {
       setLoading(false);
       setSnackMessage(
         "Đã mua, đăng bán và chuyển sản phẩm sang mục đang bán thành công!"
-      ); // Dùng Snackbar
+      );
       setSnackOpen(true);
     } catch (error) {
       console.error("Error adding product to inventory after purchase:", error);
@@ -398,7 +400,7 @@ const DeliveryHubPage = () => {
         walletAddress: account,
       });
       setWalletError(null);
-      setSnackMessage(response.data.message); // Dùng Snackbar
+      setSnackMessage(response.data.message);
       setSnackOpen(true);
       fetchData();
     } catch (error) {
@@ -641,7 +643,7 @@ const DeliveryHubPage = () => {
             <Tab label="Shop" />
             <Tab label="Đơn đặt hàng" />
             <Tab label="Đơn mua" />
-            {/* <Tab label="Sản phẩm đang bán" /> */}
+            <Tab label="Sản phẩm đang bán" />
           </Tabs>
           <Outlet
             context={{
@@ -676,7 +678,6 @@ const DeliveryHubPage = () => {
           />
         </Container>
 
-        {/* Thêm Snackbar để hiển thị thông báo thành công */}
         <Snackbar
           open={snackOpen}
           autoHideDuration={6000}

@@ -90,6 +90,7 @@ const useWeb3Actions = () => {
   const {
     account,
     contract,
+    web3,
     connectWallet,
     updateWalletAddress,
     loading: web3Loading,
@@ -112,6 +113,7 @@ const useWeb3Actions = () => {
   return {
     account,
     contract,
+    web3,
     handleConnect,
     updateWalletAddress,
     web3Loading,
@@ -122,7 +124,7 @@ const useWeb3Actions = () => {
   };
 };
 
-// Hook xử lý nhận diện hình ảnh (Đã cập nhật với Gemini API)
+// Hook xử lý nhận diện hình ảnh
 const useImagePrediction = () => {
   const [prediction, setPrediction] = useState(null);
   const [predictionLoading, setPredictionLoading] = useState(false);
@@ -340,8 +342,6 @@ const useImagePrediction = () => {
 
       setFormattedMessage(formattedMessage);
       setDialogOpen(true);
-      // setPrediction(predictionResult);
-      // return predictionResult;
 
       const firstPrediction = predictions[0].mappedClass;
       setPrediction(firstPrediction);
@@ -389,7 +389,7 @@ const useImagePrediction = () => {
   };
 };
 
-// Component Form (Giữ nguyên)
+// Component Form
 const ProductForm = ({
   register,
   errors,
@@ -594,12 +594,13 @@ const ProductForm = ({
   );
 };
 
-// Component chính (Giữ nguyên)
+// Component chính
 const AddFarmProductForm = () => {
   const navigate = useNavigate();
   const {
     account,
     contract,
+    web3,
     handleConnect,
     updateWalletAddress,
     web3Loading,
@@ -625,6 +626,7 @@ const AddFarmProductForm = () => {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [openConfirm, setOpenConfirm] = useState(false);
+  const [fruitId, setFruitId] = useState(null); // Thêm state để lưu fruitId
   const user = JSON.parse(localStorage.getItem("user")) || {};
 
   const {
@@ -793,6 +795,110 @@ const AddFarmProductForm = () => {
     }
   };
 
+  const addFruitCatalog = async (fruitType) => {
+    try {
+      const gasEstimate = await contract.methods
+        .addFruitCatalog(
+          fruitType,
+          `Mô tả về ${fruitType}`,
+          "Tháng 8 - Tháng 12",
+          "Chứa nhiều vitamin",
+          "Bảo quản khô ráo",
+          [`${fruitType} Giống 1`, `${fruitType} Giống 2`]
+        )
+        .estimateGas({ from: account });
+
+      console.log("Ước tính gas cho addFruitCatalog:", gasEstimate);
+
+      const transactionResult = await contract.methods
+        .addFruitCatalog(
+          fruitType,
+          `Mô tả về ${fruitType}`,
+          "Tháng 8 - Tháng 12",
+          "Chứa nhiều vitamin",
+          "Bảo quản khô ráo",
+          [`${fruitType} Giống 1`, `${fruitType} Giống 2`]
+        )
+        .send({
+          from: account,
+          gas: Math.floor(Number(gasEstimate) * 1.5),
+        });
+
+      console.log("Đã thêm fruitType vào catalog:", fruitType);
+      return transactionResult;
+    } catch (error) {
+      console.error("Lỗi khi thêm fruitType vào catalog:", error);
+      throw new Error("Không thể thêm fruitType vào catalog: " + error.message);
+    }
+  };
+
+  const harvestFruit = async (fruitType, origin, farmId, quality) => {
+    try {
+      console.log("Tham số gọi harvestFruit:", {
+        fruitType,
+        origin,
+        farmId,
+        quality,
+        account,
+      });
+
+      // Kiểm tra farmId đã được đăng ký chưa
+      let farmExists = false;
+      try {
+        const farmData = await contract.methods.getFarmData(farmId).call();
+        console.log("Farm Data:", farmData);
+        farmExists = farmData[0].length > 0;
+      } catch (error) {
+        console.log("Farm chưa tồn tại:", error.message);
+        throw new Error("Farm chưa được đăng ký trên blockchain!");
+      }
+
+      if (!farmExists) {
+        throw new Error("Farm chưa được đăng ký trên blockchain!");
+      }
+
+      // Kiểm tra xem fruitType đã tồn tại trong fruitCatalog chưa
+      let catalogExists = false;
+      try {
+        const catalog = await contract.methods
+          .getFruitCatalog(fruitType)
+          .call();
+        console.log("Fruit Catalog Data:", catalog);
+        catalogExists = catalog.description.length > 0;
+      } catch (error) {
+        console.log("Fruit type chưa tồn tại trong catalog:", error.message);
+      }
+
+      if (!catalogExists) {
+        console.log("Đang thêm fruitType vào catalog...");
+        await addFruitCatalog(fruitType);
+      }
+
+      // Gọi harvestFruit
+      const gasEstimate = await contract.methods
+        .harvestFruit(fruitType, origin, farmId, quality)
+        .estimateGas({ from: account });
+      console.log("Ước tính gas cho harvestFruit:", gasEstimate);
+
+      const transactionResult = await contract.methods
+        .harvestFruit(fruitType, origin, farmId, quality)
+        .send({
+          from: account,
+          gas: Math.floor(Number(gasEstimate) * 1.5),
+        });
+
+      const fruitId =
+        transactionResult.events.StepRecorded.returnValues.fruitId;
+      console.log("Đã thu hoạch trái cây, fruitId:", fruitId);
+      return fruitId;
+    } catch (error) {
+      console.error("Lỗi chi tiết khi gọi harvestFruit:", error);
+      throw new Error(
+        "Không thể thu hoạch trái cây trên blockchain: " + error.message
+      );
+    }
+  };
+
   const onSubmit = async (data) => {
     if (!account || !contract) {
       setError("Vui lòng kết nối ví MetaMask và khởi tạo hợp đồng!");
@@ -820,7 +926,40 @@ const AddFarmProductForm = () => {
       }
     }
 
-    setOpenConfirm(true);
+    try {
+      // Kiểm tra vai trò Producer từ backend
+      const response = await axios.get("http://localhost:3000/check-role", {
+        headers: { "x-ethereum-address": account },
+      });
+      const { role } = response.data;
+      if (role !== "Producer") {
+        throw new Error("Chỉ Producer mới có thể thu hoạch trái cây!");
+      }
+
+      // Kiểm tra vai trò owner hoặc manager để gọi addFruitCatalog
+      const owner = await contract.methods.owner().call();
+      const isManager = await contract.methods
+        .authorizedManagers(account)
+        .call();
+      if (owner.toLowerCase() !== account.toLowerCase() && !isManager) {
+        throw new Error(
+          "Bạn không có quyền thêm loại trái cây vào catalog! Vui lòng yêu cầu owner hoặc manager thực hiện."
+        );
+      }
+
+      // Gọi harvestFruit để tạo Fruit và lấy fruitId
+      const farm = farms.find((f) => f.id === data.farm_id);
+      const fruitId = await harvestFruit(
+        data.category,
+        "Vietnam",
+        farm.farm_name,
+        prediction || "ripe"
+      );
+      setFruitId(fruitId);
+      setOpenConfirm(true);
+    } catch (error) {
+      setError(error.message);
+    }
   };
 
   const confirmSubmit = async (data) => {
@@ -866,6 +1005,7 @@ const AddFarmProductForm = () => {
         farm_id: data.farm_id,
         email: user.email,
         frontendHash: ipfsHash,
+        fruitId: fruitId,
       };
 
       await addFruitProduct(productData, { "x-ethereum-address": account });

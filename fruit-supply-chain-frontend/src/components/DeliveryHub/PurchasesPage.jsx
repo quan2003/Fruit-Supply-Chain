@@ -201,15 +201,19 @@ const PurchasesPage = () => {
         productId: selectedProduct.product_id,
         quantity: quantityToSell,
         price: parseFloat(sellingPrice),
+        fruitId: selectedProduct.fruit_id, // Lấy fruit_id từ inventory
       };
+
+      if (!productData.fruitId) {
+        throw new Error("Không tìm thấy fruitId trong bản ghi inventory!");
+      }
 
       setTransactionStatus("pending");
       const transactionResult = await executeTransaction({
         type: "listProductForSale",
-        productId: productData.productId,
-        price: productData.price,
+        fruitId: productData.fruitId, // Sử dụng fruitId thay vì productId
+        price: web3.utils.toWei(productData.price.toString(), "ether"),
         quantity: productData.quantity,
-        inventoryId: productData.inventoryId,
       });
 
       setTransactionHash(transactionResult.transactionHash);
@@ -459,7 +463,7 @@ const PurchasesPage = () => {
                   </TableHead>
                   <TableBody>
                     {contextInventory
-                      .filter((item) => item.quantity > 0) // Lọc các sản phẩm có quantity > 0
+                      .filter((item) => item.quantity > 0)
                       .map((item) => (
                         <TableRow key={item.id}>
                           <TableCell>{item.id}</TableCell>

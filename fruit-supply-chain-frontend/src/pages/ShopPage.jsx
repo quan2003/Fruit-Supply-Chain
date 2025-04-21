@@ -251,10 +251,34 @@ const ShopPage = () => {
 
     try {
       setLoading(true);
+
+      // Đồng bộ dữ liệu sản phẩm trước khi mua
+      const syncResponse = await axios.post(
+        `${API_URL}/sync-product`,
+        { listingId: product.listing_id },
+        { headers: { "x-ethereum-address": account } }
+      );
+      const updatedProduct = syncResponse.data.product;
+      if (
+        updatedProduct.status !== "Available" ||
+        updatedProduct.quantity < 1
+      ) {
+        setAlertMessage({
+          type: "error",
+          message: "Sản phẩm không còn khả dụng hoặc số lượng không đủ!",
+        });
+        await fetchProducts();
+        setLoading(false);
+        return;
+      }
+
+      // Tính giá mỗi đơn vị và tổng giá chính xác
+      const pricePerUnit = updatedProduct.price / updatedProduct.quantity;
       const totalPriceInWei = web3.utils.toWei(
-        (product.price * 1).toString(),
+        (pricePerUnit * 1).toString(),
         "ether"
       );
+
       const tx = await executeTransaction({
         type: "purchaseProduct",
         listingId: product.listing_id,
@@ -267,15 +291,11 @@ const ShopPage = () => {
           listingId: product.listing_id,
           customerId: user.id,
           quantity: 1,
-          price: product.price,
+          price: pricePerUnit,
           deliveryHubId: product.delivery_hub_id,
           transactionHash: tx.transactionHash,
         },
-        {
-          headers: {
-            "x-ethereum-address": account,
-          },
-        }
+        { headers: { "x-ethereum-address": account } }
       );
 
       setAlertMessage({

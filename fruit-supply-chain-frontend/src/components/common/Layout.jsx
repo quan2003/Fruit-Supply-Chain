@@ -12,7 +12,11 @@ import {
   Menu,
   MenuItem,
 } from "@mui/material";
-import { Menu as MenuIcon, LocalFlorist } from "@mui/icons-material";
+import {
+  Menu as MenuIcon,
+  LocalFlorist,
+  AccountCircle,
+} from "@mui/icons-material";
 import Drawer from "@mui/material/Drawer";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
@@ -30,8 +34,10 @@ const Layout = ({ children }) => {
 
   const [loginAnchorEl, setLoginAnchorEl] = useState(null);
   const [registerAnchorEl, setRegisterAnchorEl] = useState(null);
+  const [userMenuAnchorEl, setUserMenuAnchorEl] = useState(null);
   const loginOpen = Boolean(loginAnchorEl);
   const registerOpen = Boolean(registerAnchorEl);
+  const userMenuOpen = Boolean(userMenuAnchorEl);
 
   const user = JSON.parse(localStorage.getItem("user")) || {};
   const isLoggedIn = !!user.email && !!user.role;
@@ -64,6 +70,14 @@ const Layout = ({ children }) => {
     setRegisterAnchorEl(null);
   };
 
+  const handleUserMenuOpen = (event) => {
+    setUserMenuAnchorEl(event.currentTarget);
+  };
+
+  const handleUserMenuClose = () => {
+    setUserMenuAnchorEl(null);
+  };
+
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
@@ -71,6 +85,7 @@ const Layout = ({ children }) => {
   const handleLogout = () => {
     localStorage.removeItem("user");
     navigate("/");
+    handleUserMenuClose();
   };
 
   const handleConnectWallet = async () => {
@@ -140,6 +155,24 @@ const Layout = ({ children }) => {
             />
           </ListItem>
         ))}
+        {isLoggedIn && user.role === "Customer" && (
+          <ListItem
+            button
+            component={Link}
+            to="/customer/orders"
+            sx={{
+              borderBottom:
+                getBasePath(location.pathname) === "/customer/orders"
+                  ? "2px solid white"
+                  : "none",
+            }}
+          >
+            <ListItemText
+              primary="Quản lý đơn hàng"
+              primaryTypographyProps={{ fontWeight: "bold", color: "white" }}
+            />
+          </ListItem>
+        )}
         {isLoggedIn && (
           <ListItem
             button
@@ -370,17 +403,59 @@ const Layout = ({ children }) => {
                   Hi, {user.name} ({getRoleDisplayName(user.role)} xuất sắc) (
                   {shortenAddress(account)}) 🌟
                 </Typography>
-                <Button
-                  color="inherit"
-                  onClick={handleLogout}
-                  sx={{
-                    color: "black",
-                    mx: 1,
-                    fontWeight: "bold",
+                <IconButton
+                  size="large"
+                  aria-label="account of current user"
+                  aria-controls="menu-appbar"
+                  aria-haspopup="true"
+                  onClick={handleUserMenuOpen}
+                  sx={{ color: "black" }}
+                >
+                  <AccountCircle />
+                </IconButton>
+                <Menu
+                  id="menu-appbar"
+                  anchorEl={userMenuAnchorEl}
+                  anchorOrigin={{
+                    vertical: "top",
+                    horizontal: "right",
+                  }}
+                  keepMounted
+                  transformOrigin={{
+                    vertical: "top",
+                    horizontal: "right",
+                  }}
+                  open={userMenuOpen}
+                  onClose={handleUserMenuClose}
+                  PaperProps={{
+                    elevation: 0,
+                    sx: {
+                      overflow: "visible",
+                      filter: "drop-shadow(0px 2px 8px rgba(0,0,0,0.32))",
+                      mt: 1.5,
+                      "& .MuiMenuItem-root": {
+                        fontWeight: "bold",
+                        color: "#333",
+                        "&:hover": {
+                          backgroundColor: "#E6F4EA",
+                          color: "#FF6F91",
+                        },
+                      },
+                    },
                   }}
                 >
-                  Đăng xuất
-                </Button>
+                  {user.role === "Customer" && (
+                    <MenuItem
+                      onClick={() => {
+                        handleUserMenuClose();
+                        navigate("/customer/orders");
+                      }}
+                    >
+                      Quản lý đơn hàng
+                    </MenuItem>
+                  )}
+                  <MenuItem onClick={handleLogout}>Đăng xuất</MenuItem>
+                </Menu>
               </>
             )}
             {!isLoggedIn && (

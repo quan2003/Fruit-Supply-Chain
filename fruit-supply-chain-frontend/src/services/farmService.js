@@ -4,14 +4,18 @@ const API_URL = "http://localhost:3000";
 
 // Hàm tiện ích để thêm header x-ethereum-address
 const addAuthHeader = (headers = {}, account) => {
-  // Đảm bảo account là chuỗi, nếu không thì trả về chuỗi rỗng
-  const address = typeof account === "string" ? account : "";
-  if (!address) {
-    console.warn("Account không hợp lệ, gửi header với giá trị rỗng");
+  if (
+    !account ||
+    typeof account !== "string" ||
+    !/^(0x)?[0-9a-fA-F]{40}$/.test(account)
+  ) {
+    throw new Error(
+      "Ví MetaMask chưa được kết nối hoặc địa chỉ ví không hợp lệ!"
+    );
   }
   return {
     ...headers,
-    "x-ethereum-address": address,
+    "x-ethereum-address": account,
   };
 };
 

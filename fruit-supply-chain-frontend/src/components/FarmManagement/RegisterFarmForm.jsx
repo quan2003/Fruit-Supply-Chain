@@ -20,7 +20,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
 const RegisterFarmForm = () => {
   const navigate = useNavigate();
-  const { account } = useWeb3();
+  const { account, contract, web3 } = useWeb3();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -171,14 +171,63 @@ const RegisterFarmForm = () => {
     }));
   };
 
+  const registerFarmOnBlockchain = async (
+    farmId,
+    location,
+    climate,
+    soil,
+    currentConditions
+  ) => {
+    try {
+      if (!contract) {
+        throw new Error("Hợp đồng thông minh chưa được khởi tạo!");
+      }
+      if (!account) {
+        throw new Error("Ví MetaMask chưa được kết nối!");
+      }
+      if (!contract.methods.isFarmRegistered) {
+        throw new Error(
+          "Hợp đồng thông minh không có phương thức isFarmRegistered!"
+        );
+      }
+
+      console.log("Checking farm registration for ID:", farmId);
+      const farmExists = await contract.methods.isFarmRegistered(farmId).call();
+      console.log("Is farm registered?", farmExists);
+      if (farmExists) {
+        throw new Error("Farm ID đã được đăng ký trên blockchain!");
+      }
+
+      const gasEstimate = await contract.methods
+        .registerFarm(farmId, location, climate, soil, currentConditions)
+        .estimateGas({ from: account });
+      console.log("Ước tính gas cho registerFarm:", gasEstimate);
+
+      const transactionResult = await contract.methods
+        .registerFarm(farmId, location, climate, soil, currentConditions)
+        .send({
+          from: account,
+          gas: Math.floor(Number(gasEstimate) * 1.5),
+        });
+
+      console.log("Đã đăng ký farm trên blockchain:", transactionResult);
+      return transactionResult;
+    } catch (error) {
+      console.error("Lỗi khi đăng ký farm trên blockchain:", error);
+      throw new Error(
+        "Không thể đăng ký farm trên blockchain: " + error.message
+      );
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setSuccess(null);
 
-    if (!account) {
-      setError("Vui lòng kết nối ví MetaMask!");
+    if (!account || !contract) {
+      setError("Vui lòng kết nối ví MetaMask và khởi tạo hợp đồng!");
       setLoading(false);
       return;
     }
@@ -191,9 +240,17 @@ const RegisterFarmForm = () => {
         return;
       }
 
+      const response = await fetch("http://localhost:3000/check-role", {
+        headers: { "x-ethereum-address": account },
+      });
+      const { role } = await response.json();
+      if (role !== "Producer") {
+        throw new Error("Chỉ Producer mới có thể đăng ký farm!");
+      }
+
       const farmId = generateFarmId(farm.farmName);
 
-      const response = await fetch("http://localhost:3000/farm", {
+      const backendResponse = await fetch("http://localhost:3000/farm", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -209,9 +266,31 @@ const RegisterFarmForm = () => {
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
+      if (!backendResponse.ok) {
+        const errorData = await backendResponse.json();
         throw new Error(errorData.message || "Không thể tạo farm");
+      }
+
+      const farmData = await backendResponse.json();
+      const farmIdInDb = farmData.farmId;
+
+      try {
+        await registerFarmOnBlockchain(
+          farmId,
+          farm.location,
+          farm.climate,
+          farm.soil,
+          farm.currentConditions
+        );
+      } catch (blockchainError) {
+        await fetch(`http://localhost:3000/farm/${farmIdInDb}`, {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "x-ethereum-address": account,
+          },
+        });
+        throw blockchainError;
       }
 
       setLoading(false);

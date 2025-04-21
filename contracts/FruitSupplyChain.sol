@@ -27,6 +27,7 @@ contract FruitSupplyChain {
         address producer;
         uint256 harvestDate;
         string quality;
+        uint256 quantity; // Thêm trường này để ghi lại số lượng
         string[] history;
         string[] recommendations;
     }
@@ -38,6 +39,7 @@ contract FruitSupplyChain {
         address seller;
         bool isActive;
         uint256 listedTimestamp;
+        bool allowPartialPurchase; // Thêm trường này
     }
 
     address public owner;
@@ -53,7 +55,7 @@ contract FruitSupplyChain {
     string[] public registeredFarms;
     uint256[] public listingIds;
 
-    // Mapping để lưu trữ hash IPFS dưới dạng string => string
+    mapping(string => bool) public isFarmRegistered;
     mapping(string => string) public fruitHashes;
 
     constructor() {
@@ -63,9 +65,25 @@ contract FruitSupplyChain {
 
     event CatalogAdded(string fruitType, address by, uint256 timestamp);
     event FarmUpdated(string farmId, string conditions, uint256 timestamp);
-    event ProductListed(uint256 listingId, uint256 fruitId, uint256 price, uint256 quantity, address seller, uint256 timestamp);
-    event ProductPurchased(uint256 listingId, address buyer, uint256 quantity, uint256 timestamp);
-    event RecommendationAdded(uint256 fruitId, string recommendation, uint256 timestamp);
+    event ProductListed(
+        uint256 listingId,
+        uint256 fruitId,
+        uint256 price,
+        uint256 quantity,
+        address seller,
+        uint256 timestamp
+    );
+    event ProductPurchased(
+        uint256 listingId,
+        address buyer,
+        uint256 quantity,
+        uint256 timestamp
+    );
+    event RecommendationAdded(
+        uint256 fruitId,
+        string recommendation,
+        uint256 timestamp
+    );
     event StepRecorded(uint256 fruitId, string step, address by, uint256 timestamp);
     event FruitHashUpdated(string fruitType, string ipfsHash, uint256 timestamp);
 
@@ -75,33 +93,47 @@ contract FruitSupplyChain {
     }
 
     modifier onlyAuthorized() {
-        require(authorizedManagers[msg.sender] || msg.sender == owner, "Not authorized");
+        require(
+            authorizedManagers[msg.sender] || msg.sender == owner,
+            "Not authorized"
+        );
         _;
     }
 
-    // Hàm để mua sản phẩm (đã sửa để hỗ trợ mua nhiều hộp)
     function purchaseProduct(uint256 _listingId, uint256 _quantity) public payable {
-  require(_listingId > 0 && _listingId <= listingCount, "Invalid Listing ID");
-  ListedProduct storage product = listedProducts[_listingId];
-  require(product.isActive, "Product is not available for purchase");
-  require(_quantity > 0 && _quantity <= product.quantity, "Invalid quantity");
-  uint256 totalPrice = (product.price * _quantity) / product.quantity;
-  require(msg.value >= totalPrice, "Insufficient payment");
+        require(_listingId > 0 && _listingId <= listingCount, "Invalid Listing ID");
+        ListedProduct storage product = listedProducts[_listingId];
+        require(product.isActive, "Product is not available for purchase");
+        require(_quantity > 0 && _quantity <= product.quantity, "Invalid quantity");
 
-  payable(product.seller).transfer(totalPrice);
-  product.quantity -= _quantity;
-  if (product.quantity == 0) {
-    product.isActive = false;
-  }
+        // Kiểm tra nếu không cho phép mua một phần
+        if (!product.allowPartialPurchase) {
+            require(_quantity == product.quantity, "Must purchase the entire quantity");
+        }
 
-  fruits[product.fruitId].history.push(
-    string(abi.encodePacked("Purchased ", uint2str(_quantity), " units by Customer"))
-  );
-  emit ProductPurchased(_listingId, msg.sender, _quantity, block.timestamp);
-  emit StepRecorded(product.fruitId, "Purchased", msg.sender, block.timestamp);
-}
+        uint256 pricePerUnit = product.price / product.quantity;
+        uint256 totalPrice = pricePerUnit * _quantity;
+        require(msg.value >= totalPrice, "Insufficient payment");
 
-    // Hàm phụ để chuyển uint sang string
+        payable(product.seller).transfer(totalPrice);
+        product.quantity -= _quantity;
+        if (product.quantity == 0) {
+            product.isActive = false;
+        }
+
+        fruits[product.fruitId].history.push(
+            string(
+                abi.encodePacked(
+                    "Purchased ",
+                    uint2str(_quantity),
+                    " units by Customer"
+                )
+            )
+        );
+        emit ProductPurchased(_listingId, msg.sender, _quantity, block.timestamp);
+        emit StepRecorded(product.fruitId, "Purchased", msg.sender, block.timestamp);
+    }
+
     function uint2str(uint256 _i) internal pure returns (string memory) {
         if (_i == 0) {
             return "0";
@@ -150,7 +182,10 @@ contract FruitSupplyChain {
         );
         bool exists = false;
         for (uint256 i = 0; i < registeredFruitTypes.length; i++) {
-            if (keccak256(abi.encodePacked(registeredFruitTypes[i])) == keccak256(abi.encodePacked(_fruitType))) {
+            if (
+                keccak256(abi.encodePacked(registeredFruitTypes[i])) ==
+                keccak256(abi.encodePacked(_fruitType))
+            ) {
                 exists = true;
                 break;
             }
@@ -195,15 +230,21 @@ contract FruitSupplyChain {
         return registeredFruitTypes;
     }
 
-    function getFarmData(string memory _farmId) public view returns (
-        string memory,
-        string memory,
-        string memory,
-        uint256,
-        string memory,
-        address,
-        uint256[] memory
-    ) {
+    function getFarmData(
+        string memory _farmId
+    )
+        public
+        view
+        returns (
+            string memory,
+            string memory,
+            string memory,
+            uint256,
+            string memory,
+            address,
+            uint256[] memory
+        )
+    {
         Farm memory farm = farms[_farmId];
         return (
             farm.location,
@@ -216,15 +257,22 @@ contract FruitSupplyChain {
         );
     }
 
-    function getFruit(uint256 _fruitId) public view returns (
-        string memory,
-        string memory,
-        address,
-        string[] memory,
-        uint256,
-        string memory,
-        string[] memory
-    ) {
+    function getFruit(
+        uint256 _fruitId
+    )
+        public
+        view
+        returns (
+            string memory,
+            string memory,
+            address,
+            string[] memory,
+            uint256,
+            string memory,
+            string[] memory,
+            uint256 // Thêm quantity vào kết quả trả về
+        )
+    {
         require(_fruitId > 0 && _fruitId <= fruitCount, "Invalid Fruit ID");
         Fruit memory fruit = fruits[_fruitId];
         return (
@@ -234,18 +282,25 @@ contract FruitSupplyChain {
             fruit.history,
             fruit.harvestDate,
             fruit.quality,
-            fruit.recommendations
+            fruit.recommendations,
+            fruit.quantity
         );
     }
 
-    function getFruitCatalog(string memory _fruitType) public view returns (
-        string memory,
-        string memory,
-        string memory,
-        string memory,
-        string memory,
-        string[] memory
-    ) {
+    function getFruitCatalog(
+        string memory _fruitType
+    )
+        public
+        view
+        returns (
+            string memory,
+            string memory,
+            string memory,
+            string memory,
+            string memory,
+            string[] memory
+        )
+    {
         FruitCatalog memory catalog = fruitCatalogs[_fruitType];
         return (
             catalog.name,
@@ -257,14 +312,21 @@ contract FruitSupplyChain {
         );
     }
 
-    function getListedProduct(uint256 _listingId) public view returns (
-        uint256 fruitId,
-        uint256 price,
-        uint256 quantity,
-        address seller,
-        bool isActive,
-        uint256 listedTimestamp
-    ) {
+    function getListedProduct(
+        uint256 _listingId
+    )
+        public
+        view
+        returns (
+            uint256 fruitId,
+            uint256 price,
+            uint256 quantity,
+            address seller,
+            bool isActive,
+            uint256 listedTimestamp,
+            bool allowPartialPurchase // Thêm vào kết quả trả về
+        )
+    {
         require(_listingId > 0 && _listingId <= listingCount, "Invalid Listing ID");
         ListedProduct memory product = listedProducts[_listingId];
         return (
@@ -273,7 +335,8 @@ contract FruitSupplyChain {
             product.quantity,
             product.seller,
             product.isActive,
-            product.listedTimestamp
+            product.listedTimestamp,
+            product.allowPartialPurchase
         );
     }
 
@@ -285,10 +348,13 @@ contract FruitSupplyChain {
         string memory _fruitType,
         string memory _origin,
         string memory _farmId,
-        string memory _quality
+        string memory _quality,
+        uint256 _quantity // Thêm tham số này
     ) public {
         FruitCatalog memory catalog = fruitCatalogs[_fruitType];
         require(bytes(catalog.name).length > 0, "Fruit type not in catalog");
+        require(isFarmRegistered[_farmId], "Farm not registered");
+        require(_quantity > 0, "Quantity must be greater than 0");
         fruitCount++;
         fruits[fruitCount] = Fruit(
             _fruitType,
@@ -296,6 +362,7 @@ contract FruitSupplyChain {
             msg.sender,
             block.timestamp,
             _quality,
+            _quantity,
             new string[](0),
             new string[](0)
         );
@@ -309,10 +376,18 @@ contract FruitSupplyChain {
         emit StepRecorded(fruitCount, "Harvested", msg.sender, block.timestamp);
     }
 
-    function listProductForSale(uint256 _fruitId, uint256 _price, uint256 _quantity) public {
+    function listProductForSale(
+        uint256 _fruitId,
+        uint256 _price,
+        uint256 _quantity,
+        bool _allowPartialPurchase // Thêm tham số này
+    ) public {
         require(_fruitId > 0 && _fruitId <= fruitCount, "Invalid Fruit ID");
         require(_price > 0, "Price must be greater than 0");
         require(_quantity > 0, "Quantity must be greater than 0");
+        Fruit storage fruit = fruits[_fruitId];
+        require(_quantity <= fruit.quantity, "Quantity exceeds available stock");
+
         listingCount++;
         listedProducts[listingCount] = ListedProduct(
             _fruitId,
@@ -320,11 +395,13 @@ contract FruitSupplyChain {
             _quantity,
             msg.sender,
             true,
-            block.timestamp
+            block.timestamp,
+            _allowPartialPurchase
         );
         sellerListings[msg.sender].push(listingCount);
         listingIds.push(listingCount);
         fruits[_fruitId].history.push("Listed for Sale");
+        fruit.quantity -= _quantity; // Giảm số lượng khả dụng
         emit ProductListed(listingCount, _fruitId, _price, _quantity, msg.sender, block.timestamp);
     }
 
@@ -341,6 +418,7 @@ contract FruitSupplyChain {
         string memory _soil,
         string memory _currentConditions
     ) public {
+        require(!isFarmRegistered[_farmId], "Farm already registered");
         farms[_farmId] = Farm(
             _location,
             _climate,
@@ -350,9 +428,13 @@ contract FruitSupplyChain {
             msg.sender,
             new uint256[](0)
         );
+        isFarmRegistered[_farmId] = true;
         bool exists = false;
         for (uint256 i = 0; i < registeredFarms.length; i++) {
-            if (keccak256(abi.encodePacked(registeredFarms[i])) == keccak256(abi.encodePacked(_farmId))) {
+            if (
+                keccak256(abi.encodePacked(registeredFarms[i])) ==
+                keccak256(abi.encodePacked(_farmId))
+            ) {
                 exists = true;
                 break;
             }
@@ -369,7 +451,10 @@ contract FruitSupplyChain {
 
     function updateFarmConditions(string memory _farmId, string memory _conditions) public {
         Farm storage farm = farms[_farmId];
-        require(farm.owner == msg.sender || authorizedManagers[msg.sender], "Not authorized");
+        require(
+            farm.owner == msg.sender || authorizedManagers[msg.sender],
+            "Not authorized"
+        );
         farm.currentConditions = _conditions;
         farm.lastUpdated = block.timestamp;
         emit FarmUpdated(_farmId, _conditions, block.timestamp);
