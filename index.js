@@ -12,6 +12,7 @@ import Web3 from "web3";
 import axios from "axios";
 import helmet from "helmet";
 import PDFDocument from 'pdfkit';
+import { Buffer } from 'buffer';
 import contractData from "./artifacts/contracts/FruitSupplyChain.sol/FruitSupplyChain.json" with { type: "json" };
 import governmentRegulatorData from "./artifacts/contracts/GovernmentRegulator.sol/GovernmentRegulator.json" with { type: "json" };
 // Load biến môi trường từ file .env
@@ -183,7 +184,235 @@ const checkRole = (roles) => {
     next();
   };
 };
+// Hàm helper để tạo PDF hợp đồng
+// Hàm helper để tạo PDF hợp đồng
+const generateContractPDF = (contract, isSigned, stream) => {
+  const doc = new PDFDocument({
+    margins: { top: 50, bottom: 50, left: 60, right: 60 },
+    bufferPages: true,
+    info: {
+      Title: `Hợp đồng ba bên ${contract.contract_id}`,
+      Author: 'Hệ thống Fruit Supply Chain',
+      Subject: 'Hợp đồng ba bên',
+      CreationDate: new Date(),
+    },
+  });
 
+  // Đăng ký font
+  try {
+    const fontDir = path.join(process.cwd(), 'fonts');
+    doc.registerFont('Roboto-Regular', path.join(fontDir, 'Roboto-Regular.ttf'));
+    doc.registerFont('Roboto-Bold', path.join(fontDir, 'Roboto-Bold.ttf'));
+    console.log("Đã đăng ký font Roboto");
+  } catch (fontError) {
+    console.error("Lỗi khi đăng ký font:", fontError);
+    doc.font('Helvetica');
+  }
+
+  doc.pipe(stream);
+
+  // Tiêu đề
+  doc
+    .font('Roboto-Bold')
+    .fontSize(18)
+    .text('HỢP ĐỒNG BA BÊN', { align: 'center' });
+  doc
+    .font('Roboto-Regular')
+    .fontSize(12)
+    .text(`Số: ${contract.contract_id}/HĐBB/${new Date(contract.creation_date).getFullYear()}`, { align: 'center' });
+  if (isSigned) {
+    doc
+      .font('Roboto-Bold')
+      .fontSize(11)
+      .fillColor('green')
+      .text('(Đã ký bởi các bên)', { align: 'center' });
+    doc.fillColor('black');
+  }
+  doc.moveDown(2);
+
+  // Thông tin cơ bản
+  doc
+    .font('Roboto-Regular')
+    .fontSize(11)
+    .text('CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM', { align: 'center' })
+    .text('Độc lập - Tự do - Hạnh phúc', { align: 'center' })
+    .text('----------------', { align: 'center' })
+    .moveDown(1);
+  doc
+    .text(`Hôm nay, ngày ${new Date().toLocaleDateString('vi-VN')}, tại _____, chúng tôi gồm:`, 60, doc.y)
+    .moveDown(1);
+
+  // Thông tin các bên
+  doc
+    .font('Roboto-Bold')
+    .fontSize(13)
+    .text('CÁC BÊN THAM GIA HỢP ĐỒNG', { underline: true })
+    .moveDown(0.8);
+
+  const drawPartyInfo = (title, details) => {
+    doc
+      .font('Roboto-Bold')
+      .fontSize(11)
+      .text(title);
+    doc.moveDown(0.3);
+    doc.font('Roboto-Regular').fontSize(10);
+    details.forEach(line => doc.text(line, { indent: 15 }));
+    doc.moveDown(0.7);
+  };
+
+  drawPartyInfo('BÊN A: CƠ QUAN QUẢN LÝ NHÀ NƯỚC (GOVERNMENT)', [
+    'Đại diện: Cơ quan quản lý nông nghiệp',
+    'Địa chỉ: [Địa chỉ cơ quan nhà nước]',
+  ]);
+  drawPartyInfo('BÊN B: BÊN CUNG CẤP (NÔNG TRẠI - FARM)', [
+    `Tên/Chủ sở hữu: ${contract.farm_owner_name || '[Chưa có tên]'}`,
+    `Mã nông trại: ${contract.farm_id}`,
+    `Địa chỉ: ${contract.farm_location || '[Chưa có địa chỉ]'}`,
+  ]);
+  drawPartyInfo('BÊN C: BÊN THU MUA VÀ PHÂN PHỐI (DELIVERY HUB)', [
+    `Tên đơn vị/Cá nhân: ${contract.delivery_hub_name || '[Chưa có tên]'}`,
+    `Địa chỉ ví MetaMask: ${contract.delivery_hub_wallet_address}`,
+  ]);
+  doc.moveDown(1.5);
+
+  // Điều khoản hợp đồng
+  doc
+    .font('Roboto-Bold')
+    .fontSize(13)
+    .text('ĐIỀU KHOẢN HỢP ĐỒNG', { underline: true })
+    .moveDown(0.8);
+  doc
+    .font('Roboto-Regular')
+    .fontSize(10.5)
+    .text(contract.terms || 'Nội dung điều khoản chưa được cung cấp.', {
+      align: 'justify',
+      lineGap: 3,
+    });
+  doc.moveDown(2);
+
+  // Chữ ký
+  if (isSigned) {
+    doc
+      .font('Roboto-Bold')
+      .fontSize(13)
+      .text('XÁC NHẬN CỦA CÁC BÊN', { underline: true })
+      .moveDown(1.5);
+    doc.font('Roboto-Regular').fontSize(10);
+
+    const sigStartY = doc.y;
+    const sigColWidth = (doc.page.width - 120) / 3;
+    const sigStartX1 = 60;
+    const sigStartX2 = sigStartX1 + sigColWidth + 10;
+    const sigStartX3 = sigStartX2 + sigColWidth + 10;
+    const sigImageWidth = Math.min(100, sigColWidth * 0.8);
+    const sigImageHeight = 50;
+
+    const drawSignatureBlock = (title, signatureDataUrl, x, y, isSignedFlag) => {
+      const blockStartY = y;
+      doc
+        .font('Roboto-Bold')
+        .text(title, x, blockStartY, { width: sigColWidth, align: 'center' });
+      doc.moveDown(1);
+      const imageY = doc.y;
+      let blockEndY = imageY;
+
+      if (isSignedFlag && signatureDataUrl && signatureDataUrl.startsWith('data:image/')) {
+        try {
+          const signatureBuffer = Buffer.from(signatureDataUrl.split(',')[1], 'base64');
+          const imageX = x + (sigColWidth - sigImageWidth) / 2;
+          doc.image(signatureBuffer, imageX, imageY, {
+            width: sigImageWidth,
+            height: sigImageHeight,
+            align: 'center',
+          });
+          blockEndY = imageY + sigImageHeight + doc.currentLineHeight() * 2;
+          doc.y = blockEndY;
+        } catch (e) {
+          console.error(`Lỗi hiển thị chữ ký cho ${title}:`, e);
+          doc
+            .font('Roboto-Regular')
+            .fillColor('red')
+            .text('(Lỗi hiển thị chữ ký)', x, imageY, { width: sigColWidth, align: 'center' });
+          doc.fillColor('black');
+          doc.moveDown(3);
+          blockEndY = doc.y;
+        }
+      } else {
+        doc.text('(Chưa ký)', x, imageY, { width: sigColWidth, align: 'center' });
+        doc.moveDown(3);
+        blockEndY = doc.y;
+      }
+      doc.moveDown(0.5);
+      doc.text(`Ngày ký: ___ / ___ / ______`, x, blockEndY - doc.currentLineHeight(), {
+        width: sigColWidth,
+        align: 'center',
+      });
+      return blockEndY;
+    };
+
+    const endY1 = drawSignatureBlock('BÊN A (GOVERNMENT)', contract.government_signature, sigStartX1, sigStartY, contract.is_government_signed);
+    doc.y = sigStartY;
+    const endY2 = drawSignatureBlock('BÊN B (FARM)', contract.farm_signature, sigStartX2, sigStartY, contract.is_farm_signed);
+    doc.y = sigStartY;
+    const endY3 = drawSignatureBlock('BÊN C (DELIVERY HUB)', contract.agent_signature, sigStartX3, sigStartY, contract.is_agent_signed);
+    doc.y = Math.max(endY1, endY2, endY3) + 20;
+  } else {
+    doc
+      .font('Roboto-Bold')
+      .fontSize(13)
+      .text('CHỮ KÝ CÁC BÊN', { underline: true })
+      .moveDown(1.5);
+
+    const sigColWidth = (doc.page.width - 120) / 3;
+    const sigStartX1 = 60;
+    const sigStartX2 = sigStartX1 + sigColWidth + 10;
+    const sigStartX3 = sigStartX2 + sigColWidth + 10;
+    const sigStartY = doc.y;
+
+    const drawEmptySigBlock = (title, x, y) => {
+      doc
+        .font('Roboto-Bold')
+        .fontSize(11)
+        .text(title, x, y, { width: sigColWidth, align: 'center' });
+      doc.moveDown(4);
+      doc
+        .font('Roboto-Regular')
+        .fontSize(10)
+        .text('Ngày ký: ___ / ___ / ______', x, doc.y, { width: sigColWidth, align: 'center' });
+      return doc.y + doc.currentLineHeight();
+    };
+
+    const endY1 = drawEmptySigBlock('BÊN A (GOVERNMENT)', sigStartX1, sigStartY);
+    doc.y = sigStartY;
+    const endY2 = drawEmptySigBlock('BÊN B (FARM)', sigStartX2, sigStartY);
+    doc.y = sigStartY;
+    const endY3 = drawEmptySigBlock('BÊN C (DELIVERY HUB)', sigStartX3, sigStartY);
+    doc.y = Math.max(endY1, endY2, endY3) + 20;
+  }
+
+  // Thêm footer với số trang sau khi tất cả nội dung đã được thêm
+  const range = doc.bufferedPageRange();
+  const totalPages = range.count;
+
+  for (let i = 0; i < totalPages; i++) {
+    doc.switchToPage(i);
+    doc
+      .moveTo(doc.page.margins.left, doc.page.height - doc.page.margins.bottom + 10)
+      .lineTo(doc.page.width - doc.page.margins.right, doc.page.height - doc.page.margins.bottom + 10)
+      .lineWidth(0.5)
+      .strokeOpacity(0.5)
+      .stroke();
+    doc
+      .font('Roboto-Regular')
+      .fontSize(9)
+      .text(`Trang ${i + 1} / ${totalPages}`, doc.page.margins.left, doc.page.height - doc.page.margins.bottom + 15, {
+        align: 'center',
+      });
+  }
+
+  doc.end();
+  console.log(`Đã tạo PDF cho hợp đồng ${contract.contract_id}, isSigned: ${isSigned}, Tổng số trang: ${totalPages}`);
+};
 // ==== API TRẢ VỀ ĐỊA CHỈ HỢP ĐỒNG ====
 app.get("/contract-address", (req, res) => {
   try {
@@ -3313,190 +3542,293 @@ app.get("/government/contracts", checkAuth, checkRole(["Government"]), async (re
 app.post("/government/create-contract", checkAuth, checkRole(["Government"]), async (req, res) => {
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+      await client.query("BEGIN");
 
-    const { farmId, deliveryHubWalletAddress, validityPeriod, totalQuantity, pricePerUnit } = req.body;
+      const { farmId, deliveryHubWalletAddress, validityPeriod, totalQuantity, pricePerUnit } = req.body;
 
-    if (!farmId || !deliveryHubWalletAddress || !validityPeriod || !totalQuantity || !pricePerUnit) {
-      throw new Error("Vui lòng cung cấp đầy đủ thông tin!");
-    }
-
-    if (!web3.utils.isAddress(deliveryHubWalletAddress)) {
-      throw new Error("Địa chỉ ví của DeliveryHub không hợp lệ!");
-    }
-
-    const farmResult = await pool.query("SELECT * FROM farms WHERE farm_name = $1", [farmId]);
-    if (farmResult.rows.length === 0) {
-      throw new Error("Farm không tồn tại trong cơ sở dữ liệu!");
-    }
-
-    const farm = farmResult.rows[0];
-    const farmLocation = farm.location || "Không xác định";
-
-    const validityPeriodSeconds = Number(validityPeriod) * 24 * 60 * 60;
-    if (isNaN(validityPeriodSeconds) || validityPeriodSeconds <= 0) {
-      throw new Error("Thời hạn hợp đồng không hợp lệ!");
-    }
-
-    const totalQty = Number(totalQuantity);
-    if (isNaN(totalQty) || totalQty <= 0) {
-      throw new Error("Tổng số lượng không hợp lệ!");
-    }
-
-    const price = Number(pricePerUnit);
-    if (isNaN(price) || price <= 0) {
-      throw new Error("Giá mỗi đơn vị không hợp lệ!");
-    }
-
-    const priceInWei = web3.utils.toWei(price.toString(), "ether");
-
-    // Chuẩn hóa địa chỉ ví thành chữ thường trước khi sử dụng
-    const normalizedDeliveryHubWalletAddress = deliveryHubWalletAddress.toLowerCase();
-
-    const terms = `
-Hợp đồng ba bên giữa Chính phủ, Farm và DeliveryHub:
-
-1. **Thông tin Farm**:
-   - Farm ID: ${farmId}
-   - Địa điểm: ${farmLocation}
-
-2. **Thông tin DeliveryHub**:
-   - Địa chỉ ví MetaMask: ${normalizedDeliveryHubWalletAddress}
-
-3. **Chi tiết hợp đồng**:
-   - Tổng số lượng: ${totalQty} hộp
-   - Giá mỗi đơn vị: ${price} ETH
-   - Thời hạn hợp đồng: ${validityPeriod} ngày (tương đương ${validityPeriodSeconds} giây)
-   - Ngày bắt đầu: ${new Date().toLocaleString("vi-VN")}
-
-4. **Điều khoản bổ sung**:
-   - Farm cam kết cung cấp sản phẩm đạt tiêu chuẩn chất lượng.
-   - DeliveryHub chịu trách nhiệm phân phối và thanh toán đúng hạn.
-   - Chính phủ giám sát và đảm bảo tính minh bạch của hợp đồng.
-
-Hợp đồng này có hiệu lực khi được tất cả các bên ký kết.
-    `.trim();
-
-    const accounts = await web3.eth.getAccounts();
-    const governmentAccount = accounts[0];
-
-    console.log("Tạo hợp đồng với thông tin:", {
-      farmId,
-      deliveryHubWalletAddress: normalizedDeliveryHubWalletAddress,
-      validityPeriodSeconds,
-      totalQuantity: totalQty,
-      priceInWei,
-      terms,
-      governmentAccount,
-    });
-
-    let gasEstimate;
-    try {
-      gasEstimate = await governmentRegulator.methods
-        .createTripartyContract(
-          farmId,
-          normalizedDeliveryHubWalletAddress,
-          validityPeriodSeconds,
-          totalQty,
-          priceInWei,
-          terms
-        )
-        .estimateGas({ from: governmentAccount });
-    } catch (gasError) {
-      console.error("Lỗi khi ước tính gas:", gasError);
-      throw new Error("Không thể ước tính gas cho giao dịch: " + gasError.message);
-    }
-
-    let tx;
-    try {
-      tx = await governmentRegulator.methods
-        .createTripartyContract(
-          farmId,
-          normalizedDeliveryHubWalletAddress,
-          validityPeriodSeconds,
-          totalQty,
-          priceInWei,
-          terms
-        )
-        .send({ from: governmentAccount, gas: Math.floor(Number(gasEstimate) * 1.5) });
-    } catch (txError) {
-      console.error("Lỗi khi gửi giao dịch blockchain:", txError);
-      throw new Error("Giao dịch blockchain thất bại: " + txError.message);
-    }
-
-    if (!tx.status) {
-      throw new Error("Giao dịch tạo hợp đồng thất bại!");
-    }
-
-    const contractId = Number(await governmentRegulator.methods.contractCount().call());
-    const contractData = await governmentRegulator.methods.checkContractStatus(contractId).call();
-
-    const contract = {
-      contractId,
-      farmId: contractData.farmId,
-      deliveryHubWalletAddress: contractData.agentAddress.toLowerCase(),
-      creationDate: new Date(Number(contractData.creationDate) * 1000),
-      expiryDate: new Date(Number(contractData.expiryDate) * 1000),
-      totalQuantity: Number(contractData.totalQuantity),
-      pricePerUnit: Number(web3.utils.fromWei(contractData.pricePerUnit, "ether")),
-      terms: terms,
-      isActive: contractData.isActive,
-      isCompleted: contractData.isCompleted,
-    };
-
-    await client.query(
-      `
-      INSERT INTO triparty_contracts (contract_id, farm_id, delivery_hub_wallet_address, creation_date, expiry_date, total_quantity, price_per_unit, terms, is_active, is_completed)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      `,
-      [
-        contract.contractId,
-        contract.farmId,
-        contract.deliveryHubWalletAddress,
-        contract.creationDate,
-        contract.expiryDate,
-        contract.totalQuantity,
-        contract.pricePerUnit,
-        contract.terms,
-        contract.isActive,
-        contract.isCompleted,
-      ]
-    );
-
-    try {
-      await syncFarmStats(farmId);
-    } catch (farmStatError) {
-      console.error(`Lỗi khi đồng bộ thống kê farm ${farmId}:`, farmStatError);
-      throw new Error(`Không thể đồng bộ thống kê farm: ${farmStatError.message}`);
-    }
-
-    const farmLocationResult = await pool.query("SELECT location FROM farms WHERE farm_name = $1", [farmId]);
-    if (farmLocationResult.rows.length > 0) {
-      const province = farmLocationResult.rows[0].location;
-      try {
-        await syncProvinceStats(province);
-      } catch (provinceStatError) {
-        console.error(`Lỗi khi đồng bộ thống kê tỉnh ${province}:`, provinceStatError);
-        throw new Error(`Không thể đồng bộ thống kê tỉnh: ${provinceStatError.message}`);
+      if (!farmId || !deliveryHubWalletAddress || !validityPeriod || !totalQuantity || !pricePerUnit) {
+          throw new Error("Vui lòng cung cấp đầy đủ thông tin!");
       }
-    }
 
-    await client.query("COMMIT");
-    res.status(200).json({
-      message: "Tạo hợp đồng ba bên thành công!",
-      contractId,
-      transactionHash: tx.transactionHash,
-    });
+      if (!web3.utils.isAddress(deliveryHubWalletAddress)) {
+          throw new Error("Địa chỉ ví của DeliveryHub không hợp lệ!");
+      }
+
+      const farmResult = await pool.query("SELECT * FROM farms WHERE farm_name = $1", [farmId]);
+      if (farmResult.rows.length === 0) {
+          throw new Error("Farm không tồn tại trong cơ sở dữ liệu!");
+      }
+      const farm = farmResult.rows[0];
+
+      const producerResult = await pool.query("SELECT name FROM users WHERE id = $1", [farm.producer_id]);
+      const farmOwnerName = producerResult.rows.length > 0 ? producerResult.rows[0].name : '[Chưa có tên chủ farm]';
+      const farmLocation = farm.location || '[Chưa có địa chỉ farm]';
+
+      const deliveryHubUserResult = await pool.query(
+          "SELECT name FROM users WHERE LOWER(wallet_address) = LOWER($1) AND role = 'DeliveryHub'",
+          [deliveryHubWalletAddress]
+      );
+      const deliveryHubName = deliveryHubUserResult.rows.length > 0 ? deliveryHubUserResult.rows[0].name : '[Chưa có tên Delivery Hub]';
+
+      const validityPeriodSeconds = Number(validityPeriod) * 24 * 60 * 60;
+      if (isNaN(validityPeriodSeconds) || validityPeriodSeconds <= 0) {
+          throw new Error("Thời hạn hợp đồng không hợp lệ!");
+      }
+
+      const totalQty = Number(totalQuantity);
+      if (isNaN(totalQty) || totalQty <= 0) {
+          throw new Error("Tổng số lượng không hợp lệ!");
+      }
+
+      const price = Number(pricePerUnit);
+      if (isNaN(price) || price <= 0) {
+          throw new Error("Giá mỗi đơn vị không hợp lệ!");
+      }
+
+      const priceInWei = web3.utils.toWei(price.toString(), "ether");
+      const normalizedDeliveryHubWalletAddress = deliveryHubWalletAddress.toLowerCase();
+      const currentDate = new Date();
+      const creationDateString = currentDate.toLocaleString('vi-VN');
+      const expiryDate = new Date(currentDate.getTime() + validityPeriodSeconds * 1000);
+      const expiryDateString = expiryDate.toLocaleString('vi-VN');
+
+      const terms = `
+CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+Độc lập - Tự do - Hạnh phúc
+----------------
+
+HỢP ĐỒNG BA BÊN VỀ CUNG CẤP VÀ TIÊU THỤ NÔNG SẢN
+Số: _____/HĐBB/${currentDate.getFullYear()}
+
+Hôm nay, ngày ${currentDate.getDate()} tháng ${currentDate.getMonth() + 1} năm ${currentDate.getFullYear()}, tại _____, chúng tôi gồm:
+
+1. BÊN A: CƠ QUAN QUẢN LÝ NHÀ NƯỚC (GOVERNMENT)
+ - Đại diện: Cơ quan quản lý nông nghiệp
+ - Địa chỉ: [Địa chỉ cơ quan nhà nước]
+ - Đại diện: Ông/Bà [Tên người đại diện]
+
+2. BÊN B: BÊN CUNG CẤP (NÔNG TRẠI - FARM)
+ - Tên nông trại/Chủ sở hữu: ${farmOwnerName}
+ - Mã nông trại: ${farmId}
+ - Địa chỉ: ${farmLocation}
+ - Đại diện: Ông/Bà ${farmOwnerName}
+
+3. BÊN C: BÊN THU MUA VÀ PHÂN PHỐI (DELIVERY HUB)
+ - Tên đơn vị/Cá nhân: ${deliveryHubName}
+ - Địa chỉ ví MetaMask: ${normalizedDeliveryHubWalletAddress}
+ - Đại diện: Ông/Bà ${deliveryHubName}
+
+Các bên cùng thỏa thuận ký kết hợp đồng với các điều khoản sau:
+
+Điều 1: Đối tượng và Nội dung Hợp đồng
+1.1. Bên B đồng ý cung cấp và Bên C đồng ý thu mua sản phẩm nông sản với thông tin:
+ - Tổng sản lượng cam kết: ${totalQty} đơn vị.
+1.2. Mục đích: Phân phối và tiêu thụ sản phẩm trên thị trường.
+1.3. Bên A giám sát việc tuân thủ hợp đồng và đảm bảo minh bạch qua Blockchain.
+
+Điều 2: Chất lượng và Quy cách Sản phẩm
+2.1. Bên B cam kết sản phẩm đáp ứng tiêu chuẩn chất lượng theo quy định.
+2.2. Bên C có quyền kiểm tra và từ chối nếu sản phẩm không đạt yêu cầu.
+
+Điều 3: Thời gian, Địa điểm và Phương thức Giao nhận
+3.1. Thời gian giao hàng: Theo thỏa thuận.
+3.2. Địa điểm: Tại kho của Bên C hoặc nơi hai bên thống nhất.
+3.3. Phương thức: Bên B chịu chi phí vận chuyển, trừ khi có thỏa thuận khác.
+
+Điều 4: Giá cả và Phương thức Thanh toán
+4.1. Đơn giá: ${price.toLocaleString('vi-VN')} ETH/đơn vị.
+4.2. Tổng giá trị: ${(totalQty * price).toLocaleString('vi-VN')} ETH.
+4.3. Thanh toán qua hợp đồng thông minh trên Blockchain.
+
+Điều 5: Thời hạn Hợp đồng
+5.1. Hiệu lực: Từ ${creationDateString} đến ${expiryDateString}.
+5.2. Thanh lý: Khi hoàn tất giao hàng và thanh toán.
+
+Điều 6: Quyền và Nghĩa vụ của các Bên
+6.1. Bên A: Giám sát, hỗ trợ giải quyết tranh chấp.
+6.2. Bên B: Cung cấp sản phẩm đúng chất lượng, nhận thanh toán.
+6.3. Bên C: Nhận sản phẩm, thanh toán đúng hạn, phân phối.
+
+Điều 7: Bảo mật và Công nghệ Blockchain
+7.1. Bảo mật thông tin, trừ dữ liệu công khai trên Blockchain.
+7.2. Giao dịch được ghi nhận trên Blockchain để đảm bảo minh bạch.
+
+Điều 8: Bất khả kháng và Tranh chấp
+8.1. Bất khả kháng theo pháp luật Việt Nam.
+8.2. Tranh chấp giải quyết bằng thương lượng hoặc tại Tòa án.
+
+Điều 9: Điều khoản Chung
+9.1. Hợp đồng lập thành 03 bản, mỗi bên giữ 01 bản.
+9.2. Sửa đổi phải có văn bản xác nhận của các bên.
+9.3. Hiệu lực khi được ký bởi cả ba bên.
+
+Các bên đồng ý ký tên/xác nhận dưới đây.
+      `.trim();
+
+      const accounts = await web3.eth.getAccounts();
+      const governmentAccount = accounts[0];
+
+      console.log("Tạo hợp đồng với thông tin:", {
+          farmId,
+          deliveryHubWalletAddress: normalizedDeliveryHubWalletAddress,
+          validityPeriodSeconds,
+          totalQuantity: totalQty,
+          priceInWei,
+          terms,
+          governmentAccount,
+      });
+
+      let gasEstimate;
+      try {
+          await governmentRegulator.methods
+              .createTripartyContract(
+                  farmId,
+                  normalizedDeliveryHubWalletAddress,
+                  validityPeriodSeconds,
+                  totalQty,
+                  priceInWei,
+                  terms
+              )
+              .call({ from: governmentAccount });
+          gasEstimate = await governmentRegulator.methods
+              .createTripartyContract(
+                  farmId,
+                  normalizedDeliveryHubWalletAddress,
+                  validityPeriodSeconds,
+                  totalQty,
+                  priceInWei,
+                  terms
+              )
+              .estimateGas({ from: governmentAccount });
+          console.log("Ước tính gas thành công:", gasEstimate);
+      } catch (gasError) {
+          console.error("Lỗi khi ước tính gas:", gasError);
+          let errorMessage = "Không thể ước tính gas cho giao dịch.";
+          if (gasError.message.includes("revert")) {
+              errorMessage += " Kiểm tra các điều kiện trong smart contract.";
+          } else if (gasError.message.includes("insufficient funds")) {
+              errorMessage = "Không đủ ETH trong tài khoản.";
+          } else {
+              errorMessage += ` Chi tiết: ${gasError.message}`;
+          }
+          throw new Error(errorMessage);
+      }
+
+      let tx;
+      try {
+          const adjustedGas = BigInt(gasEstimate) + (BigInt(gasEstimate) / BigInt(5));
+          tx = await governmentRegulator.methods
+              .createTripartyContract(
+                  farmId,
+                  normalizedDeliveryHubWalletAddress,
+                  validityPeriodSeconds,
+                  totalQty,
+                  priceInWei,
+                  terms
+              )
+              .send({ from: governmentAccount, gas: adjustedGas.toString() });
+          console.log("Giao dịch gửi thành công, hash:", tx.transactionHash);
+      } catch (txError) {
+          console.error("Lỗi khi gửi giao dịch blockchain:", txError);
+          let errorMessage = "Giao dịch blockchain thất bại.";
+          if (txError.message.includes("User denied transaction signature")) {
+              errorMessage = "Người dùng từ chối ký giao dịch.";
+          } else if (txError.receipt) {
+              errorMessage += ` Trạng thái: ${txError.receipt.status}.`;
+          } else {
+              errorMessage += ` Chi tiết: ${txError.message}`;
+          }
+          throw new Error(errorMessage);
+      }
+
+      if (!tx || !tx.status) {
+          throw new Error(`Giao dịch tạo hợp đồng thất bại! Hash: ${tx?.transactionHash || 'Không có hash'}`);
+      }
+
+      const contractId = Number(await governmentRegulator.methods.contractCount().call());
+      const contractDataBlockchain = await governmentRegulator.methods.checkContractStatus(contractId).call();
+
+      const newContractDB = {
+          contractId,
+          farmId: contractDataBlockchain.farmId,
+          deliveryHubWalletAddress: contractDataBlockchain.agentAddress.toLowerCase(),
+          creationDate: new Date(Number(contractDataBlockchain.creationDate) * 1000),
+          expiryDate: new Date(Number(contractDataBlockchain.expiryDate) * 1000),
+          totalQuantity: Number(contractDataBlockchain.totalQuantity),
+          pricePerUnit: Number(web3.utils.fromWei(contractDataBlockchain.pricePerUnit, "ether")),
+          terms: contractDataBlockchain.terms,
+          isActive: contractDataBlockchain.isActive,
+          isCompleted: contractDataBlockchain.isCompleted,
+          farm_signature: null,
+          agent_signature: null,
+          government_signature: null,
+          is_farm_signed: false,
+          is_agent_signed: false,
+          is_government_signed: false,
+      };
+
+      await client.query(
+          `
+          INSERT INTO triparty_contracts (
+              contract_id, farm_id, delivery_hub_wallet_address, creation_date, expiry_date,
+              total_quantity, price_per_unit, terms, is_active, is_completed,
+              farm_signature, agent_signature, government_signature,
+              is_farm_signed, is_agent_signed, is_government_signed
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+          `,
+          [
+              newContractDB.contractId,
+              newContractDB.farmId,
+              newContractDB.deliveryHubWalletAddress,
+              newContractDB.creationDate,
+              newContractDB.expiryDate,
+              newContractDB.totalQuantity,
+              newContractDB.pricePerUnit,
+              newContractDB.terms,
+              newContractDB.isActive,
+              newContractDB.isCompleted,
+              newContractDB.farm_signature,
+              newContractDB.agent_signature,
+              newContractDB.government_signature,
+              newContractDB.is_farm_signed,
+              newContractDB.is_agent_signed,
+              newContractDB.is_government_signed,
+          ]
+      );
+
+      try {
+          await syncFarmStats(farmId);
+      } catch (farmStatError) {
+          console.error(`Lỗi khi đồng bộ thống kê farm ${farmId}:`, farmStatError);
+      }
+
+      const farmLocationResult = await pool.query("SELECT location FROM farms WHERE farm_name = $1", [farmId]);
+      if (farmLocationResult.rows.length > 0) {
+          const province = farmLocationResult.rows[0].location;
+          try {
+              await syncProvinceStats(province);
+          } catch (provinceStatError) {
+              console.error(`Lỗi khi đồng bộ thống kê tỉnh ${province}:`, provinceStatError);
+          }
+      }
+
+      await client.query("COMMIT");
+      res.status(200).json({
+          message: "Tạo hợp đồng ba bên thành công!",
+          contractId,
+          transactionHash: tx.transactionHash,
+      });
   } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Lỗi khi tạo hợp đồng ba bên:", error);
-    res.status(500).json({
-      error: "Lỗi máy chủ nội bộ",
-      details: error.message,
-      suggestion: "Vui lòng kiểm tra log server để biết thêm chi tiết."
-    });
+      await client.query("ROLLBACK");
+      console.error("Lỗi khi tạo hợp đồng ba bên:", error);
+      res.status(500).json({
+          error: "Lỗi khi tạo hợp đồng",
+          details: error.message || "Lỗi không xác định",
+          suggestion: "Kiểm tra kết nối blockchain, số dư tài khoản, và dữ liệu đầu vào.",
+      });
   } finally {
-    client.release();
+      client.release();
   }
 });
 
@@ -3705,99 +4037,47 @@ app.get("/government/provinces", checkAuth, checkRole(["Government"]), async (re
 // API tạo và tải PDF hợp đồng
 app.get("/government/contract/pdf/:contractId", checkAuth, checkRole(["Government"]), async (req, res) => {
   try {
-    const { contractId } = req.params;
+      const { contractId } = req.params;
 
-    const contractResult = await pool.query(
-      "SELECT * FROM triparty_contracts WHERE contract_id = $1",
-      [contractId]
-    );
+      const contractResult = await pool.query(
+          `
+          SELECT c.*,
+                 f.farm_name as farm_id,
+                 COALESCE(u_farm.name, '[Chưa có tên]') as farm_owner_name,
+                 f.location as farm_location,
+                 COALESCE(u_hub.name, '[Chưa có tên]') as delivery_hub_name
+          FROM triparty_contracts c
+          LEFT JOIN farms f ON c.farm_id = f.farm_name
+          LEFT JOIN users u_farm ON f.producer_id = u_farm.id
+          LEFT JOIN users u_hub ON LOWER(c.delivery_hub_wallet_address) = LOWER(u_hub.wallet_address) AND u_hub.role = 'DeliveryHub'
+          WHERE c.contract_id = $1
+          `,
+          [contractId]
+      );
 
-    if (contractResult.rows.length === 0) {
-      return res.status(404).json({
-        error: `Hợp đồng với ID ${contractId} không tồn tại`,
-        suggestion: "Vui lòng kiểm tra lại ID hợp đồng"
-      });
-    }
+      if (contractResult.rows.length === 0) {
+          return res.status(404).json({
+              error: `Hợp đồng với ID ${contractId} không tồn tại`,
+              suggestion: "Vui lòng kiểm tra lại ID hợp đồng",
+          });
+      }
+      const contract = contractResult.rows[0];
 
-    const contract = contractResult.rows[0];
+      const filename = `Hop_dong_ba_ben_${contract.contract_id}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-    const doc = new PDFDocument({ margin: 50 });
-
-    doc.registerFont('Roboto', path.join(process.cwd(), 'fonts/Roboto-Regular.ttf'));
-    doc.font('Roboto');
-
-    res.setHeader('Content-Type', 'application/pdf');
-    const encodedFilename = encodeURIComponent(`Hợp đồng ba bên ${contract.contract_id}.pdf`);
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
-
-    doc.pipe(res);
-
-    doc.fontSize(20).text('HỢP ĐỒNG BA BÊN', { align: 'center' });
-    doc.moveDown(1);
-
-    doc.fontSize(14).text('THÔNG TIN HỢP ĐỒNG', { align: 'center', underline: true });
-    doc.moveDown(1);
-
-    const labelWidth = 150;
-    const startX = 50;
-    const startY = doc.y;
-
-    const fields = [
-      { label: 'ID Hợp Đồng:', value: contract.contract_id },
-      { label: 'Farm ID:', value: contract.farm_id },
-      { label: 'Địa Chỉ DeliveryHub:', value: contract.delivery_hub_wallet_address },
-      { label: 'Ngày Tạo:', value: new Date(contract.creation_date).toLocaleString('vi-VN') },
-      { label: 'Ngày Hết Hạn:', value: new Date(contract.expiry_date).toLocaleString('vi-VN') },
-      { label: 'Tổng Số Lượng:', value: `${contract.total_quantity} hộp` },
-      { label: 'Giá Mỗi Đơn Vị:', value: `${Number(contract.price_per_unit).toFixed(2)} ETH` },
-    ];
-
-    doc.fontSize(12);
-    fields.forEach(field => {
-      doc.text(field.label, startX, doc.y, { width: labelWidth, continued: true });
-      doc.text(field.value, startX + labelWidth, doc.y, { width: 300 });
-      doc.moveDown(0.5);
-    });
-
-    doc.moveDown(2);
-
-    doc.fontSize(14).text('ĐIỀU KHOẢN HỢP ĐỒNG', { align: 'center', underline: true });
-    doc.moveDown(1);
-    doc.fontSize(12).text(contract.terms, { align: 'justify' });
-    doc.moveDown(2);
-
-    doc.fontSize(14).text('CHỮ KÝ CÁC BÊN', { align: 'center', underline: true });
-    doc.moveDown(1);
-
-    const signatureSpacing = 150;
-    const signatureStartX = 50;
-
-    doc.fontSize(12).text('BÊN FARM', signatureStartX, doc.y);
-    doc.moveDown(0.5);
-    doc.text('__________________________', signatureStartX, doc.y);
-    doc.text('Ngày ___ tháng ___ năm ___', signatureStartX, doc.y);
-    doc.moveDown(2);
-
-    doc.fontSize(12).text('BÊN DELIVERYHUB', signatureStartX + signatureSpacing, doc.y - 85);
-    doc.moveDown(0.5);
-    doc.text('__________________________', signatureStartX + signatureSpacing, doc.y);
-    doc.text('Ngày ___ tháng ___ năm ___', signatureStartX + signatureSpacing, doc.y);
-    doc.moveDown(2);
-
-    doc.fontSize(12).text('CHÍNH PHỦ (GOVERNMENT)', signatureStartX + 2 * signatureSpacing, doc.y - 85);
-    doc.moveDown(0.5);
-    doc.text('__________________________', signatureStartX + 2 * signatureSpacing, doc.y);
-    doc.text('Ngày ___ tháng ___ năm ___', signatureStartX + 2 * signatureSpacing, doc.y);
-
-    doc.end();
+      console.log(`Bắt đầu tạo PDF chưa ký cho hợp đồng ${contractId}`);
+      generateContractPDF(contract, false, res);
 
   } catch (error) {
-    console.error("Lỗi khi tạo PDF hợp đồng:", error);
-    res.status(500).json({
-      error: "Lỗi máy chủ nội bộ",
-      details: error.message,
-      suggestion: "Vui lòng kiểm tra log server để biết thêm chi tiết."
-    });
+      console.error("Lỗi khi tạo PDF hợp đồng chưa ký:", error);
+      if (!res.headersSent) {
+          res.status(500).json({
+              error: "Lỗi máy chủ nội bộ khi tạo PDF",
+              details: error.message,
+          });
+      }
   }
 });
 // API lấy danh sách hợp đồng của người dùng
@@ -3950,133 +4230,54 @@ app.post("/contract/sign/:contractId", checkAuth, async (req, res) => {
 });
 
 // API tạo PDF đã ký
-import { Readable } from 'stream';
-
-// API tạo PDF đã ký - Cho phép tất cả người dùng đã đăng nhập tải PDF
-// API tạo PDF đã ký - Cho phép tất cả người dùng đã đăng nhập tải PDF
 app.get("/contract/signed/pdf/:contractId", checkAuth, async (req, res) => {
   try {
-    const { contractId } = req.params;
+      const { contractId } = req.params;
 
-    // Kiểm tra hợp đồng
-    const contractResult = await pool.query(
-      "SELECT * FROM triparty_contracts WHERE contract_id = $1",
-      [contractId]
-    );
+      const contractResult = await pool.query(
+          `
+          SELECT c.*,
+                 f.farm_name as farm_id,
+                 COALESCE(u_farm.name, '[Chưa có tên]') as farm_owner_name,
+                 f.location as farm_location,
+                 COALESCE(u_hub.name, '[Chưa có tên]') as delivery_hub_name
+          FROM triparty_contracts c
+          LEFT JOIN farms f ON c.farm_id = f.farm_name
+          LEFT JOIN users u_farm ON f.producer_id = u_farm.id
+          LEFT JOIN users u_hub ON LOWER(c.delivery_hub_wallet_address) = LOWER(u_hub.wallet_address) AND u_hub.role = 'DeliveryHub'
+          WHERE c.contract_id = $1
+          `,
+          [contractId]
+      );
 
-    if (contractResult.rows.length === 0) {
-      return res.status(404).json({
-        error: `Hợp đồng với ID ${contractId} không tồn tại`,
-        suggestion: "Vui lòng kiểm tra lại ID hợp đồng"
-      });
-    }
+      if (contractResult.rows.length === 0) {
+          return res.status(404).json({
+              error: `Hợp đồng với ID ${contractId} không tồn tại`,
+          });
+      }
+      const contract = contractResult.rows[0];
 
-    const contract = contractResult.rows[0];
+      if (!contract.is_farm_signed || !contract.is_agent_signed || !contract.is_government_signed) {
+          return res.status(400).json({
+              error: "Hợp đồng chưa được ký bởi tất cả các bên!",
+          });
+      }
 
-    // Kiểm tra xem cả 3 bên đã ký chưa
-    if (!contract.is_farm_signed || !contract.is_agent_signed || !contract.is_government_signed) {
-      return res.status(400).json({
-        error: "Hợp đồng chưa được ký bởi tất cả các bên!"
-      });
-    }
+      const filename = `Hop_dong_ba_ben_${contract.contract_id}_Da_ky.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-    // Tạo PDF
-    const doc = new PDFDocument({ margin: 50 });
-
-    doc.registerFont('Roboto', path.join(process.cwd(), 'fonts/Roboto-Regular.ttf'));
-    doc.font('Roboto');
-
-    res.setHeader('Content-Type', 'application/pdf');
-    const encodedFilename = encodeURIComponent(`Hợp đồng ba bên ${contract.contract_id} - Đã ký.pdf`);
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
-
-    doc.pipe(res);
-
-    doc.fontSize(20).text('HỢP ĐỒNG BA BÊN', { align: 'center' });
-    doc.moveDown(1);
-
-    doc.fontSize(14).text('THÔNG TIN HỢP ĐỒNG', { align: 'center', underline: true });
-    doc.moveDown(1);
-
-    const labelWidth = 150;
-    const startX = 50;
-    const fields = [
-      { label: 'ID Hợp Đồng:', value: contract.contract_id },
-      { label: 'Farm ID:', value: contract.farm_id },
-      { label: 'Địa Chỉ DeliveryHub:', value: contract.delivery_hub_wallet_address },
-      { label: 'Ngày Tạo:', value: new Date(contract.creation_date).toLocaleString('vi-VN') },
-      { label: 'Ngày Hết Hạn:', value: new Date(contract.expiry_date).toLocaleString('vi-VN') },
-      { label: 'Tổng Số Lượng:', value: `${contract.total_quantity} hộp` },
-      { label: 'Giá Mỗi Đơn Vị:', value: `${Number(contract.price_per_unit).toFixed(2)} ETH` },
-    ];
-
-    doc.fontSize(12);
-    fields.forEach(field => {
-      doc.text(field.label, startX, doc.y, { width: labelWidth, continued: true });
-      doc.text(field.value, startX + labelWidth, doc.y, { width: 300 });
-      doc.moveDown(0.5);
-    });
-
-    doc.moveDown(2);
-
-    doc.fontSize(14).text('ĐIỀU KHOẢN HỢP ĐỒNG', { align: 'center', underline: true });
-    doc.moveDown(1);
-    doc.fontSize(12).text(contract.terms, { align: 'justify' });
-    doc.moveDown(2);
-
-    doc.fontSize(14).text('CHỮ KÝ CÁC BÊN', { align: 'center', underline: true });
-    doc.moveDown(1);
-
-    const signatureSpacing = 150;
-    const signatureStartX = 50;
-    const signatureWidth = 100;
-    const signatureHeight = 50;
-
-    // Chữ ký bên Farm
-    doc.fontSize(12).text('BÊN FARM', signatureStartX, doc.y);
-    doc.moveDown(0.5);
-    // Truyền Buffer trực tiếp thay vì Readable stream
-    const farmSignatureBuffer = Buffer.from(contract.farm_signature.split(',')[1], 'base64');
-    doc.image(farmSignatureBuffer, signatureStartX, doc.y, {
-      width: signatureWidth,
-      height: signatureHeight
-    });
-    doc.moveDown(3);
-    doc.text('Ngày ___ tháng ___ năm ___', signatureStartX, doc.y);
-
-    // Chữ ký bên DeliveryHub
-    doc.fontSize(12).text('BÊN DELIVERYHUB', signatureStartX + signatureSpacing, doc.y - 85);
-    doc.moveDown(0.5);
-    // Truyền Buffer trực tiếp thay vì Readable stream
-    const agentSignatureBuffer = Buffer.from(contract.agent_signature.split(',')[1], 'base64');
-    doc.image(agentSignatureBuffer, signatureStartX + signatureSpacing, doc.y, {
-      width: signatureWidth,
-      height: signatureHeight
-    });
-    doc.moveDown(3);
-    doc.text('Ngày ___ tháng ___ năm ___', signatureStartX + signatureSpacing, doc.y);
-
-    // Chữ ký bên Government
-    doc.fontSize(12).text('CHÍNH PHỦ (GOVERNMENT)', signatureStartX + 2 * signatureSpacing, doc.y - 85);
-    doc.moveDown(0.5);
-    // Truyền Buffer trực tiếp thay vì Readable stream
-    const governmentSignatureBuffer = Buffer.from(contract.government_signature.split(',')[1], 'base64');
-    doc.image(governmentSignatureBuffer, signatureStartX + 2 * signatureSpacing, doc.y, {
-      width: signatureWidth,
-      height: signatureHeight
-    });
-    doc.moveDown(3);
-    doc.text('Ngày ___ tháng ___ năm ___', signatureStartX + 2 * signatureSpacing, doc.y);
-
-    doc.end();
+      console.log(`Bắt đầu tạo PDF đã ký cho hợp đồng ${contractId}`);
+      generateContractPDF(contract, true, res);
 
   } catch (error) {
-    console.error("Lỗi khi tạo PDF đã ký:", error);
-    res.status(500).json({
-      error: "Lỗi máy chủ nội bộ",
-      details: error.message,
-      suggestion: "Vui lòng kiểm tra log server để biết thêm chi tiết."
-    });
+      console.error("Lỗi khi tạo PDF hợp đồng đã ký:", error);
+      if (!res.headersSent) {
+          res.status(500).json({
+              error: "Lỗi máy chủ nội bộ khi tạo PDF",
+              details: error.message,
+          });
+      }
   }
 });
 // Phục vụ file tĩnh từ thư mục uploads
