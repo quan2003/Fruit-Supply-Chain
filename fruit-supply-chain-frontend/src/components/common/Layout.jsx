@@ -111,8 +111,8 @@ const Layout = ({ children }) => {
         return "Nhà quản lý";
       case "Customer":
         return "Người tiêu dùng";
-      case "ThirdParty":
-        return "Nhà vận chuyển";
+      case "Government":
+        return "Cơ quan quản lý";
       case "DeliveryHub":
         return "Trung tâm phân phối";
       default:
@@ -308,10 +308,10 @@ const Layout = ({ children }) => {
                     <MenuItem
                       onClick={() => {
                         handleLoginClose();
-                        navigate("/dang-nhap?role=ThirdParty");
+                        navigate("/dang-nhap?role=Government");
                       }}
                     >
-                      Nhà vận chuyển
+                      Cơ quan quản lý
                     </MenuItem>
                     <MenuItem
                       onClick={() => {
@@ -372,10 +372,10 @@ const Layout = ({ children }) => {
                     <MenuItem
                       onClick={() => {
                         handleRegisterClose();
-                        navigate("/dang-ky?role=ThirdParty");
+                        navigate("/dang-ky?role=Government");
                       }}
                     >
-                      Nhà vận chuyển
+                      Cơ quan quản lý
                     </MenuItem>
                     <MenuItem
                       onClick={() => {

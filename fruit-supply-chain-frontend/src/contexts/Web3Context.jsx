@@ -1,113 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Web3 } from "web3";
+import { ethers } from "ethers"; // Sử dụng ethers thay vì web3.js
 import axios from "axios";
 import contractData from "../contracts/FruitSupplyChain.json";
-
-const getContractAddress = async () => {
-  try {
-    const response = await axios.get("http://localhost:3000/contract-address");
-    console.log("Địa chỉ hợp đồng từ backend:", response.data.address);
-    if (
-      !response.data.address ||
-      !Web3.utils.isAddress(response.data.address)
-    ) {
-      throw new Error(
-        "Địa chỉ hợp đồng không hợp lệ: " + response.data.address
-      );
-    }
-    return response.data.address;
-  } catch (error) {
-    console.error("Lỗi khi lấy địa chỉ hợp đồng từ backend:", error);
-    throw new Error(
-      "Không thể lấy địa chỉ hợp đồng từ backend: " + error.message
-    );
-  }
-};
-
-const contractABI = contractData.abi;
-
-function convertABIIfNeeded(abi) {
-  if (abi.length > 0 && typeof abi[0] === "object") {
-    console.log("ABI đã ở định dạng đúng");
-    return abi;
-  }
-  console.log("Chuyển đổi ABI từ signature format sang full JSON format");
-  const convertedABI = abi.map((item) => {
-    if (typeof item !== "string") return item;
-    if (item.startsWith("event ")) {
-      const eventName = item.substring(6, item.indexOf("("));
-      const paramsStr = item.substring(
-        item.indexOf("(") + 1,
-        item.indexOf(")")
-      );
-      const params = paramsStr ? paramsStr.split(",") : [];
-      return {
-        type: "event",
-        name: eventName,
-        inputs: params.map((param, index) => {
-          const parts = param.trim().split(" ");
-          const indexed = parts.includes("indexed");
-          const type = parts[indexed ? 1 : 0];
-          return { name: `param${index}`, type: type, indexed: indexed };
-        }),
-        anonymous: false,
-      };
-    } else if (item.startsWith("function ")) {
-      const functionStr = item.substring(9);
-      const functionName = functionStr.substring(0, functionStr.indexOf("("));
-      const paramsStr = functionStr.substring(
-        functionStr.indexOf("(") + 1,
-        functionStr.indexOf(")")
-      );
-      const params = paramsStr ? paramsStr.split(",") : [];
-      const isView = functionStr.includes(" view ");
-      const isPure = functionStr.includes(" pure ");
-      const isPayable = functionStr.includes(" payable ");
-      let outputs = [];
-      if (functionStr.includes("returns")) {
-        const returnsStr = functionStr.substring(
-          functionStr.indexOf("returns") + 8
-        );
-        const outputsStr = returnsStr.substring(
-          returnsStr.indexOf("(") + 1,
-          returnsStr.indexOf(")")
-        );
-        outputs = outputsStr
-          ? outputsStr
-              .split(",")
-              .map((output, index) => ({ name: ``, type: output.trim() }))
-          : [];
-      }
-      return {
-        type: "function",
-        name: functionName,
-        inputs: params.map((param, index) => ({
-          name: `param${index}`,
-          type: param.trim(),
-        })),
-        outputs: outputs,
-        stateMutability: isPayable
-          ? "payable"
-          : isView
-          ? "view"
-          : isPure
-          ? "pure"
-          : "nonpayable",
-      };
-    } else if (item === "constructor()") {
-      return { type: "constructor", inputs: [], stateMutability: "nonpayable" };
-    }
-    return {
-      type: "function",
-      name: item,
-      inputs: [],
-      outputs: [],
-      stateMutability: "nonpayable",
-    };
-  });
-  console.log("ABI đã chuyển đổi:", convertedABI);
-  return convertedABI;
-}
+import governmentRegulatorData from "../contracts/GovernmentRegulator.json"; // Thêm ABI của GovernmentRegulator
 
 const Web3Context = createContext();
 
@@ -116,34 +11,56 @@ export function useWeb3() {
 }
 
 export function Web3Provider({ children }) {
-  const [web3, setWeb3] = useState(null);
+  const [provider, setProvider] = useState(null);
+  const [signer, setSigner] = useState(null);
   const [account, setAccount] = useState(null);
-  const [contract, setContract] = useState(null);
+  const [fruitSupplyChain, setFruitSupplyChain] = useState(null);
+  const [governmentRegulator, setGovernmentRegulator] = useState(null);
   const [contractAddress, setContractAddress] = useState(null);
   const [loading, setLoading] = useState(true);
   const [walletError, setWalletError] = useState(null);
   const [userError, setUserError] = useState(null);
   const [contractError, setContractError] = useState(null);
 
+  const contractABI = contractData.abi;
+  const governmentRegulatorABI = governmentRegulatorData.abi;
+
+  const getContractAddress = async () => {
+    try {
+      const response = await axios.get(
+        "http://localhost:3000/contract-address"
+      );
+      const address = response.data.address;
+      if (!ethers.isAddress(address)) {
+        throw new Error("Địa chỉ hợp đồng không hợp lệ: " + address);
+      }
+      return address;
+    } catch (error) {
+      throw new Error(
+        "Không thể lấy địa chỉ hợp đồng từ backend: " + error.message
+      );
+    }
+  };
+
   useEffect(() => {
     const initWeb3 = async () => {
       setLoading(true);
-      if (!window.ethereum) {
-        console.error("MetaMask không được cài đặt!");
-        setWalletError("Vui lòng cài đặt MetaMask để tiếp tục!");
-        setLoading(false);
-        return;
-      }
+      setWalletError(null);
+      setContractError(null);
+      setUserError(null);
 
-      let web3Instance = null;
       try {
-        web3Instance = new Web3(window.ethereum);
-        setWeb3(web3Instance);
+        if (!window.ethereum) {
+          throw new Error("Vui lòng cài đặt MetaMask để tiếp tục!");
+        }
 
-        const chainId = await web3Instance.eth.getChainId();
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        setProvider(provider);
+        console.log("Đã khởi tạo Provider");
+
+        const chainId = Number(await provider.send("eth_chainId", []));
         console.log("Chain ID:", chainId);
-        const chainIdNumber = Number(chainId);
-        if (chainIdNumber !== 1337) {
+        if (chainId !== 1337) {
           try {
             await window.ethereum.request({
               method: "wallet_switchEthereumChain",
@@ -169,44 +86,89 @@ export function Web3Provider({ children }) {
               });
             } else {
               throw new Error(
-                `Vui lòng chuyển MetaMask sang Hardhat Localhost (Chain ID: 1337)! Hiện tại: ${chainIdNumber}`
+                `Vui lòng chuyển MetaMask sang Hardhat Localhost (Chain ID: 1337)! Hiện tại: ${chainId}`
               );
             }
           }
-          const newChainId = await web3Instance.eth.getChainId();
-          if (Number(newChainId) !== 1337) {
+          const newChainId = Number(await provider.send("eth_chainId", []));
+          if (newChainId !== 1337) {
             throw new Error(
               `Vui lòng chuyển MetaMask sang Hardhat Localhost (Chain ID: 1337)! Hiện tại: ${newChainId}`
             );
           }
         }
 
-        const accounts = await web3Instance.eth.getAccounts();
+        const accounts = await provider.send("eth_accounts", []);
         if (accounts.length === 0) {
           setWalletError("Vui lòng kết nối ví MetaMask để tiếp tục!");
         } else {
+          const signer = await provider.getSigner();
+          setSigner(signer);
           setAccount(accounts[0]);
           await checkUserAndWallet(accounts[0]);
         }
 
-        const address = await getContractAddress();
-        setContractAddress(address);
-        console.log("Contract Address:", address);
+        const fruitSupplyChainAddress = await getContractAddress();
+        console.log("Địa chỉ FruitSupplyChain:", fruitSupplyChainAddress);
+        setContractAddress(fruitSupplyChainAddress);
 
-        const abi = convertABIIfNeeded(contractABI);
-        if (!abi) throw new Error("ABI không hợp lệ!");
-        const contractInstance = new web3Instance.eth.Contract(abi, address);
-        console.log("Contract methods:", Object.keys(contractInstance.methods));
-        setContract(contractInstance);
+        // Kiểm tra mã bytecode tại địa chỉ hợp đồng
+        const code = await provider.getCode(fruitSupplyChainAddress);
+        if (code === "0x") {
+          throw new Error(
+            `Không có hợp đồng tại địa chỉ: ${fruitSupplyChainAddress}`
+          );
+        }
+
+        const fruitSupplyChainContract = new ethers.Contract(
+          fruitSupplyChainAddress,
+          contractABI,
+          provider
+        );
+        console.log("Hợp đồng FruitSupplyChain:", fruitSupplyChainContract);
+        setFruitSupplyChain(fruitSupplyChainContract);
+
+        const governmentRegulatorAddress =
+          "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
+        const governmentRegulatorContract = new ethers.Contract(
+          governmentRegulatorAddress,
+          governmentRegulatorABI,
+          provider
+        );
+        setGovernmentRegulator(governmentRegulatorContract);
+
+        // Kiểm tra các phương thức của hợp đồng
+        if (
+          typeof fruitSupplyChainContract.listProductForSale !== "function" ||
+          typeof fruitSupplyChainContract.purchaseProduct !== "function"
+        ) {
+          throw new Error(
+            "Hợp đồng FruitSupplyChain không có các hàm cần thiết!"
+          );
+        }
+        if (
+          typeof governmentRegulatorContract.createTripartyContract !==
+            "function" ||
+          typeof governmentRegulatorContract.signContract !== "function"
+        ) {
+          throw new Error(
+            "Hợp đồng GovernmentRegulator không có các hàm cần thiết!"
+          );
+        }
 
         window.ethereum.on("accountsChanged", handleAccountsChanged);
         window.ethereum.on("disconnect", handleDisconnect);
       } catch (error) {
         console.error("Lỗi khi khởi tạo Web3:", error);
-        setContractError(
-          "Không thể khởi tạo hợp đồng thông minh: " + error.message
-        );
-        setContract(null);
+        if (error.message.includes("MetaMask")) {
+          setWalletError(error.message);
+        } else if (error.message.includes("Hợp đồng")) {
+          setContractError(error.message);
+        } else {
+          setContractError(
+            "Không thể khởi tạo hợp đồng thông minh: " + error.message
+          );
+        }
       } finally {
         setLoading(false);
       }
@@ -227,9 +189,10 @@ export function Web3Provider({ children }) {
 
   const handleAccountsChanged = async (accounts) => {
     const newAccount = accounts[0] || null;
-    console.log("Tài khoản MetaMask thay đổi:", newAccount);
     setAccount(newAccount);
     if (newAccount) {
+      const signer = await provider.getSigner();
+      setSigner(signer);
       await checkUserAndWallet(newAccount);
     } else {
       setWalletError("Ví MetaMask đã ngắt kết nối! Vui lòng kết nối lại.");
@@ -237,23 +200,23 @@ export function Web3Provider({ children }) {
   };
 
   const handleDisconnect = () => {
-    console.log("Ví MetaMask đã ngắt kết nối");
     setAccount(null);
+    setSigner(null);
     setWalletError("Ví MetaMask đã ngắt kết nối! Vui lòng kết nối lại.");
   };
 
-  const connectWallet = async (web3Instance = web3) => {
-    if (!web3Instance) throw new Error("Web3 chưa được khởi tạo!");
+  const connectWallet = async () => {
+    if (!provider) throw new Error("Provider chưa được khởi tạo!");
     try {
       const accounts = await window.ethereum.request({
         method: "eth_requestAccounts",
       });
-      console.log("Kết nối ví MetaMask thành công:", accounts);
+      const signer = await provider.getSigner();
+      setSigner(signer);
       setAccount(accounts[0]);
-      setWalletError(null); // Xóa lỗi khi kết nối thành công
+      setWalletError(null);
       await checkUserAndWallet(accounts[0]);
     } catch (error) {
-      console.error("Lỗi khi kết nối ví MetaMask:", error);
       if (error.code === -32002) {
         setWalletError("Yêu cầu kết nối đang chờ xử lý trong MetaMask!");
       } else {
@@ -277,13 +240,11 @@ export function Web3Provider({ children }) {
         return;
       }
 
-      console.log("Gọi API /check-role với địa chỉ ví:", currentAccount);
       const response = await axios.get("http://localhost:3000/check-role", {
         headers: { "x-ethereum-address": currentAccount },
       });
 
       const { walletAddress, role } = response.data;
-      console.log("Kết quả từ API /check-role:", { walletAddress, role });
       if (role !== user.role) {
         setUserError("Vai trò của bạn đã thay đổi. Vui lòng đăng nhập lại!");
         setWalletError(null);
@@ -301,7 +262,6 @@ export function Web3Provider({ children }) {
         setUserError(null);
       }
     } catch (error) {
-      console.error("Lỗi khi kiểm tra user và ví:", error);
       if (error.response && error.response.status === 401) {
         setWalletError(
           "Địa chỉ ví MetaMask không được liên kết với tài khoản. Vui lòng cập nhật ví trong hệ thống."
@@ -322,26 +282,23 @@ export function Web3Provider({ children }) {
       });
       setWalletError(null);
     } catch (error) {
-      console.error("Lỗi khi cập nhật ví:", error);
       throw new Error("Không thể cập nhật ví: " + error.message);
     }
   };
 
   const checkNodeSync = async () => {
     try {
-      if (!web3) throw new Error("Web3 chưa được khởi tạo!");
-      const isListening = await web3.eth.net.isListening();
+      if (!provider) throw new Error("Provider chưa được khởi tạo!");
+      const isListening = await provider.send("net_listening", []);
       if (!isListening) {
         throw new Error(
           "Hardhat Network không đang chạy! Vui lòng khởi động node bằng lệnh 'npx hardhat node'."
         );
       }
 
-      const blockNumber = await web3.eth.getBlockNumber();
-      const networkId = await web3.eth.net.getId();
-      console.log("Network ID:", networkId, "Block Number:", blockNumber);
-
-      if (Number(networkId) !== 1337) {
+      const blockNumber = await provider.getBlockNumber();
+      const networkId = Number(await provider.send("net_version", []));
+      if (networkId !== 1337) {
         throw new Error(
           `Sai mạng! Đang kết nối với Network ID ${networkId}, yêu cầu Hardhat Network (1337).`
         );
@@ -353,7 +310,6 @@ export function Web3Provider({ children }) {
       }
       return { networkId, blockNumber };
     } catch (error) {
-      console.error("Lỗi kiểm tra node:", error);
       throw new Error(
         error.message.includes("Hardhat Network không đang chạy") ||
         error.message.includes("Node không phản hồi")
@@ -365,21 +321,21 @@ export function Web3Provider({ children }) {
 
   const testContract = async () => {
     try {
-      if (!contract) throw new Error("Contract chưa được khởi tạo đúng!");
-      if (!contractAddress)
+      if (!fruitSupplyChain || !governmentRegulator) {
+        throw new Error("Contract chưa được khởi tạo đúng!");
+      }
+      if (!contractAddress) {
         throw new Error("Địa chỉ hợp đồng không được định nghĩa!");
-      const code = await web3.eth.getCode(contractAddress);
-      console.log(`Bytecode tại địa chỉ ${contractAddress}:`, code);
+      }
+      const code = await provider.getCode(contractAddress);
       if (code === "0x") {
         throw new Error(
           `Hợp đồng không tồn tại tại địa chỉ: ${contractAddress}! Vui lòng kiểm tra file D:\\fruit-supply-chain\\contract-address.txt hoặc triển khai lại hợp đồng bằng 'npx hardhat run scripts/deploy.js --network localhost'.`
         );
       }
-      const owner = await contract.methods.owner().call();
-      console.log("Owner:", owner);
+      const owner = await fruitSupplyChain.owner();
       return true;
     } catch (error) {
-      console.error("Lỗi kiểm tra hợp đồng:", error);
       throw new Error(
         `Hợp đồng hoặc ABI không hợp lệ! Chi tiết: ${error.message}`
       );
@@ -395,8 +351,9 @@ export function Web3Provider({ children }) {
     listingId,
     totalPrice,
   }) => {
-    if (!web3 || !contract || !account)
-      throw new Error("Web3, contract hoặc account chưa được khởi tạo!");
+    if (!provider || !fruitSupplyChain || !governmentRegulator || !account) {
+      throw new Error("Provider, contract hoặc account chưa được khởi tạo!");
+    }
     if (userError) throw new Error(userError);
     if (walletError) throw new Error(walletError);
 
@@ -405,7 +362,6 @@ export function Web3Provider({ children }) {
       throw new Error("Vui lòng đăng nhập để thực hiện hành động này!");
     }
 
-    // Kiểm tra vai trò người dùng dựa trên loại giao dịch
     if (type === "listProductForSale" && user.role !== "DeliveryHub") {
       throw new Error("Chỉ DeliveryHub mới có thể đăng bán sản phẩm!");
     }
@@ -413,34 +369,23 @@ export function Web3Provider({ children }) {
       throw new Error("Chỉ Customer mới có thể mua sản phẩm!");
     }
 
+    const contractWithSigner = fruitSupplyChain.connect(signer);
+
     if (type === "listProductForSale") {
       try {
-        const { networkId, blockNumber } = await checkNodeSync();
-        console.log(
-          "Node synced - Network ID:",
-          networkId,
-          "Block Number:",
-          blockNumber
-        );
-
+        await checkNodeSync();
         await testContract();
 
-        const owner = await contract.methods.owner().call();
-        const isManager = await contract.methods
-          .authorizedManagers(account)
-          .call();
-        console.log(
-          "Owner:",
-          owner,
-          "Is Manager:",
-          isManager,
-          "Account:",
-          account
-        );
+        const owner = await contractWithSigner.owner();
+        const isManager = await contractWithSigner.authorizedManagers(account);
         if (owner.toLowerCase() !== account.toLowerCase() && !isManager) {
           throw new Error(
             `Bạn không có quyền thực hiện giao dịch này! Owner: ${owner}, Account: ${account}`
           );
+        }
+
+        if (!productId || productId === "undefined" || isNaN(productId)) {
+          throw new Error("ID sản phẩm không hợp lệ!");
         }
 
         const productResponse = await axios.get(
@@ -463,71 +408,42 @@ export function Web3Provider({ children }) {
 
         let catalogExists = false;
         try {
-          const catalog = await contract.methods
-            .getFruitCatalog(fruitType)
-            .call();
+          const catalog = await contractWithSigner.getFruitCatalog(fruitType);
           catalogExists = catalog[0].length > 0;
         } catch (e) {
           console.log("Catalog chưa tồn tại, sẽ thêm mới:", e.message);
         }
 
         if (!catalogExists) {
-          const gasEstimate = await contract.methods
-            .addFruitCatalog(
-              fruitType,
-              `Mô tả về ${fruitType}`,
-              "Tháng 8 - Tháng 12",
-              "Chứa nhiều vitamin",
-              "Bảo quản khô ráo",
-              [`${fruitType} Giống 1`, `${fruitType} Giống 2`]
-            )
-            .estimateGas({ from: account });
-          await contract.methods
-            .addFruitCatalog(
-              fruitType,
-              `Mô tả về ${fruitType}`,
-              "Tháng 8 - Tháng 12",
-              "Chứa nhiều vitamin",
-              "Bảo quản khô ráo",
-              [`${fruitType} Giống 1`, `${fruitType} Giống 2`]
-            )
-            .send({
-              from: account,
-              gas: Math.floor(Number(gasEstimate) * 1.5),
-            });
+          const tx = await contractWithSigner.addFruitCatalog(
+            fruitType,
+            `Mô tả về ${fruitType}`,
+            "Tháng 8 - Tháng 12",
+            "Chứa nhiều vitamin",
+            "Bảo quản khô ráo",
+            [`${fruitType} Giống 1`, `${fruitType} Giống 2`]
+          );
+          await tx.wait();
           console.log("Đã thêm fruit catalog:", fruitType);
         }
 
         let farmExists = false;
         try {
-          const farmData = await contract.methods.getFarmData(farmId).call();
+          const farmData = await contractWithSigner.getFarmData(farmId);
           farmExists = farmData[0].length > 0;
         } catch (e) {
           console.log("Farm chưa tồn tại, sẽ đăng ký mới:", e.message);
         }
 
         if (!farmExists) {
-          const gasEstimate = await contract.methods
-            .registerFarm(
-              farmId,
-              farm.location || "Unknown",
-              farm.weather_condition || "Unknown",
-              "Đất phù sa",
-              farm.current_conditions || "19.65°C"
-            )
-            .estimateGas({ from: account });
-          await contract.methods
-            .registerFarm(
-              farmId,
-              farm.location || "Unknown",
-              farm.weather_condition || "Unknown",
-              "Đất phù sa",
-              farm.current_conditions || "19.65°C"
-            )
-            .send({
-              from: account,
-              gas: Math.floor(Number(gasEstimate) * 1.5),
-            });
+          const tx = await contractWithSigner.registerFarm(
+            farmId,
+            farm.location || "Unknown",
+            farm.weather_condition || "Unknown",
+            "Đất phù sa",
+            farm.current_conditions || "19.65°C"
+          );
+          await tx.wait();
           console.log("Đã đăng ký farm:", farmId);
         }
 
@@ -537,38 +453,66 @@ export function Web3Provider({ children }) {
         );
         let fruitId = inventoryResponse.data?.fruit_id || 0;
 
-        if (!fruitId) {
-          const gasEstimate = await contract.methods
-            .harvestFruit(fruitType, origin, farmId, quality)
-            .estimateGas({ from: account });
-          const tx = await contract.methods
-            .harvestFruit(fruitType, origin, farmId, quality)
-            .send({
-              from: account,
-              gas: Math.floor(Number(gasEstimate) * 1.5),
-            });
-          fruitId = Number(await contract.methods.fruitCount().call());
+        const fruitCount = await contractWithSigner.fruitCount();
+        if (fruitId <= 0 || fruitId > Number(fruitCount)) {
+          console.log("Fruit ID không hợp lệ, sẽ gọi harvestFruit...");
+          const tx = await contractWithSigner.harvestFruit(
+            fruitType,
+            origin,
+            farmId,
+            quality,
+            quantity
+          );
+          await tx.wait();
+          fruitId = Number(await contractWithSigner.fruitCount());
           await axios.put(
             `http://localhost:3000/inventory/${inventoryId}/fruit-id`,
             { fruitId },
             { headers: { "x-ethereum-address": account } }
           );
           console.log("Đã thu hoạch fruit với ID:", fruitId);
+        } else {
+          const fruitData = await contractWithSigner.getFruit(fruitId);
+          const fruitQuantity = Number(fruitData[7]);
+          if (quantity > fruitQuantity) {
+            console.log("Số lượng không đủ, sẽ gọi harvestFruit để bổ sung...");
+            const tx = await contractWithSigner.harvestFruit(
+              fruitType,
+              origin,
+              farmId,
+              quality,
+              quantity
+            );
+            await tx.wait();
+            fruitId = Number(await contractWithSigner.fruitCount());
+            await axios.put(
+              `http://localhost:3000/inventory/${inventoryId}/fruit-id`,
+              { fruitId },
+              { headers: { "x-ethereum-address": account } }
+            );
+            console.log("Đã thu hoạch fruit với ID:", fruitId);
+          }
         }
 
-        const priceInWei = web3.utils.toWei(price.toString(), "ether");
-        const gasEstimate = await contract.methods
-          .listProductForSale(fruitId, priceInWei, quantity)
-          .estimateGas({ from: account });
-        const tx = await contract.methods
-          .listProductForSale(fruitId, priceInWei, quantity)
-          .send({ from: account, gas: Math.floor(Number(gasEstimate) * 1.5) });
-        const listingId = tx.events.ProductListed.returnValues.listingId;
+        const priceInWei = ethers.parseEther(price.toString());
+        const tx = await contractWithSigner.listProductForSale(
+          fruitId,
+          priceInWei,
+          quantity,
+          true
+        );
+        const receipt = await tx.wait();
+        const listingId = receipt.logs
+          .filter(
+            (log) =>
+              log.topics[0] ===
+              ethers.id("ProductListed(uint256,uint256,uint256,uint256,bool)")
+          )[0]
+          .args.listingId.toString();
 
         console.log("Đã đăng bán sản phẩm với Listing ID:", listingId);
-        return { transactionHash: tx.transactionHash, listingId };
+        return { transactionHash: tx.hash, listingId };
       } catch (error) {
-        console.error("Lỗi giao dịch chi tiết:", error);
         throw new Error(
           error.message.includes("Hardhat Network") ||
           error.message.includes("Node không phản hồi")
@@ -578,21 +522,12 @@ export function Web3Provider({ children }) {
       }
     } else if (type === "purchaseProduct") {
       try {
-        const { networkId, blockNumber } = await checkNodeSync();
-        console.log(
-          "Node synced - Network ID:",
-          networkId,
-          "Block Number:",
-          blockNumber
-        );
-
+        await checkNodeSync();
         await testContract();
 
-        // Kiểm tra sản phẩm có tồn tại và còn khả dụng hay không
-        const productResponse = await contract.methods
-          .getListedProduct(listingId)
-          .call();
-        console.log("Listed Product:", productResponse);
+        const productResponse = await contractWithSigner.getListedProduct(
+          listingId
+        );
         if (!productResponse.isActive) {
           throw new Error(
             `Sản phẩm với Listing ID ${listingId} không còn khả dụng!`
@@ -602,48 +537,33 @@ export function Web3Provider({ children }) {
           throw new Error(`Sản phẩm với Listing ID ${listingId} đã hết hàng!`);
         }
         if (
-          web3.utils.fromWei(totalPrice.toString(), "ether") <
-          web3.utils.fromWei(productResponse.price.toString(), "ether")
+          ethers.parseEther(totalPrice.toString()) <
+          ethers.parseEther(productResponse.price.toString())
         ) {
           throw new Error(
-            `Số tiền không đủ để mua sản phẩm! Cần ít nhất ${web3.utils.fromWei(
-              productResponse.price.toString(),
-              "ether"
+            `Số tiền không đủ để mua sản phẩm! Cần ít nhất ${ethers.formatEther(
+              productResponse.price
             )} ETH`
           );
         }
 
-        // Kiểm tra số dư ví
-        const balance = await web3.eth.getBalance(account);
-        console.log("Số dư ví:", web3.utils.fromWei(balance, "ether"), "ETH");
-        if (balance < totalPrice) {
+        const balance = await provider.getBalance(account);
+        if (balance < ethers.parseEther(totalPrice.toString())) {
           throw new Error(
-            `Số dư ví không đủ! Cần ít nhất ${web3.utils.fromWei(
-              totalPrice.toString(),
-              "ether"
-            )} ETH, nhưng ví chỉ có ${web3.utils.fromWei(balance, "ether")} ETH`
+            `Số dư ví không đủ! Cần ít nhất ${ethers.formatEther(
+              totalPrice
+            )} ETH, nhưng ví chỉ có ${ethers.formatEther(balance)} ETH`
           );
         }
 
-        const gasEstimate = await contract.methods
-          .purchaseProduct(listingId)
-          .estimateGas({ from: account, value: totalPrice });
-        const tx = await contract.methods.purchaseProduct(listingId).send({
-          from: account,
-          value: totalPrice,
-          gas: Math.floor(Number(gasEstimate) * 1.5),
+        const tx = await contractWithSigner.purchaseProduct(listingId, {
+          value: ethers.parseEther(totalPrice.toString()),
         });
+        await tx.wait();
 
         console.log("Đã mua sản phẩm với Listing ID:", listingId);
-        return { transactionHash: tx.transactionHash };
+        return { transactionHash: tx.hash };
       } catch (error) {
-        console.error("Lỗi giao dịch chi tiết:", error);
-        if (error.message.includes("revert")) {
-          throw new Error(
-            "Giao dịch bị từ chối bởi hợp đồng thông minh: " +
-              (error.message.match(/revert (.*)/)?.[1] || error.message)
-          );
-        }
         throw new Error(
           error.message.includes("Hardhat Network") ||
           error.message.includes("Node không phản hồi")
@@ -657,79 +577,43 @@ export function Web3Provider({ children }) {
   };
 
   const addManager = async (managerAddress) => {
-    if (!web3 || !contract || !account)
-      throw new Error("Web3 chưa được khởi tạo!");
-
+    if (!provider || !fruitSupplyChain || !account) {
+      throw new Error("Provider chưa được khởi tạo!");
+    }
     try {
       await checkNodeSync();
 
-      const owner = await contract.methods.owner().call();
+      const contractWithSigner = fruitSupplyChain.connect(signer);
+      const owner = await contractWithSigner.owner();
       if (account.toLowerCase() !== owner.toLowerCase()) {
         throw new Error(
           `Chỉ owner (${owner}) mới có thể thêm manager! Vui lòng chuyển sang tài khoản owner.`
         );
       }
 
-      const gasEstimate = await contract.methods
-        .addManager(managerAddress)
-        .estimateGas({ from: account });
+      const tx = await contractWithSigner.addManager(managerAddress);
+      await tx.wait();
 
-      const gasEstimateNumber = Number(gasEstimate);
-      if (isNaN(gasEstimateNumber)) {
-        throw new Error("Không thể chuyển đổi gas estimate thành số!");
-      }
-
-      const gasLimit = Math.floor(gasEstimateNumber * 1.5);
-      console.log(
-        "Gas Estimate for addManager:",
-        gasEstimateNumber,
-        "Gas Limit:",
-        gasLimit
+      const isManager = await contractWithSigner.authorizedManagers(
+        managerAddress
       );
-
-      const tx = await contract.methods
-        .addManager(managerAddress)
-        .send({ from: account, gas: gasLimit });
-      console.log(
-        `Đã cấp quyền manager cho ${managerAddress}. Transaction Hash:`,
-        tx.transactionHash
-      );
-
-      const isManager = await contract.methods
-        .authorizedManagers(managerAddress)
-        .call();
-      console.log(`${managerAddress} hiện là manager:`, isManager);
-
       if (!isManager) {
         throw new Error(
           "Giao dịch thành công nhưng địa chỉ này không được cấp quyền manager!"
         );
       }
 
-      return { transactionHash: tx.transactionHash };
+      return { transactionHash: tx.hash };
     } catch (error) {
-      console.error("Lỗi khi thêm manager:", error);
-      if (error.message.includes("revert")) {
-        throw new Error(
-          "Giao dịch bị từ chối bởi hợp đồng thông minh. Kiểm tra logic hợp đồng hoặc quyền truy cập."
-        );
-      } else if (error.message.includes("gas")) {
-        throw new Error(
-          "Lỗi liên quan đến gas. Vui lòng thử tăng gas limit hoặc kiểm tra số dư tài khoản."
-        );
-      } else if (error.message.includes("network")) {
-        throw new Error(
-          "Lỗi mạng. Vui lòng kiểm tra kết nối với Hardhat Network hoặc MetaMask."
-        );
-      }
       throw new Error("Không thể thêm manager: " + error.message);
     }
   };
 
   const value = {
-    web3,
+    provider,
     account,
-    contract,
+    fruitSupplyChain,
+    governmentRegulator,
     connectWallet,
     executeTransaction,
     addManager,

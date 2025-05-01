@@ -31,7 +31,10 @@ import {
 import { useOutletContext } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useWeb3 } from "../../contexts/Web3Context";
-import { sellProductToConsumer } from "../../services/deliveryHubService";
+import {
+  sellProductToConsumer,
+  getInventory,
+} from "../../services/deliveryHubService";
 import axios from "axios";
 import OutgoingProductsPage from "./OutgoingProductsPage";
 
@@ -50,6 +53,7 @@ const PurchasesPage = () => {
 
   const outletContext = useOutletContext() || {};
   const contextInventory = outletContext.inventory || [];
+  const setInventory = outletContext.setInventory || (() => {});
   const contextHandleRefresh = outletContext.handleRefresh || (() => {});
   const formatImageUrl = outletContext.formatImageUrl || ((url) => url);
 
@@ -94,9 +98,33 @@ const PurchasesPage = () => {
     }
   };
 
+  const fetchInventory = async () => {
+    if (!user || !user.id || !account) return;
+    setLoading(true);
+    try {
+      const headers = {
+        "x-ethereum-address": account,
+        Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+      };
+      const inventoryData = await getInventory(user.id, headers);
+      console.log("Dữ liệu kho:", inventoryData);
+      setInventory(inventoryData);
+    } catch (error) {
+      console.error("Lỗi khi lấy dữ liệu kho:", error);
+      setAlert({
+        open: true,
+        message: "Không thể tải dữ liệu kho.",
+        severity: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (account && user && user.role === "DeliveryHub") {
       fetchOutgoingProducts();
+      fetchInventory();
     }
   }, [account, user]);
 
@@ -130,6 +158,15 @@ const PurchasesPage = () => {
         open: true,
         message:
           "Bạn không có quyền thực hiện hành động này! Vui lòng đăng nhập với vai trò DeliveryHub.",
+        severity: "error",
+      });
+      return;
+    }
+    if (!product.product_id || !product.fruit_id) {
+      setAlert({
+        open: true,
+        message:
+          "Thông tin sản phẩm không đầy đủ! Thiếu product_id hoặc fruit_id.",
         severity: "error",
       });
       return;
@@ -182,7 +219,7 @@ const PurchasesPage = () => {
       return;
     }
 
-    const quantityToSell = selectedProduct.quantity; // Lấy số lượng từ inventory
+    const quantityToSell = selectedProduct.quantity;
     if (quantityToSell <= 0 || selectedProduct.quantity < quantityToSell) {
       setAlert({
         open: true,
@@ -201,27 +238,31 @@ const PurchasesPage = () => {
         productId: selectedProduct.product_id,
         quantity: quantityToSell,
         price: parseFloat(sellingPrice),
-        fruitId: selectedProduct.fruit_id, // Lấy fruit_id từ inventory
+        fruitId: selectedProduct.fruit_id, // Sẽ được cập nhật sau
       };
 
-      if (!productData.fruitId) {
-        throw new Error("Không tìm thấy fruitId trong bản ghi inventory!");
+      if (!productData.productId || !productData.fruitId) {
+        throw new Error("Thiếu productId hoặc fruitId trong dữ liệu sản phẩm!");
       }
 
       setTransactionStatus("pending");
       const transactionResult = await executeTransaction({
         type: "listProductForSale",
-        fruitId: productData.fruitId, // Sử dụng fruitId thay vì productId
-        price: web3.utils.toWei(productData.price.toString(), "ether"),
+        productId: productData.productId,
+        fruitId: productData.fruitId,
+        price: productData.price,
         quantity: productData.quantity,
+        inventoryId: productData.inventoryId,
       });
 
       setTransactionHash(transactionResult.transactionHash);
       setListingId(transactionResult.listingId);
       setTransactionStatus("confirmed");
 
+      // Cập nhật fruitId từ transactionResult
+      productData.fruitId = transactionResult.fruitId || productData.fruitId;
       productData.transactionHash = transactionResult.transactionHash;
-      productData.listingId = transactionResult.listingId;
+      productData.listingId = transactionResult.listingId.toString();
 
       await sellProductToConsumer(productData);
 
@@ -234,6 +275,7 @@ const PurchasesPage = () => {
       handleCloseSellDialog();
       fetchOutgoingProducts();
       contextHandleRefresh();
+      fetchInventory();
     } catch (error) {
       console.error("Lỗi khi đăng bán sản phẩm:", error);
       setTransactionStatus("failed");
@@ -417,6 +459,7 @@ const PurchasesPage = () => {
             variant="outlined"
             onClick={() => {
               fetchOutgoingProducts();
+              fetchInventory();
               contextHandleRefresh();
             }}
             disabled={loading}

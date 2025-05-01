@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { useWeb3 } from "./Web3Context"; // Sửa đường dẫn
+import { useWeb3 } from "./Web3Context";
 import axios from "axios";
 
 const AuthContext = createContext();
@@ -9,9 +9,12 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }) {
-  const { account, loading: web3Loading } = useWeb3();
+  const { account, loading: web3Loading, walletError } = useWeb3();
   const [isManager, setIsManager] = useState(false);
   const [isFarmer, setIsFarmer] = useState(false);
+  const [isCustomer, setIsCustomer] = useState(false);
+  const [isDeliveryHub, setIsDeliveryHub] = useState(false);
+  const [isGovernment, setIsGovernment] = useState(false);
   const [userFarms, setUserFarms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -19,10 +22,12 @@ export function AuthProvider({ children }) {
     const savedUser = localStorage.getItem("user");
     if (savedUser) {
       const parsedUser = JSON.parse(savedUser);
-      console.log("User loaded from localStorage:", parsedUser);
-      // Validate that user.id exists
-      if (!parsedUser || !parsedUser.id) {
-        console.error("Invalid user data in localStorage, clearing...");
+      if (
+        !parsedUser ||
+        !parsedUser.id ||
+        !parsedUser.email ||
+        !parsedUser.role
+      ) {
         localStorage.removeItem("user");
         return null;
       }
@@ -30,6 +35,24 @@ export function AuthProvider({ children }) {
     }
     return null;
   });
+
+  const [storedAccount, setStoredAccount] = useState(() => {
+    return localStorage.getItem("account") || null;
+  });
+
+  useEffect(() => {
+    if (account) {
+      setStoredAccount(account);
+      localStorage.setItem("account", account);
+
+      // Chỉ cập nhật user nếu walletAddress thay đổi
+      if (user && user.walletAddress !== account) {
+        const updatedUser = { ...user, walletAddress: account };
+        setUser(updatedUser);
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+      }
+    }
+  }, [account, user]);
 
   useEffect(() => {
     const checkUserRole = async () => {
@@ -41,25 +64,33 @@ export function AuthProvider({ children }) {
           return;
         }
 
+        console.log("User after load:", user);
+        console.log("IsGovernment:", user?.role === "Government");
+        console.log("Account:", storedAccount);
+
         if (!user) {
-          console.log("Không có user trong AuthContext");
           setIsFarmer(false);
           setIsManager(false);
+          setIsCustomer(false);
+          setIsDeliveryHub(false);
+          setIsGovernment(false);
           setUserFarms([]);
           return;
         }
 
-        console.log("User trong AuthContext:", user);
         setIsFarmer(user.role === "Producer");
         setIsManager(user.role === "Admin");
+        setIsCustomer(user.role === "Customer");
+        setIsDeliveryHub(user.role === "DeliveryHub");
+        setIsGovernment(user.role === "Government");
 
-        if (user.role === "Producer" && account) {
+        if (user.role === "Producer" && storedAccount) {
           const response = await fetch(
             `http://localhost:3000/farms/user?email=${user.email}`,
             {
               headers: {
                 "Content-Type": "application/json",
-                "x-ethereum-address": account,
+                "x-ethereum-address": storedAccount,
               },
             }
           );
@@ -73,9 +104,10 @@ export function AuthProvider({ children }) {
 
           const farms = await response.json();
           setUserFarms(farms);
+        } else {
+          setUserFarms([]); // Đặt lại userFarms nếu không phải Producer
         }
       } catch (error) {
-        console.error("Lỗi khi kiểm tra vai trò người dùng:", error);
         setError(error.message);
         setUserFarms([]);
       } finally {
@@ -84,27 +116,35 @@ export function AuthProvider({ children }) {
     };
 
     checkUserRole();
-  }, [user, account, web3Loading]);
+  }, [user?.email, user?.role, storedAccount, web3Loading]); // Chỉ phụ thuộc vào email và role của user
+
+  useEffect(() => {
+    if (walletError && walletError.includes("không khớp")) {
+      logout();
+    }
+  }, [walletError]);
 
   const login = async (email, password, role) => {
     try {
-      console.log("Đăng nhập với thông tin:", { email, role });
       const response = await axios.post("http://localhost:3000/login", {
         email,
         password,
         role,
       });
       const userData = response.data.user;
-      if (!userData || !userData.id) {
-        console.error("Dữ liệu người dùng không hợp lệ:", userData);
+      if (!userData || !userData.id || !userData.email || !userData.role) {
         throw new Error("Dữ liệu người dùng không hợp lệ!");
       }
-      console.log("Đăng nhập thành công, userData:", userData);
-      setUser(userData);
-      localStorage.setItem("user", JSON.stringify(userData));
-      return userData;
+
+      const updatedUser = {
+        ...userData,
+        walletAddress: storedAccount || account || userData.wallet_address,
+      };
+
+      setUser(updatedUser);
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      return updatedUser;
     } catch (error) {
-      console.error("Lỗi khi đăng nhập:", error);
       const errorMessage =
         error.response?.data?.message || "Đăng nhập thất bại!";
       setError(errorMessage);
@@ -113,19 +153,26 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
-    console.log("Đăng xuất người dùng");
     setUser(null);
     setUserFarms([]);
     setIsFarmer(false);
     setIsManager(false);
+    setIsCustomer(false);
+    setIsDeliveryHub(false);
+    setIsGovernment(false);
     setError(null);
+    setStoredAccount(null);
     localStorage.removeItem("user");
+    localStorage.removeItem("account");
   };
 
   const value = {
     user,
     isManager,
     isFarmer,
+    isCustomer,
+    isDeliveryHub,
+    isGovernment,
     userFarms,
     loading,
     error,
@@ -134,6 +181,7 @@ export function AuthProvider({ children }) {
     checkFarmOwnership: (farmId) => {
       return userFarms.some((farm) => farm.id === farmId);
     },
+    account: storedAccount,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

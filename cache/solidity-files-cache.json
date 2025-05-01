@@ -39,6 +39,47 @@
       "artifacts": [
         "FruitSupplyChain"
       ]
+    },
+    "D:\\fruit-supply-chain\\contracts\\GovernmentRegulator.sol": {
+      "lastModificationDate": 1745672893860,
+      "contentHash": "798a36f5d56a1edca2b2a9235a00698b",
+      "sourceName": "contracts/GovernmentRegulator.sol",
+      "solcConfig": {
+        "version": "0.8.28",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "debug": {
+            "revertStrings": "strip"
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "./FruitSupplyChain.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.28"
+      ],
+      "artifacts": [
+        "GovernmentRegulator"
+      ]
     }
   }
 }

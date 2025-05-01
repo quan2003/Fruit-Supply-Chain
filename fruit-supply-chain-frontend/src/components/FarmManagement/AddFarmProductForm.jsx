@@ -230,12 +230,12 @@ const useImagePrediction = () => {
             },
             data: {
               prompt: `Tôi có một ${category} với trạng thái chín là ${predictionResult}. Hãy đưa ra khuyến nghị bảo quản chi tiết bằng tiếng Việt theo định dạng sau:
-              - Khuyến nghị: [chi tiết cách bảo quản, bao gồm nhiệt độ và thời gian]
-              - Mẹo: [một mẹo cụ thể]
-              Ví dụ:
-              - Khuyến nghị: Bảo quản ở 5-10 độ C trong 2-3 tuần.
-              - Mẹo: Bọc kín để tránh mùi.
-              Trả về văn bản thuần, không chứa dấu * hoặc định dạng markdown.`,
+                            - Khuyến nghị: [chi tiết cách bảo quản, bao gồm nhiệt độ và thời gian]
+                            - Mẹo: [một mẹo cụ thể]
+                            Ví dụ:
+                            - Khuyến nghị: Bảo quản ở 5-10 độ C trong 2-3 tuần.
+                            - Mẹo: Bọc kín để tránh mùi.
+                            Trả về văn bản thuần, không chứa dấu * hoặc định dạng markdown.`,
               maxTokens: 150,
               temperature: 0.7,
             },
@@ -311,18 +311,18 @@ const useImagePrediction = () => {
               )}%), kết quả có thể không chính xác, hãy kiểm tra thủ công để xác nhận.`;
 
         formattedMessage += `
-          <strong style="color: #1976D2;">Quả ${i + 1}:</strong><br />
-          Trạng thái: ${
-            predictionResult === "ripe"
-              ? "Đã chín"
-              : predictionResult === "semiripe"
-              ? "Chín một phần"
-              : "Chưa chín"
-          } (${(confidence * 100).toFixed(0)}%)<br />
-          Khuyến nghị: ${recommendation}<br />
-          Mẹo: ${tip}<br />
-          Lời khuyên: ${confidenceAdvice}<br /><br />
-        `;
+                  <strong style="color: #1976D2;">Quả ${i + 1}:</strong><br />
+                  Trạng thái: ${
+                    predictionResult === "ripe"
+                      ? "Đã chín"
+                      : predictionResult === "semiripe"
+                      ? "Chín một phần"
+                      : "Chưa chín"
+                  } (${(confidence * 100).toFixed(0)}%)<br />
+                  Khuyến nghị: ${recommendation}<br />
+                  Mẹo: ${tip}<br />
+                  Lời khuyên: ${confidenceAdvice}<br /><br />
+                `;
       }
 
       const hasRipe = predictions.some((pred) => pred.mappedClass === "ripe");
@@ -333,9 +333,9 @@ const useImagePrediction = () => {
 
       if (hasRipe && hasUnripe) {
         formattedMessage += `
-          <strong style="color: #1976D2;">Hướng dẫn bổ sung:</strong><br />
-          Hình ảnh chứa cả quả chín và chưa chín. Hãy tách các quả chín để bảo quản riêng trong tủ lạnh (5-7 độ C), và để các quả chưa chín ở nhiệt độ phòng (25-30 độ C) để tiếp tục chín tự nhiên.<br />
-        `;
+                  <strong style="color: #1976D2;">Hướng dẫn bổ sung:</strong><br />
+                  Hình ảnh chứa cả quả chín và chưa chín. Hãy tách các quả chín để bảo quản riêng trong tủ lạnh (5-7 độ C), và để các quả chưa chín ở nhiệt độ phòng (25-30 độ C) để tiếp tục chín tự nhiên.<br />
+                `;
       }
 
       formattedMessage += `</div>`;
@@ -832,13 +832,14 @@ const AddFarmProductForm = () => {
     }
   };
 
-  const harvestFruit = async (fruitType, origin, farmId, quality) => {
+  const harvestFruit = async (fruitType, origin, farmId, quality, quantity) => {
     try {
       console.log("Tham số gọi harvestFruit:", {
         fruitType,
         origin,
         farmId,
         quality,
+        quantity,
         account,
       });
 
@@ -864,7 +865,7 @@ const AddFarmProductForm = () => {
           .getFruitCatalog(fruitType)
           .call();
         console.log("Fruit Catalog Data:", catalog);
-        catalogExists = catalog.description.length > 0;
+        catalogExists = catalog[0].length > 0;
       } catch (error) {
         console.log("Fruit type chưa tồn tại trong catalog:", error.message);
       }
@@ -874,14 +875,14 @@ const AddFarmProductForm = () => {
         await addFruitCatalog(fruitType);
       }
 
-      // Gọi harvestFruit
+      // Gọi harvestFruit với tham số quantity
       const gasEstimate = await contract.methods
-        .harvestFruit(fruitType, origin, farmId, quality)
+        .harvestFruit(fruitType, origin, farmId, quality, quantity)
         .estimateGas({ from: account });
       console.log("Ước tính gas cho harvestFruit:", gasEstimate);
 
       const transactionResult = await contract.methods
-        .harvestFruit(fruitType, origin, farmId, quality)
+        .harvestFruit(fruitType, origin, farmId, quality, quantity)
         .send({
           from: account,
           gas: Math.floor(Number(gasEstimate) * 1.5),
@@ -890,7 +891,7 @@ const AddFarmProductForm = () => {
       const fruitId =
         transactionResult.events.StepRecorded.returnValues.fruitId;
       console.log("Đã thu hoạch trái cây, fruitId:", fruitId);
-      return fruitId;
+      return fruitId.toString(); // Chuyển BigInt thành string
     } catch (error) {
       console.error("Lỗi chi tiết khi gọi harvestFruit:", error);
       throw new Error(
@@ -953,7 +954,8 @@ const AddFarmProductForm = () => {
         data.category,
         "Vietnam",
         farm.farm_name,
-        prediction || "ripe"
+        prediction || "ripe",
+        parseInt(data.quantity)
       );
       setFruitId(fruitId);
       setOpenConfirm(true);
@@ -1005,7 +1007,7 @@ const AddFarmProductForm = () => {
         farm_id: data.farm_id,
         email: user.email,
         frontendHash: ipfsHash,
-        fruitId: fruitId,
+        fruitId: fruitId, // fruitId đã là string
       };
 
       await addFruitProduct(productData, { "x-ethereum-address": account });

@@ -22,12 +22,12 @@ import { useAuth } from "../contexts/AuthContext";
 
 const FarmPage = () => {
   const { account, connectWallet } = useWeb3();
-  const { user, logout } = useAuth(); // Lấy user và logout từ AuthContext
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const handleLogout = () => {
-    logout(); // Gọi hàm logout từ AuthContext
+    logout();
     navigate("/dang-nhap");
   };
 
@@ -47,6 +47,7 @@ const FarmPage = () => {
     { text: "Sản phẩm", action: () => navigate("/farms/products") },
     { text: "Đã bán", action: () => navigate("/farms/sold") },
     { text: "Danh mục", action: () => navigate("/farms/categories") },
+    { text: "Ký hợp đồng", action: () => navigate("/sign-contract") }, // Thêm mục "Ký hợp đồng"
     { text: "Đăng xuất", action: handleLogout },
   ];
 
@@ -165,7 +166,7 @@ const FarmPage = () => {
 
         {/* Nội dung chính */}
         <Container maxWidth="lg" sx={{ mt: 10, mb: 4 }}>
-          <Outlet /> {/* Render các route con tại đây */}
+          <Outlet />
         </Container>
       </Box>
 

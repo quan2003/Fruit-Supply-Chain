@@ -1,5 +1,5 @@
 import React from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, Outlet } from "react-router-dom";
 import { useWeb3 } from "../../contexts/Web3Context";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -36,14 +36,14 @@ const ProtectedRoute = ({ children, isAllowed }) => {
     return <Navigate to="/dang-nhap" replace />;
   }
 
-  // Nếu user không thỏa mãn điều kiện isAllowed
-  if (!isAllowed(user)) {
+  // Nếu isAllowed được truyền vào và user không thỏa mãn điều kiện
+  if (isAllowed && !isAllowed(user)) {
     console.log("ProtectedRoute - Access denied, redirecting to unauthorized");
     return <Navigate to="/unauthorized" replace />;
   }
 
   console.log("ProtectedRoute - Access granted");
-  return children;
+  return children ? children : <Outlet />;
 };
 
 export default ProtectedRoute;

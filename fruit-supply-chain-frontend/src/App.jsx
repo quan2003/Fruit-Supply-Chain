@@ -30,6 +30,10 @@ import PurchasesPage from "./components/DeliveryHub/PurchasesPage";
 import OutgoingProductsPage from "./components/DeliveryHub/OutgoingProductsPage";
 import DashboardPage from "./components/DeliveryHub/DashboardPage";
 
+// Import GovernmentPage và SignContractPage
+import GovernmentPage from "./pages/GovernmentPage";
+import SignContractPage from "./pages/SignContractPage";
+
 function App() {
   const { isManager } = useAuth();
 
@@ -49,12 +53,33 @@ function App() {
         {/* Route cho trang chi tiết sản phẩm */}
         <Route path="/product-detail/:listingId" element={<ProductDetail />} />
         <Route path="/customer/orders" element={<CustomerOrders />} />
+
         {/* Route cho admin (bảo vệ bởi role Admin) */}
         <Route
           path="/admin"
           element={
             <ProtectedRoute isAllowed={(user) => user?.role === "Admin"}>
               <AdminPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Route cho Government (bảo vệ bởi role Government) */}
+        <Route
+          path="/government"
+          element={
+            <ProtectedRoute isAllowed={(user) => user?.role === "Government"}>
+              <GovernmentPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Route cho trang ký hợp đồng (cho phép tất cả vai trò truy cập) */}
+        <Route
+          path="/sign-contract"
+          element={
+            <ProtectedRoute>
+              <SignContractPage />
             </ProtectedRoute>
           }
         />

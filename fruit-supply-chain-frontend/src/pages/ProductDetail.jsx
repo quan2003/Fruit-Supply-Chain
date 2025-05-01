@@ -286,15 +286,16 @@ const ProductDetail = () => {
 
     setPurchaseLoading(true);
     try {
-      // Tính giá mỗi hộp từ product.price và product.quantity (cho giao diện)
-      const pricePerUnit = parseFloat(product.price) / product.quantity; // Giá mỗi hộp (AGT)
-      const totalProductPrice = pricePerUnit * quantityToBuy; // Tổng giá sản phẩm (AGT)
+      // Tính giá mỗi hộp dựa trên original_quantity
+      const pricePerUnit =
+        parseFloat(product.price) / product.original_quantity; // 138 / 12 = 11.50
+      const totalProductPrice = (pricePerUnit * quantityToBuy).toFixed(2);
 
       const buyData = {
         listingId: product.listing_id,
         customerId: user.id,
         quantity: quantityToBuy,
-        price: pricePerUnit.toFixed(2), // Giá mỗi hộp
+        price: pricePerUnit.toFixed(2), // Đảm bảo giá mỗi hộp là 11.50
         deliveryHubId: product.delivery_hub_id,
         shippingAddress,
         shippingFee: SHIPPING_FEE,
@@ -319,7 +320,7 @@ const ProductDetail = () => {
           .call();
         const blockchainQuantity = parseInt(productResponse.quantity);
         const isActive = productResponse.isActive;
-        const blockchainPrice = parseInt(productResponse.price); // Giá tổng (Wei)
+        const blockchainPrice = parseInt(productResponse.price);
         console.log("Trạng thái sản phẩm trên blockchain:", productResponse);
 
         if (!isActive || blockchainQuantity < quantityToBuy) {
@@ -331,19 +332,13 @@ const ProductDetail = () => {
           return;
         }
 
-        // Tính giá mỗi đơn vị (Wei) theo công thức hợp đồng
+        // Tính giá mỗi đơn vị (Wei) theo blockchain
         const pricePerUnitInWei = blockchainPrice / blockchainQuantity;
-        const totalPriceInWei = pricePerUnitInWei * quantityToBuy; // Tổng giá cho quantityToBuy (Wei)
+        const totalPriceInWei = pricePerUnitInWei * quantityToBuy;
 
         // Kiểm tra số dư ví
         const balance = await web3.eth.getBalance(account);
         console.log("Số dư ví:", web3.utils.fromWei(balance, "ether"), "ETH");
-        console.log(
-          "Số tiền cần thiết:",
-          web3.utils.fromWei(totalPriceInWei.toString(), "ether"),
-          "ETH"
-        );
-
         if (BigInt(balance) < BigInt(totalPriceInWei)) {
           setMessage({
             type: "error",
@@ -353,7 +348,7 @@ const ProductDetail = () => {
           return;
         }
 
-        // Thực hiện giao dịch duy nhất với quantityToBuy
+        // Thực hiện giao dịch
         const gasEstimate = await contract.methods
           .purchaseProduct(product.listing_id, quantityToBuy)
           .estimateGas({
@@ -400,7 +395,9 @@ const ProductDetail = () => {
       console.error("Lỗi khi mua sản phẩm:", error);
       setMessage({
         type: "error",
-        text: `Lỗi khi mua sản phẩm: ${error.message || "Lỗi không xác định"}`,
+        text: `Lỗi khi mua sản phẩm: ${
+          error.response?.data?.message || error.message || "Lỗi không xác định"
+        }`,
       });
     } finally {
       setPurchaseLoading(false);

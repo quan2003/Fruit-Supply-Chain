@@ -22,11 +22,13 @@ import {
   Receipt as ReceiptIcon,
   Menu as MenuIcon,
   Logout as LogoutIcon,
+  Assignment as ContractIcon, // Thêm icon cho mục Ký Hợp Đồng
 } from "@mui/icons-material";
 import { Outlet, useNavigate } from "react-router-dom";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import { useWeb3 } from "../contexts/Web3Context";
 import { useAuth } from "../contexts/AuthContext";
+import { ethers } from "ethers";
 import axios from "axios";
 import {
   getIncomingShipments,
@@ -166,6 +168,10 @@ const DeliveryHubPage = () => {
       case "outgoing-products":
         setTabValue(4);
         break;
+      case "sign-contract": // Thêm trường hợp cho trang Ký Hợp Đồng
+        setTabValue(5);
+        navigate("/sign-contract");
+        break;
       default:
         setTabValue(0);
     }
@@ -196,6 +202,10 @@ const DeliveryHubPage = () => {
       case 4:
         navigate("/delivery-hub/outgoing-products");
         setCurrentPage("outgoing-products");
+        break;
+      case 5: // Thêm tab cho Ký Hợp Đồng
+        navigate("/sign-contract");
+        setCurrentPage("sign-contract");
         break;
       default:
         navigate("/delivery-hub/statistics");
@@ -314,12 +324,11 @@ const DeliveryHubPage = () => {
     quantity,
     price,
     transactionHash,
-    fruitId // Thêm fruitId vào tham số
+    fruitId
   ) => {
     try {
       setLoading(true);
 
-      // Thêm vào inventory với fruitId
       await addToInventory(
         productId,
         user.id,
@@ -345,8 +354,8 @@ const DeliveryHubPage = () => {
 
       const transactionResult = await executeTransaction({
         type: "listProductForSale",
-        fruitId: fruitId, // Sử dụng fruitId thay vì productId
-        price: web3.utils.toWei(price.toString(), "ether"),
+        fruitId: fruitId,
+        price: ethers.parseEther(price.toString()),
         quantity: quantity,
       });
 
@@ -356,7 +365,7 @@ const DeliveryHubPage = () => {
         price,
         transactionHash: transactionResult.transactionHash,
         listingId: transactionResult.listingId,
-        fruitId, // Truyền fruitId vào sellProductToConsumer
+        fruitId,
       });
 
       setInventory((prevInventory) =>
@@ -589,6 +598,28 @@ const DeliveryHubPage = () => {
               </ListItemIcon>
               <ListItemText primary="Sản phẩm đang bán" />
             </ListItem>
+            <ListItem
+              button
+              onClick={() => handleMenuClick("sign-contract")} // Thêm mục Ký Hợp Đồng
+              sx={{
+                bgcolor:
+                  currentPage === "sign-contract" ? "#007BFF" : "transparent",
+                color: currentPage === "sign-contract" ? "white" : "inherit",
+                "&:hover": {
+                  bgcolor:
+                    currentPage === "sign-contract" ? "#0069D9" : "#f0f0f0",
+                },
+              }}
+            >
+              <ListItemIcon
+                sx={{
+                  color: currentPage === "sign-contract" ? "white" : "inherit",
+                }}
+              >
+                <ContractIcon />
+              </ListItemIcon>
+              <ListItemText primary="Ký Hợp Đồng" />
+            </ListItem>
           </List>
           <Divider sx={{ my: 2 }} />
           <ListItem button onClick={handleLogout}>
@@ -644,6 +675,7 @@ const DeliveryHubPage = () => {
             <Tab label="Đơn đặt hàng" />
             <Tab label="Đơn mua" />
             <Tab label="Sản phẩm đang bán" />
+            <Tab label="Ký Hợp Đồng" /> {/* Thêm tab Ký Hợp Đồng */}
           </Tabs>
           <Outlet
             context={{

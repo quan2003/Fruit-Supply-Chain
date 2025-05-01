@@ -9,7 +9,11 @@ import PinataClient from "@pinata/sdk";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import Web3 from "web3";
+import axios from "axios";
+import helmet from "helmet";
+import PDFDocument from 'pdfkit';
 import contractData from "./artifacts/contracts/FruitSupplyChain.sol/FruitSupplyChain.json" with { type: "json" };
+import governmentRegulatorData from "./artifacts/contracts/GovernmentRegulator.sol/GovernmentRegulator.json" with { type: "json" };
 // Load biến môi trường từ file .env
 dotenv.config();
 
@@ -26,6 +30,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+app.use(helmet());
 
 // Cấu hình ejs sau khi app được khởi tạo
 app.set("view engine", "ejs");
@@ -62,30 +68,34 @@ const pinata = new PinataClient({
 // Danh sách role hợp lệ dựa trên database
 const validRoles = [
   "Producer",
-  "ThirdParty",
+  "Government",
   "DeliveryHub",
   "Customer",
   "Admin",
 ];
 
-// Đọc CONTRACT_ADDRESS từ file
 let CONTRACT_ADDRESS = "";
+let GOVERNMENT_REGULATOR_ADDRESS = "";
 try {
-  const contractAddressPath = "D:/fruit-supply-chain/contract-address.txt";
-  if (fs.existsSync(contractAddressPath)) {
-    CONTRACT_ADDRESS = fs.readFileSync(contractAddressPath, "utf8").trim();
-    console.log("Địa chỉ hợp đồng từ file:", CONTRACT_ADDRESS);
+  const contractAddressesPath = "D:/fruit-supply-chain/contract-addresses.json";
+  if (fs.existsSync(contractAddressesPath)) {
+    const contractAddresses = JSON.parse(fs.readFileSync(contractAddressesPath, "utf8"));
+    CONTRACT_ADDRESS = contractAddresses.FruitSupplyChain;
+    GOVERNMENT_REGULATOR_ADDRESS = contractAddresses.GovernmentRegulator;
+    console.log("Địa chỉ FruitSupplyChain từ file:", CONTRACT_ADDRESS);
+    console.log("Địa chỉ GovernmentRegulator từ file:", GOVERNMENT_REGULATOR_ADDRESS);
   } else {
     console.error(
-      "File contract-address.txt không tồn tại tại đường dẫn:",
-      contractAddressPath
+      "File contract-addresses.json không tồn tại tại đường dẫn:",
+      contractAddressesPath
     );
-    throw new Error("File contract-address.txt không tồn tại!");
+    throw new Error("File contract-addresses.json không tồn tại!");
   }
 } catch (error) {
-  console.error("Lỗi khi đọc CONTRACT_ADDRESS từ file:", error);
+  console.error("Lỗi khi đọc địa chỉ hợp đồng từ file:", error);
   CONTRACT_ADDRESS = "";
-  process.exit(1); // Thoát nếu không đọc được CONTRACT_ADDRESS
+  GOVERNMENT_REGULATOR_ADDRESS = "";
+  process.exit(1); // Thoát nếu không đọc được địa chỉ hợp đồng
 }
 
 // Khởi tạo Web3 và contract sau khi có CONTRACT_ADDRESS
@@ -104,10 +114,28 @@ try {
   process.exit(1); // Thoát nếu không khởi tạo được contract
 }
 
+// Khởi tạo GovernmentRegulator contract
+const governmentRegulatorAbi = governmentRegulatorData.abi;
+let governmentRegulator;
+
+try {
+  if (!governmentRegulatorAbi || governmentRegulatorAbi.length === 0) {
+    throw new Error("ABI của GovernmentRegulator không hợp lệ!");
+  }
+  governmentRegulator = new web3.eth.Contract(governmentRegulatorAbi, GOVERNMENT_REGULATOR_ADDRESS);
+  console.log("Khởi tạo GovernmentRegulator contract thành công:", GOVERNMENT_REGULATOR_ADDRESS);
+} catch (error) {
+  console.error("Lỗi khi khởi tạo GovernmentRegulator contract:", error);
+  process.exit(1); // Thoát nếu không khởi tạo được GovernmentRegulator contract
+}
+
 // Middleware kiểm tra quyền
 const checkAuth = async (req, res, next) => {
   const userAddress = req.headers["x-ethereum-address"];
+  console.log("Nhận yêu cầu với x-ethereum-address:", userAddress);
+
   if (!userAddress) {
+    console.log("Thiếu header x-ethereum-address");
     return res.status(401).json({ error: "Yêu cầu xác thực ví MetaMask!" });
   }
 
@@ -117,18 +145,29 @@ const checkAuth = async (req, res, next) => {
       "SELECT * FROM users WHERE LOWER(wallet_address) = $1",
       [normalizedAddress]
     );
+    console.log("Kết quả truy vấn người dùng:", user.rows);
+
     if (user.rows.length === 0) {
+      console.log("Không tìm thấy người dùng với địa chỉ ví:", normalizedAddress);
       return res.status(401).json({
         error: "Địa chỉ ví không được liên kết với tài khoản nào!",
       });
     }
-    req.user = user.rows[0];
+
+    const userData = user.rows[0];
+    if (!userData.wallet_address) {
+      console.log("Người dùng không có wallet_address:", userData.email);
+      return res.status(401).json({
+        error: "Người dùng chưa liên kết ví MetaMask!",
+      });
+    }
+
+    req.user = userData;
+    console.log("req.user được gán:", req.user);
     next();
   } catch (error) {
     console.error("Lỗi khi kiểm tra xác thực:", error);
-    res
-      .status(500)
-      .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
+    res.status(500).json({ error: "Lỗi máy chủ nội bộ", details: error.message });
   }
 };
 
@@ -712,35 +751,26 @@ app.get(
   checkAuth,
   checkRole(["DeliveryHub"]),
   async (req, res) => {
-    const deliveryHubId = req.params.deliveryHubId;
-
-    try {
-      console.log(`Lấy danh sách kho cho deliveryHubId: ${deliveryHubId}`);
-
-      if (req.user.id !== parseInt(deliveryHubId)) {
-        return res.status(403).json({ message: "Không có quyền truy cập! 😅" });
+      const deliveryHubId = req.params.deliveryHubId;
+      try {
+          console.log(`Lấy danh sách kho cho deliveryHubId: ${deliveryHubId}`);
+          const result = await pool.query(
+              "SELECT i.*, p.id AS product_id, p.fruit_id, p.name, p.productcode, p.category, p.imageurl, p.description, p.productdate AS product_productdate, p.expirydate AS product_expirydate FROM inventory i JOIN products p ON i.product_id = p.id WHERE i.delivery_hub_id = $1 AND i.quantity > 0",
+              [deliveryHubId]
+          );
+          console.log(`Kết quả truy vấn kho: ${JSON.stringify(result.rows)}`);
+          const inventoryData = result.rows.map((item) => ({
+              ...item,
+              productdate: item.productdate || item.product_productdate,
+              expirydate: item.expirydate || item.product_expirydate,
+          }));
+          res.json(inventoryData);
+      } catch (error) {
+          console.error("Lỗi khi lấy danh sách kho:", error);
+          res
+              .status(500)
+              .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
       }
-
-      const result = await pool.query(
-        "SELECT i.*, p.name, p.productcode, p.category, p.imageurl, p.description, p.productdate AS product_productdate, p.expirydate AS product_expirydate FROM inventory i JOIN products p ON i.product_id = p.id WHERE i.delivery_hub_id = $1 AND i.quantity > 0",
-        [deliveryHubId]
-      );
-
-      console.log(`Kết quả truy vấn kho: ${JSON.stringify(result.rows)}`);
-
-      const inventoryData = result.rows.map((item) => ({
-        ...item,
-        productdate: item.productdate || item.product_productdate,
-        expirydate: item.expirydate || item.product_expirydate,
-      }));
-
-      res.json(inventoryData);
-    } catch (error) {
-      console.error("Lỗi khi lấy danh sách kho:", error);
-      res
-        .status(500)
-        .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
-    }
   }
 );
 
@@ -842,115 +872,104 @@ app.post(
   checkAuth,
   checkRole(["DeliveryHub"]),
   async (req, res) => {
-    const { inventoryId, quantity, price, transactionHash, fruitId } = req.body;
+      const { inventoryId, quantity, price, transactionHash, fruitId, listingId } = req.body;
 
-    try {
-      if (!inventoryId || !quantity || quantity <= 0) {
-        return res
-          .status(400)
-          .json({ message: "Vui lòng cung cấp đầy đủ thông tin! 😅" });
-      }
-
-      if (transactionHash) {
-        console.log("Nhận được transaction hash:", transactionHash);
-      }
-
-      let inventoryResult = await pool.query(
-        "SELECT i.*, p.quantity as product_quantity FROM inventory i JOIN products p ON i.product_id = p.id WHERE i.id = $1",
-        [inventoryId]
-      );
-      if (inventoryResult.rows.length === 0) {
-        return res
-          .status(404)
-          .json({ message: "Sản phẩm trong kho không tồn tại! 😅" });
-      }
-      const inventoryItem = inventoryResult.rows[0];
-
-      if (req.user.id !== inventoryItem.delivery_hub_id) {
-        return res.status(403).json({ message: "Không có quyền truy cập! 😅" });
-      }
-
-      const productQuantity = inventoryItem.product_quantity;
-      if (quantity !== productQuantity) {
-        console.log(
-          `Số lượng bán (${quantity}) không khớp với số lượng trong products (${productQuantity})`
-        );
-        return res.status(400).json({
-          message: `Số lượng bán phải đúng ${productQuantity} kg như người dân đăng bán! 😅`,
-        });
-      }
-
-      if (inventoryItem.quantity < quantity) {
-        console.log("Không đủ số lượng trong kho để đăng bán");
-        return res
-          .status(400)
-          .json({ message: "Số lượng trong kho không đủ! 😅" });
-      }
-
-      const sellingPrice = price || inventoryItem.price;
-
-      // Gọi hàm listProductForSale trên blockchain để tạo listingId mới
-      const userAddress = req.user.wallet_address;
-      const priceInWei = web3.utils.toWei(sellingPrice.toString(), "ether");
-      const gasEstimate = await contract.methods
-        .listProductForSale(fruitId || 0, priceInWei, quantity)
-        .estimateGas({ from: userAddress });
-      console.log("Ước tính gas:", gasEstimate);
-
-      const transactionResult = await contract.methods
-        .listProductForSale(fruitId || 0, priceInWei, quantity)
-        .send({
-          from: userAddress,
-          gas: Math.floor(Number(gasEstimate) * 1.5),
-        });
-      const newListingId = transactionResult.events.ProductListed.returnValues.listingId;
-      console.log("Đã đăng bán trên blockchain, listingId mới:", newListingId);
-
-      // Thêm bản ghi vào outgoing_products với listingId mới
-      const outgoingResult = await pool.query(
-        "INSERT INTO outgoing_products (product_id, delivery_hub_id, quantity, price, listed_date, status, transaction_hash, listing_id, fruit_id) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, 'Available', $5, $6, $7) RETURNING *",
-        [
-          inventoryItem.product_id,
-          inventoryItem.delivery_hub_id,
-          quantity,
-          sellingPrice,
-          transactionHash || transactionResult.transactionHash,
-          newListingId,
-          fruitId || null,
-        ]
-      );
-
-      const newQuantity = inventoryItem.quantity - quantity;
-      console.log(
-        `Cập nhật số lượng trong inventory: inventoryId=${inventoryId}, oldQuantity=${inventoryItem.quantity}, quantityToSell=${quantity}, newQuantity=${newQuantity}`
-      );
-
-      if (newQuantity === 0) {
-        await pool.query("DELETE FROM inventory WHERE id = $1", [inventoryId]);
-        console.log(`Đã xóa bản ghi inventory với id=${inventoryId} vì số lượng về 0`);
-      } else {
-        const updateResult = await pool.query(
-          "UPDATE inventory SET quantity = $1 WHERE id = $2 RETURNING *",
-          [newQuantity, inventoryId]
-        );
-        if (updateResult.rows.length === 0) {
-          console.error("Không thể cập nhật số lượng trong inventory!");
-          return res.status(500).json({
-            message: "Không thể cập nhật số lượng trong kho!",
+      try {
+          console.log("Nhận yêu cầu đăng bán sản phẩm:", {
+              inventoryId,
+              quantity,
+              price,
+              transactionHash,
+              fruitId,
+              listingId,
           });
-        }
-      }
 
-      res.status(200).json({
-        message: "Sản phẩm đã được đưa lên bán thành công!",
-        outgoingProduct: outgoingResult.rows[0],
-      });
-    } catch (error) {
-      console.error("Lỗi khi đăng bán sản phẩm:", error);
-      res
-        .status(500)
-        .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
-    }
+          if (!inventoryId || !quantity || quantity <= 0 || !listingId) {
+              return res
+                  .status(400)
+                  .json({ message: "Vui lòng cung cấp đầy đủ thông tin, bao gồm listingId! 😅" });
+          }
+
+          let inventoryResult = await pool.query(
+              "SELECT i.*, p.quantity as product_quantity FROM inventory i JOIN products p ON i.product_id = p.id WHERE i.id = $1",
+              [inventoryId]
+          );
+          if (inventoryResult.rows.length === 0) {
+              return res
+                  .status(404)
+                  .json({ message: "Sản phẩm trong kho không tồn tại! 😅" });
+          }
+          const inventoryItem = inventoryResult.rows[0];
+
+          if (req.user.id !== inventoryItem.delivery_hub_id) {
+              return res.status(403).json({ message: "Không có quyền truy cập! 😅" });
+          }
+
+          const productQuantity = inventoryItem.product_quantity;
+          if (quantity !== productQuantity) {
+              console.log(
+                  `Số lượng bán (${quantity}) không khớp với số lượng trong products (${productQuantity})`
+              );
+              return res.status(400).json({
+                  message: `Số lượng bán phải đúng ${productQuantity} kg như người dân đăng bán! 😅`,
+              });
+          }
+
+          if (inventoryItem.quantity < quantity) {
+              console.log("Không đủ số lượng trong kho để đăng bán");
+              return res
+                  .status(400)
+                  .json({ message: "Số lượng trong kho không đủ! 😅" });
+          }
+
+          const sellingPrice = price || inventoryItem.price;
+
+          // Thêm bản ghi vào outgoing_products với original_quantity
+          const outgoingResult = await pool.query(
+              "INSERT INTO outgoing_products (product_id, delivery_hub_id, quantity, original_quantity, price, listed_date, status, transaction_hash, listing_id, fruit_id) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, 'Available', $6, $7, $8) RETURNING *",
+              [
+                  inventoryItem.product_id,
+                  inventoryItem.delivery_hub_id,
+                  quantity,
+                  quantity, // Lưu original_quantity bằng số lượng ban đầu
+                  sellingPrice,
+                  transactionHash || null,
+                  listingId,
+                  fruitId || null,
+              ]
+          );
+
+          const newQuantity = inventoryItem.quantity - quantity;
+          console.log(
+              `Cập nhật số lượng trong inventory: inventoryId=${inventoryId}, oldQuantity=${inventoryItem.quantity}, quantityToSell=${quantity}, newQuantity=${newQuantity}`
+          );
+
+          if (newQuantity === 0) {
+              await pool.query("DELETE FROM inventory WHERE id = $1", [inventoryId]);
+              console.log(`Đã xóa bản ghi inventory với id=${inventoryId} vì số lượng về 0`);
+          } else {
+              const updateResult = await pool.query(
+                  "UPDATE inventory SET quantity = $1 WHERE id = $2 RETURNING *",
+                  [newQuantity, inventoryId]
+              );
+              if (updateResult.rows.length === 0) {
+                  console.error("Không thể cập nhật số lượng trong inventory!");
+                  return res.status(500).json({
+                      message: "Không thể cập nhật số lượng trong kho!",
+                  });
+              }
+          }
+
+          res.status(200).json({
+              message: "Sản phẩm đã được đưa lên bán thành công!",
+              outgoingProduct: outgoingResult.rows[0],
+          });
+      } catch (error) {
+          console.error("Lỗi khi đăng bán sản phẩm:", error);
+          res
+              .status(500)
+              .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
+      }
   }
 );
 
@@ -1751,34 +1770,6 @@ app.post("/record-step", checkAuth, async (req, res) => {
   }
 });
 
-app.post(
-  "/recommendation",
-  checkAuth,
-  checkRole(["ThirdParty"]),
-  async (req, res) => {
-    const { fruitId, recommendation } = req.body;
-
-    try {
-      const fruit = await pool.query("SELECT * FROM fruits WHERE id = $1", [
-        fruitId,
-      ]);
-      if (fruit.rows.length === 0) {
-        return res.status(404).json({ message: "Không tìm thấy trái cây!" });
-      }
-
-      await pool.query(
-        "INSERT INTO fruit_recommendations (fruit_id, recommendation, recorded_date) VALUES ($1, $2, CURRENT_TIMESTAMP)",
-        [fruitId, recommendation]
-      );
-
-      res.json({ message: "Đã thêm khuyến nghị", fruitId });
-    } catch (error) {
-      res
-        .status(500)
-        .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
-    }
-  }
-);
 
 app.get("/fruit/:id", async (req, res) => {
   const fruitId = req.params.id;
@@ -1972,19 +1963,23 @@ app.get("/products", async (req, res) => {
 });
 
 app.get("/products/:id", async (req, res) => {
+  const productId = req.params.id;
+  if (!productId || productId === "undefined" || isNaN(productId)) {
+      return res.status(400).json({ message: "ID sản phẩm không hợp lệ!" });
+  }
   try {
-    const result = await pool.query("SELECT * FROM products WHERE id = $1", [
-      req.params.id,
-    ]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: "Không tìm thấy sản phẩm!" });
-    }
-    res.json(result.rows[0]);
+      const result = await pool.query("SELECT * FROM products WHERE id = $1", [
+          productId,
+      ]);
+      if (result.rows.length === 0) {
+          return res.status(404).json({ message: "Không tìm thấy sản phẩm!" });
+      }
+      res.json(result.rows[0]);
   } catch (error) {
-    console.error("Lỗi khi lấy sản phẩm:", error);
-    res
-      .status(500)
-      .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
+      console.error("Lỗi khi lấy sản phẩm:", error);
+      res
+          .status(500)
+          .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
   }
 });
 
@@ -2033,172 +2028,173 @@ app.get("/product-detail/:listingId", async (req, res) => {
   const { listingId } = req.params;
 
   try {
-    const outgoingProductResult = await pool.query(
-      `SELECT op.*, 
-            p.name, 
-            p.productcode, 
-            p.imageurl, 
-            p.description, 
-            p.category, 
-            p.price as original_price, 
-            p.productdate, 
-            p.expirydate, 
-            p.farm_id,
-            p.hash,
-            u.name as delivery_hub_name
-     FROM outgoing_products op
-     JOIN products p ON op.product_id = p.id
-     JOIN users u ON op.delivery_hub_id = u.id
-     WHERE op.listing_id = $1`,
-      [listingId]
-    );
-
-    if (outgoingProductResult.rows.length === 0) {
-      return res.status(404).json({
-        message: "Sản phẩm không tồn tại hoặc đã được bán!",
-      });
-    }
-
-    const outgoingProduct = outgoingProductResult.rows[0];
-
-    const farmResult = await pool.query("SELECT * FROM farms WHERE id = $1", [
-      outgoingProduct.farm_id,
-    ]);
-
-    if (farmResult.rows.length === 0) {
-      return res.status(404).json({ message: "Nông trại không tồn tại!" });
-    }
-
-    const farm = farmResult.rows[0];
-
-    const producerResult = await pool.query(
-      "SELECT * FROM users WHERE id = $1 AND role = 'Producer'",
-      [farm.producer_id]
-    );
-
-    if (producerResult.rows.length === 0) {
-      return res.status(404).json({ message: "Người sản xuất không tồn tại!" });
-    }
-
-    const producer = producerResult.rows[0];
-    const producerName = producer.name;
-
-    const inventoryResult = await pool.query(
-      `SELECT received_date 
-     FROM inventory 
-     WHERE product_id = $1 AND delivery_hub_id = $2`,
-      [outgoingProduct.product_id, outgoingProduct.delivery_hub_id]
-    );
-
-    const receivedDate =
-      inventoryResult.rows.length > 0
-        ? inventoryResult.rows[0].received_date
-        : null;
-
-    let customerName = "Chưa có người tiêu dùng";
-    let customerDetails = "Chưa bán - Đang chờ giao hàng";
-
-    if (outgoingProduct.status === "Sold") {
-      const shipmentResult = await pool.query(
-        `SELECT s.recipient_id, s.received_date 
-       FROM shipments s
-       JOIN shipment_products sp ON s.id = sp.shipment_id
-       WHERE sp.product_id = $1 AND s.recipient_type = 'Customer'`,
-        [outgoingProduct.product_id]
+      const outgoingProductResult = await pool.query(
+          `SELECT op.*, 
+                p.name, 
+                p.productcode, 
+                p.imageurl, 
+                p.description, 
+                p.category, 
+                p.price as original_price, 
+                p.productdate, 
+                p.expirydate, 
+                p.farm_id,
+                p.hash,
+                u.name as delivery_hub_name
+         FROM outgoing_products op
+         JOIN products p ON op.product_id = p.id
+         JOIN users u ON op.delivery_hub_id = u.id
+         WHERE op.listing_id = $1`,
+          [listingId]
       );
 
-      if (shipmentResult.rows.length > 0) {
-        const customerId = shipmentResult.rows[0].recipient_id;
-        const deliveryDate = shipmentResult.rows[0].received_date;
-
-        const customerResult = await pool.query(
-          "SELECT name FROM users WHERE id = $1 AND role = 'Customer'",
-          [customerId]
-        );
-
-        if (customerResult.rows.length > 0) {
-          customerName = customerResult.rows[0].name;
-          customerDetails = deliveryDate
-            ? `Đã bán cho ${customerName}, Ngày giao hàng: ${new Date(
-                deliveryDate
-              ).toLocaleString("vi-VN")}`
-            : `Đã bán cho ${customerName}, Ngày giao hàng: Chưa có thông tin`;
-        } else {
-          customerDetails = "Đã bán (Không tìm thấy thông tin khách hàng)";
-        }
-      } else {
-        customerDetails = "Đã bán (Không tìm thấy thông tin giao hàng)";
+      if (outgoingProductResult.rows.length === 0) {
+          return res.status(404).json({
+              message: "Sản phẩm không tồn tại hoặc đã được bán!",
+          });
       }
-    }
 
-    const ratingResult = await pool.query(
-      `SELECT AVG(rating) as average_rating, COUNT(*) as rating_count 
-     FROM product_ratings 
-     WHERE listing_id = $1`,
-      [listingId]
-    );
+      const outgoingProduct = outgoingProductResult.rows[0];
 
-    const averageRating = parseFloat(ratingResult.rows[0].average_rating) || 0;
-    const ratingCount = parseInt(ratingResult.rows[0].rating_count) || 0;
+      const farmResult = await pool.query("SELECT * FROM farms WHERE id = $1", [
+          outgoingProduct.farm_id,
+      ]);
 
-    const supplyChain = [
-      {
-        stage: "Người dân (Nông trại)",
-        details: `Tên: ${producerName}, Ngày sản xuất: ${new Date(
-          outgoingProduct.productdate
-        ).toLocaleString("vi-VN")}`,
-      },
-      {
-        stage: "Đại lý",
-        details: receivedDate
-          ? `Ngày nhận hàng: ${new Date(receivedDate).toLocaleString("vi-VN")}`
-          : "Chưa nhận hàng từ nông trại",
-      },
-      {
-        stage: "Đại lý",
-        details: `Ngày đăng bán: ${new Date(
-          outgoingProduct.listed_date
-        ).toLocaleString("vi-VN")}`,
-      },
-      {
-        stage: "Người tiêu dùng",
-        details: customerDetails,
-      },
-    ];
+      if (farmResult.rows.length === 0) {
+          return res.status(404).json({ message: "Nông trại không tồn tại!" });
+      }
 
-    const origin = {
-      farm_name: farm.farm_name,
-      harvest_date: outgoingProduct.productdate.toISOString(),
-      farm_location: farm.location,
-      certification: farm.quality || "Không có chứng nhận",
-    };
+      const farm = farmResult.rows[0];
 
-    const product = {
-      listing_id: outgoingProduct.listing_id,
-      name: outgoingProduct.name,
-      price: outgoingProduct.price,
-      quantity: outgoingProduct.quantity,
-      delivery_hub_id: outgoingProduct.delivery_hub_id,
-      delivery_hub_name: outgoingProduct.delivery_hub_name,
-      imageurl: outgoingProduct.imageurl,
-      description: outgoingProduct.description,
-      productdate: outgoingProduct.productdate.toISOString(),
-      expirydate: outgoingProduct.expirydate.toISOString(),
-      hash: outgoingProduct.hash,
-      status: outgoingProduct.status,
-      origin: origin,
-      supplyChain: supplyChain,
-      average_rating: averageRating,
-      rating_count: ratingCount,
-    };
+      const producerResult = await pool.query(
+          "SELECT * FROM users WHERE id = $1 AND role = 'Producer'",
+          [farm.producer_id]
+      );
 
-    res.status(200).json(product);
+      if (producerResult.rows.length === 0) {
+          return res.status(404).json({ message: "Người sản xuất không tồn tại!" });
+      }
+
+      const producer = producerResult.rows[0];
+      const producerName = producer.name;
+
+      const inventoryResult = await pool.query(
+          `SELECT received_date 
+         FROM inventory 
+         WHERE product_id = $1 AND delivery_hub_id = $2`,
+          [outgoingProduct.product_id, outgoingProduct.delivery_hub_id]
+      );
+
+      const receivedDate =
+          inventoryResult.rows.length > 0
+              ? inventoryResult.rows[0].received_date
+              : null;
+
+      let customerName = "Chưa có người tiêu dùng";
+      let customerDetails = "Chưa bán - Đang chờ giao hàng";
+
+      if (outgoingProduct.status === "Sold") {
+          const shipmentResult = await pool.query(
+              `SELECT s.recipient_id, s.received_date 
+             FROM shipments s
+             JOIN shipment_products sp ON s.id = sp.shipment_id
+             WHERE sp.product_id = $1 AND s.recipient_type = 'Customer'`,
+              [outgoingProduct.product_id]
+          );
+
+          if (shipmentResult.rows.length > 0) {
+              const customerId = shipmentResult.rows[0].recipient_id;
+              const deliveryDate = shipmentResult.rows[0].received_date;
+
+              const customerResult = await pool.query(
+                  "SELECT name FROM users WHERE id = $1 AND role = 'Customer'",
+                  [customerId]
+              );
+
+              if (customerResult.rows.length > 0) {
+                  customerName = customerResult.rows[0].name;
+                  customerDetails = deliveryDate
+                      ? `Đã bán cho ${customerName}, Ngày giao hàng: ${new Date(
+                            deliveryDate
+                        ).toLocaleString("vi-VN")}`
+                      : `Đã bán cho ${customerName}, Ngày giao hàng: Chưa có thông tin`;
+              } else {
+                  customerDetails = "Đã bán (Không tìm thấy thông tin khách hàng)";
+              }
+          } else {
+              customerDetails = "Đã bán (Không tìm thấy thông tin giao hàng)";
+          }
+      }
+
+      const ratingResult = await pool.query(
+          `SELECT AVG(rating) as average_rating, COUNT(*) as rating_count 
+         FROM product_ratings 
+         WHERE listing_id = $1`,
+          [listingId]
+      );
+
+      const averageRating = parseFloat(ratingResult.rows[0].average_rating) || 0;
+      const ratingCount = parseInt(ratingResult.rows[0].rating_count) || 0;
+
+      const supplyChain = [
+          {
+              stage: "Người dân (Nông trại)",
+              details: `Tên: ${producerName}, Ngày sản xuất: ${new Date(
+                  outgoingProduct.productdate
+              ).toLocaleString("vi-VN")}`,
+          },
+          {
+              stage: "Đại lý",
+              details: receivedDate
+                  ? `Ngày nhận hàng: ${new Date(receivedDate).toLocaleString("vi-VN")}`
+                  : "Chưa nhận hàng từ nông trại",
+          },
+          {
+              stage: "Đại lý",
+              details: `Ngày đăng bán: ${new Date(
+                  outgoingProduct.listed_date
+              ).toLocaleString("vi-VN")}`,
+          },
+          {
+              stage: "Người tiêu dùng",
+              details: customerDetails,
+          },
+      ];
+
+      const origin = {
+          farm_name: farm.farm_name,
+          harvest_date: outgoingProduct.productdate.toISOString(),
+          farm_location: farm.location,
+          certification: farm.quality || "Không có chứng nhận",
+      };
+
+      const product = {
+          listing_id: outgoingProduct.listing_id,
+          name: outgoingProduct.name,
+          price: outgoingProduct.price,
+          quantity: outgoingProduct.quantity,
+          original_quantity: outgoingProduct.original_quantity, // Thêm original_quantity
+          delivery_hub_id: outgoingProduct.delivery_hub_id,
+          delivery_hub_name: outgoingProduct.delivery_hub_name,
+          imageurl: outgoingProduct.imageurl,
+          description: outgoingProduct.description,
+          productdate: outgoingProduct.productdate.toISOString(),
+          expirydate: outgoingProduct.expirydate.toISOString(),
+          hash: outgoingProduct.hash,
+          status: outgoingProduct.status,
+          origin: origin,
+          supplyChain: supplyChain,
+          average_rating: averageRating,
+          rating_count: ratingCount,
+      };
+
+      res.status(200).json(product);
   } catch (error) {
-    console.error("Lỗi khi lấy chi tiết sản phẩm:", error);
-    res.status(500).json({
-      message: "Lỗi máy chủ nội bộ! Vui lòng thử lại sau.",
-      details: error.message,
-    });
+      console.error("Lỗi khi lấy chi tiết sản phẩm:", error);
+      res.status(500).json({
+          message: "Lỗi máy chủ nội bộ! Vui lòng thử lại sau.",
+          details: error.message,
+      });
   }
 });
 // ==== API TRUY XUẤT NGUỒN GỐC SẢN PHẨM ====
@@ -2427,219 +2423,222 @@ app.post(
   checkAuth,
   checkRole(["Customer"]),
   async (req, res) => {
-    const {
-      listingId,
-      customerId,
-      quantity,
-      price,
-      deliveryHubId,
-      shippingAddress,
-      transactionHash,
-      shippingFee,
-      paymentMethod,
-    } = req.body;
-
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-
-      console.log("Dữ liệu nhận được từ /buy-product:", req.body);
-
-      if (
-        !listingId ||
-        !customerId ||
-        !quantity ||
-        quantity <= 0 ||
-        !price ||
-        !deliveryHubId ||
-        !shippingAddress
-      ) {
-        await client.query("ROLLBACK");
-        return res.status(400).json({
-          message: "Vui lòng cung cấp đầy đủ thông tin! 😅",
-        });
-      }
-
-      // Đồng bộ dữ liệu với blockchain
-      let isActive = false;
-      let blockchainQuantity = 0;
-      let blockchainPrice = 0;
-      try {
-        const productResponse = await contract.methods
-          .getListedProduct(listingId)
-          .call();
-        console.log("Dữ liệu blockchain:", productResponse);
-        isActive = productResponse.isActive;
-        blockchainQuantity = parseInt(productResponse.quantity);
-        blockchainPrice = parseInt(productResponse.price);
-        if (!isActive || blockchainQuantity < quantity) {
-          await client.query("ROLLBACK");
-          return res.status(400).json({
-            message: `Sản phẩm không còn khả dụng trên blockchain! Số lượng khả dụng: ${blockchainQuantity} 😅`,
-          });
-        }
-      } catch (blockchainError) {
-        console.error("Lỗi khi kiểm tra blockchain:", blockchainError);
-        await client.query("ROLLBACK");
-        return res.status(500).json({
-          error: "Lỗi khi kiểm tra trạng thái blockchain",
-          details: blockchainError.message,
-        });
-      }
-
-      // Khóa hàng trong outgoing_products
-      const outgoingProductResult = await client.query(
-        "SELECT * FROM outgoing_products WHERE listing_id = $1 AND status = 'Available' FOR UPDATE",
-        [listingId]
-      );
-      if (outgoingProductResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return res.status(404).json({
-          message: "Sản phẩm không tồn tại hoặc đã được bán! 😅",
-        });
-      }
-      let outgoingProduct = outgoingProductResult.rows[0];
-
-      // Đồng bộ số lượng từ blockchain
-      if (outgoingProduct.quantity !== blockchainQuantity) {
-        await client.query(
-          "UPDATE outgoing_products SET quantity = $1 WHERE listing_id = $2",
-          [blockchainQuantity, listingId]
-        );
-        outgoingProduct.quantity = blockchainQuantity;
-      }
-
-      // Kiểm tra số lượng trong outgoing_products
-      if (outgoingProduct.quantity < quantity) {
-        await client.query("ROLLBACK");
-        return res.status(400).json({
-          message: `Số lượng sản phẩm không đủ để mua! Số lượng khả dụng: ${outgoingProduct.quantity} 😅`,
-        });
-      }
-
-      // Xác thực giá mỗi hộp
-      const expectedPricePerUnit = parseFloat(outgoingProduct.price) / outgoingProduct.quantity;
-      const requestedPrice = parseFloat(price);
-      if (Math.abs(requestedPrice - expectedPricePerUnit) > 0.01) {
-        await client.query("ROLLBACK");
-        return res.status(400).json({
-          message: `Giá mỗi hộp không khớp! Giá mong đợi: ${expectedPricePerUnit.toFixed(2)} AGT/hộp, giá gửi lên: ${requestedPrice} AGT/hộp 😅`,
-        });
-      }
-
-      // Kiểm tra sản phẩm
-      const productResult = await client.query(
-        "SELECT * FROM products WHERE id = $1",
-        [outgoingProduct.product_id]
-      );
-      if (productResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return res.status(404).json({
-          message: "Sản phẩm không tồn tại trong danh mục sản phẩm! 😅",
-        });
-      }
-
-      // Kiểm tra khách hàng
-      const customerResult = await client.query(
-        "SELECT * FROM users WHERE id = $1 AND role = 'Customer'",
-        [customerId]
-      );
-      if (customerResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return res.status(404).json({
-          message: "Khách hàng không tồn tại! 😅",
-        });
-      }
-
-      // Kiểm tra trung tâm phân phối
-      const deliveryHubResult = await client.query(
-        "SELECT * FROM users WHERE id = $1 AND role = 'DeliveryHub'",
-        [deliveryHubId]
-      );
-      if (deliveryHubResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return res.status(404).json({
-          message: "Trung tâm phân phối không tồn tại! 😅",
-        });
-      }
-
-      // Kiểm tra và thêm sản phẩm vào inventory nếu cần
-      const inventoryResult = await client.query(
-        "SELECT * FROM inventory WHERE product_id = $1 AND delivery_hub_id = $2",
-        [outgoingProduct.product_id, deliveryHubId]
-      );
-      if (inventoryResult.rows.length === 0) {
-        await client.query(
-          "INSERT INTO inventory (product_id, delivery_hub_id, quantity, price, productdate, expirydate, received_date, transaction_hash) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, $7) RETURNING *",
-          [
-            outgoingProduct.product_id,
-            deliveryHubId,
-            quantity,
-            expectedPricePerUnit,
-            productResult.rows[0].productdate || new Date().toISOString(),
-            productResult.rows[0].expirydate ||
-              new Date(
-                new Date().setMonth(new Date().getMonth() + 1)
-              ).toISOString(),
-            transactionHash || null,
-          ]
-        );
-      } else {
-        const inventoryItem = inventoryResult.rows[0];
-        const newQuantity = inventoryItem.quantity + quantity;
-        await client.query(
-          "UPDATE inventory SET quantity = $1 WHERE product_id = $2 AND delivery_hub_id = $3",
-          [newQuantity, outgoingProduct.product_id, deliveryHubId]
-        );
-      }
-
-      // Tính tổng giá cho đơn hàng
-      const totalOrderPrice = (expectedPricePerUnit * quantity).toFixed(2);
-
-      // Tạo đơn hàng với giá tổng
-      const orderResult = await client.query(
-        "INSERT INTO orders (product_id, customer_id, quantity, price, order_date, status, shipping_address, transaction_hash) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, 'Pending', $5, $6) RETURNING *",
-        [
-          outgoingProduct.product_id,
+      const {
+          listingId,
           customerId,
           quantity,
-          totalOrderPrice,
+          price,
+          deliveryHubId,
           shippingAddress,
-          transactionHash || null,
-        ]
-      );
-      const order = orderResult.rows[0];
+          shippingFee,
+          paymentMethod,
+          transactionHash,
+      } = req.body;
 
-      // Cập nhật số lượng
-      const newQuantity = outgoingProduct.quantity - quantity;
-      await client.query(
-        "UPDATE outgoing_products SET quantity = $1 WHERE listing_id = $2",
-        [newQuantity, listingId]
-      );
+      const client = await pool.connect();
+      try {
+          await client.query("BEGIN");
 
-      // Cập nhật trạng thái
-      const newStatus = newQuantity === 0 ? "Sold" : "Available";
-      await client.query(
-        "UPDATE outgoing_products SET status = $1 WHERE listing_id = $2",
-        [newStatus, listingId]
-      );
+          console.log("Dữ liệu nhận được từ /buy-product:", req.body);
 
-      await client.query("COMMIT");
+          if (
+              !listingId ||
+              !customerId ||
+              !quantity ||
+              quantity <= 0 ||
+              !price ||
+              !deliveryHubId ||
+              !shippingAddress
+          ) {
+              await client.query("ROLLBACK");
+              return res.status(400).json({
+                  message: "Vui lòng cung cấp đầy đủ thông tin! 😅",
+              });
+          }
 
-      res.status(200).json({
-        message: "Mua sản phẩm thành công! Đơn hàng đã được tạo.",
-        order: order,
-      });
-    } catch (error) {
-      console.error("Lỗi khi mua sản phẩm:", error);
-      await client.query("ROLLBACK");
-      res.status(500).json({
-        error: "Lỗi máy chủ nội bộ",
-        details: error.message,
-      });
-    } finally {
-      client.release();
-    }
+          // Đồng bộ dữ liệu với blockchain
+          let isActive = false;
+          let blockchainQuantity = 0;
+          let blockchainPrice = 0;
+          try {
+              const productResponse = await contract.methods
+                  .getListedProduct(listingId)
+                  .call();
+              console.log("Dữ liệu blockchain:", productResponse);
+              isActive = productResponse.isActive;
+              blockchainQuantity = parseInt(productResponse.quantity);
+              blockchainPrice = parseInt(productResponse.price);
+              if (!isActive || blockchainQuantity < quantity) {
+                  await client.query("ROLLBACK");
+                  return res.status(400).json({
+                      message: `Sản phẩm không còn khả dụng trên blockchain! Số lượng khả dụng: ${blockchainQuantity} 😅`,
+                  });
+              }
+          } catch (blockchainError) {
+              console.error("Lỗi khi kiểm tra blockchain:", blockchainError);
+              await client.query("ROLLBACK");
+              return res.status(500).json({
+                  error: "Lỗi khi kiểm tra trạng thái blockchain",
+                  details: blockchainError.message,
+              });
+          }
+
+          // Khóa hàng trong outgoing_products
+          const outgoingProductResult = await client.query(
+              "SELECT * FROM outgoing_products WHERE listing_id = $1 AND status = 'Available' FOR UPDATE",
+              [listingId]
+          );
+          if (outgoingProductResult.rows.length === 0) {
+              await client.query("ROLLBACK");
+              return res.status(404).json({
+                  message: "Sản phẩm không tồn tại hoặc đã được bán! 😅",
+              });
+          }
+          let outgoingProduct = outgoingProductResult.rows[0];
+
+          // Đồng bộ số lượng từ blockchain
+          if (outgoingProduct.quantity !== blockchainQuantity) {
+              await client.query(
+                  "UPDATE outgoing_products SET quantity = $1 WHERE listing_id = $2",
+                  [blockchainQuantity, listingId]
+              );
+              outgoingProduct.quantity = blockchainQuantity;
+          }
+
+          // Kiểm tra số lượng trong outgoing_products
+          if (outgoingProduct.quantity < quantity) {
+              await client.query("ROLLBACK");
+              return res.status(400).json({
+                  message: `Số lượng sản phẩm không đủ để mua! Số lượng khả dụng: ${outgoingProduct.quantity} 😅`,
+              });
+          }
+
+          // Xác thực giá mỗi hộp với độ chính xác cao, sử dụng original_quantity
+          const expectedPricePerUnit = parseFloat(
+              (parseFloat(outgoingProduct.price) / outgoingProduct.original_quantity).toFixed(2)
+          );
+          const requestedPrice = parseFloat(price);
+          const tolerance = 0.01; // Cho phép sai số 0.01 AGT
+          if (Math.abs(requestedPrice - expectedPricePerUnit) > tolerance) {
+              await client.query("ROLLBACK");
+              return res.status(400).json({
+                  message: `Giá mỗi hộp không khớp! Giá mong đợi: ${expectedPricePerUnit.toFixed(2)} AGT/hộp, giá gửi lên: ${requestedPrice} AGT/hộp 😅`,
+              });
+          }
+
+          // Kiểm tra sản phẩm
+          const productResult = await client.query(
+              "SELECT * FROM products WHERE id = $1",
+              [outgoingProduct.product_id]
+          );
+          if (productResult.rows.length === 0) {
+              await client.query("ROLLBACK");
+              return res.status(404).json({
+                  message: "Sản phẩm không tồn tại trong danh mục sản phẩm! 😅",
+              });
+          }
+
+          // Kiểm tra khách hàng
+          const customerResult = await client.query(
+              "SELECT * FROM users WHERE id = $1 AND role = 'Customer'",
+              [customerId]
+          );
+          if (customerResult.rows.length === 0) {
+              await client.query("ROLLBACK");
+              return res.status(404).json({
+                  message: "Khách hàng không tồn tại! 😅",
+              });
+          }
+
+          // Kiểm tra trung tâm phân phối
+          const deliveryHubResult = await client.query(
+              "SELECT * FROM users WHERE id = $1 AND role = 'DeliveryHub'",
+              [deliveryHubId]
+          );
+          if (deliveryHubResult.rows.length === 0) {
+              await client.query("ROLLBACK");
+              return res.status(404).json({
+                  message: "Trung tâm phân phối không tồn tại! 😅",
+              });
+          }
+
+          // Kiểm tra và thêm sản phẩm vào inventory nếu cần
+          const inventoryResult = await client.query(
+              "SELECT * FROM inventory WHERE product_id = $1 AND delivery_hub_id = $2",
+              [outgoingProduct.product_id, deliveryHubId]
+          );
+          if (inventoryResult.rows.length === 0) {
+              await client.query(
+                  "INSERT INTO inventory (product_id, delivery_hub_id, quantity, price, productdate, expirydate, received_date, transaction_hash) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, $7) RETURNING *",
+                  [
+                      outgoingProduct.product_id,
+                      deliveryHubId,
+                      quantity,
+                      expectedPricePerUnit,
+                      productResult.rows[0].productdate || new Date().toISOString(),
+                      productResult.rows[0].expirydate ||
+                          new Date(
+                              new Date().setMonth(new Date().getMonth() + 1)
+                          ).toISOString(),
+                      transactionHash || null,
+                  ]
+              );
+          } else {
+              const inventoryItem = inventoryResult.rows[0];
+              const newQuantity = inventoryItem.quantity + quantity;
+              await client.query(
+                  "UPDATE inventory SET quantity = $1 WHERE product_id = $2 AND delivery_hub_id = $3",
+                  [newQuantity, outgoingProduct.product_id, deliveryHubId]
+              );
+          }
+
+          // Tính tổng giá cho đơn hàng
+          const totalOrderPrice = (expectedPricePerUnit * quantity).toFixed(2);
+
+          // Tạo đơn hàng với giá tổng
+          const orderResult = await client.query(
+              "INSERT INTO orders (product_id, customer_id, quantity, price, order_date, status, shipping_address, transaction_hash) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, 'Pending', $5, $6) RETURNING *",
+              [
+                  outgoingProduct.product_id,
+                  customerId,
+                  quantity,
+                  totalOrderPrice,
+                  shippingAddress,
+                  transactionHash || null,
+              ]
+          );
+          const order = orderResult.rows[0];
+
+          // Cập nhật số lượng
+          const newQuantity = outgoingProduct.quantity - quantity;
+          await client.query(
+              "UPDATE outgoing_products SET quantity = $1 WHERE listing_id = $2",
+              [newQuantity, listingId]
+          );
+
+          // Cập nhật trạng thái
+          const newStatus = newQuantity === 0 ? "Sold" : "Available";
+          await client.query(
+              "UPDATE outgoing_products SET status = $1 WHERE listing_id = $2",
+              [newStatus, listingId]
+          );
+
+          await client.query("COMMIT");
+
+          res.status(200).json({
+              message: "Mua sản phẩm thành công! Đơn hàng đã được tạo.",
+              order: order,
+          });
+      } catch (error) {
+          console.error("Lỗi khi mua sản phẩm:", error);
+          await client.query("ROLLBACK");
+          res.status(500).json({
+              error: "Lỗi máy chủ nội bộ",
+              details: error.message,
+          });
+      } finally {
+          client.release();
+      }
   }
 );
 // ==== API THÊM SẢN PHẨM ====
@@ -3155,6 +3154,931 @@ app.post(
     }
   }
 );
+// ==== API ĐỒNG BỘ HỢP ĐỒNG CHO GOVERNMENT ====
+app.post("/government/sync-contracts", checkAuth, checkRole(["Government"]), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    let contractCount;
+    try {
+      contractCount = Number(await governmentRegulator.methods.contractCount().call());
+    } catch (blockchainError) {
+      return res.status(503).json({
+        error: "Không thể kết nối đến blockchain",
+        details: blockchainError.message,
+        suggestion: "Vui lòng kiểm tra Hardhat node đang chạy trên http://127.0.0.1:8545/ và contract GovernmentRegulator đã được triển khai."
+      });
+    }
+
+    const contractList = [];
+    const farmIds = new Set();
+    const provinces = new Set();
+
+    if (contractCount === 0) {
+      return res.status(200).json({
+        message: "Không có hợp đồng nào để đồng bộ!",
+        contracts: contractList,
+      });
+    }
+
+    for (let i = 1; i <= contractCount; i++) {
+      try {
+        const contractData = await governmentRegulator.methods.checkContractStatus(i).call();
+        const contract = {
+          contractId: i,
+          farmId: contractData.farmId,
+          deliveryHubWalletAddress: contractData.agentAddress.toLowerCase(),
+          creationDate: new Date(Number(contractData.creationDate) * 1000),
+          expiryDate: new Date(Number(contractData.expiryDate) * 1000),
+          totalQuantity: Number(contractData.totalQuantity),
+          pricePerUnit: Number(web3.utils.fromWei(contractData.pricePerUnit, "ether")),
+          terms: contractData.terms,
+          isActive: contractData.isActive,
+          isCompleted: contractData.isCompleted,
+        };
+
+        if (!contract.terms || contract.terms.trim() === "") {
+          throw new Error(`Hợp đồng ID ${i} không có trường terms hợp lệ trên blockchain`);
+        }
+
+        contractList.push({
+          ...contract,
+          creationDate: contract.creationDate.getTime(),
+          expiryDate: contract.expiryDate.getTime(),
+        });
+
+        await client.query(
+          `
+          INSERT INTO triparty_contracts (contract_id, farm_id, delivery_hub_wallet_address, creation_date, expiry_date, total_quantity, price_per_unit, terms, is_active, is_completed)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          ON CONFLICT (contract_id)
+          DO UPDATE SET
+            farm_id = EXCLUDED.farm_id,
+            delivery_hub_wallet_address = EXCLUDED.delivery_hub_wallet_address,
+            creation_date = EXCLUDED.creation_date,
+            expiry_date = EXCLUDED.expiry_date,
+            total_quantity = EXCLUDED.total_quantity,
+            price_per_unit = EXCLUDED.price_per_unit,
+            terms = EXCLUDED.terms,
+            is_active = EXCLUDED.is_active,
+            is_completed = EXCLUDED.is_completed
+          `,
+          [
+            contract.contractId,
+            contract.farmId,
+            contract.deliveryHubWalletAddress,
+            contract.creationDate,
+            contract.expiryDate,
+            contract.totalQuantity,
+            contract.pricePerUnit,
+            contract.terms,
+            contract.isActive,
+            contract.isCompleted,
+          ]
+        );
+
+        farmIds.add(contract.farmId);
+        const farmResult = await pool.query("SELECT location FROM farms WHERE farm_name = $1", [contract.farmId]);
+        if (farmResult.rows.length > 0) {
+          provinces.add(farmResult.rows[0].location);
+        }
+      } catch (err) {
+        console.error(`Lỗi khi đồng bộ hợp đồng ID ${i}:`, err);
+        continue;
+      }
+    }
+
+    for (const farmId of farmIds) {
+      try {
+        await syncFarmStats(farmId);
+      } catch (err) {
+        console.error(`Lỗi khi đồng bộ thống kê farm ${farmId}:`, err);
+      }
+    }
+
+    for (const province of provinces) {
+      try {
+        await syncProvinceStats(province);
+      } catch (err) {
+        console.error(`Lỗi khi đồng bộ thống kê tỉnh ${province}:`, err);
+      }
+    }
+
+    await client.query("COMMIT");
+    res.status(200).json({
+      message: "Đồng bộ hợp đồng và thống kê thành công!",
+      contracts: contractList,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Lỗi khi đồng bộ hợp đồng và thống kê:", error);
+    res.status(500).json({
+      error: "Lỗi máy chủ nội bộ",
+      details: error.message,
+      suggestion: "Vui lòng kiểm tra log server để biết thêm chi tiết."
+    });
+  } finally {
+    client.release();
+  }
+});
+// ==== API CHO VAI TRÒ GOVERNMENT ====
+
+
+// Lấy danh sách hợp đồng ba bên
+app.get("/government/contracts", checkAuth, checkRole(["Government"]), async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM triparty_contracts ORDER BY contract_id ASC");
+    const contractList = result.rows.map((row) => ({
+      contractId: row.contract_id,
+      farmId: row.farm_id,
+      deliveryHubWalletAddress: row.delivery_hub_wallet_address,
+      creationDate: new Date(row.creation_date).getTime(),
+      expiryDate: new Date(row.expiry_date).getTime(),
+      totalQuantity: Number(row.total_quantity),
+      pricePerUnit: row.price_per_unit.toString(),
+      terms: row.terms,
+      isActive: row.is_active,
+      isCompleted: row.is_completed,
+    }));
+
+    res.status(200).json(contractList);
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách hợp đồng:", error);
+    res.status(500).json({ error: "Lỗi máy chủ nội bộ", details: error.message });
+  }
+});
+
+// Tạo hợp đồng ba bên
+app.post("/government/create-contract", checkAuth, checkRole(["Government"]), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { farmId, deliveryHubWalletAddress, validityPeriod, totalQuantity, pricePerUnit } = req.body;
+
+    if (!farmId || !deliveryHubWalletAddress || !validityPeriod || !totalQuantity || !pricePerUnit) {
+      throw new Error("Vui lòng cung cấp đầy đủ thông tin!");
+    }
+
+    if (!web3.utils.isAddress(deliveryHubWalletAddress)) {
+      throw new Error("Địa chỉ ví của DeliveryHub không hợp lệ!");
+    }
+
+    const farmResult = await pool.query("SELECT * FROM farms WHERE farm_name = $1", [farmId]);
+    if (farmResult.rows.length === 0) {
+      throw new Error("Farm không tồn tại trong cơ sở dữ liệu!");
+    }
+
+    const farm = farmResult.rows[0];
+    const farmLocation = farm.location || "Không xác định";
+
+    const validityPeriodSeconds = Number(validityPeriod) * 24 * 60 * 60;
+    if (isNaN(validityPeriodSeconds) || validityPeriodSeconds <= 0) {
+      throw new Error("Thời hạn hợp đồng không hợp lệ!");
+    }
+
+    const totalQty = Number(totalQuantity);
+    if (isNaN(totalQty) || totalQty <= 0) {
+      throw new Error("Tổng số lượng không hợp lệ!");
+    }
+
+    const price = Number(pricePerUnit);
+    if (isNaN(price) || price <= 0) {
+      throw new Error("Giá mỗi đơn vị không hợp lệ!");
+    }
+
+    const priceInWei = web3.utils.toWei(price.toString(), "ether");
+
+    // Chuẩn hóa địa chỉ ví thành chữ thường trước khi sử dụng
+    const normalizedDeliveryHubWalletAddress = deliveryHubWalletAddress.toLowerCase();
+
+    const terms = `
+Hợp đồng ba bên giữa Chính phủ, Farm và DeliveryHub:
+
+1. **Thông tin Farm**:
+   - Farm ID: ${farmId}
+   - Địa điểm: ${farmLocation}
+
+2. **Thông tin DeliveryHub**:
+   - Địa chỉ ví MetaMask: ${normalizedDeliveryHubWalletAddress}
+
+3. **Chi tiết hợp đồng**:
+   - Tổng số lượng: ${totalQty} hộp
+   - Giá mỗi đơn vị: ${price} ETH
+   - Thời hạn hợp đồng: ${validityPeriod} ngày (tương đương ${validityPeriodSeconds} giây)
+   - Ngày bắt đầu: ${new Date().toLocaleString("vi-VN")}
+
+4. **Điều khoản bổ sung**:
+   - Farm cam kết cung cấp sản phẩm đạt tiêu chuẩn chất lượng.
+   - DeliveryHub chịu trách nhiệm phân phối và thanh toán đúng hạn.
+   - Chính phủ giám sát và đảm bảo tính minh bạch của hợp đồng.
+
+Hợp đồng này có hiệu lực khi được tất cả các bên ký kết.
+    `.trim();
+
+    const accounts = await web3.eth.getAccounts();
+    const governmentAccount = accounts[0];
+
+    console.log("Tạo hợp đồng với thông tin:", {
+      farmId,
+      deliveryHubWalletAddress: normalizedDeliveryHubWalletAddress,
+      validityPeriodSeconds,
+      totalQuantity: totalQty,
+      priceInWei,
+      terms,
+      governmentAccount,
+    });
+
+    let gasEstimate;
+    try {
+      gasEstimate = await governmentRegulator.methods
+        .createTripartyContract(
+          farmId,
+          normalizedDeliveryHubWalletAddress,
+          validityPeriodSeconds,
+          totalQty,
+          priceInWei,
+          terms
+        )
+        .estimateGas({ from: governmentAccount });
+    } catch (gasError) {
+      console.error("Lỗi khi ước tính gas:", gasError);
+      throw new Error("Không thể ước tính gas cho giao dịch: " + gasError.message);
+    }
+
+    let tx;
+    try {
+      tx = await governmentRegulator.methods
+        .createTripartyContract(
+          farmId,
+          normalizedDeliveryHubWalletAddress,
+          validityPeriodSeconds,
+          totalQty,
+          priceInWei,
+          terms
+        )
+        .send({ from: governmentAccount, gas: Math.floor(Number(gasEstimate) * 1.5) });
+    } catch (txError) {
+      console.error("Lỗi khi gửi giao dịch blockchain:", txError);
+      throw new Error("Giao dịch blockchain thất bại: " + txError.message);
+    }
+
+    if (!tx.status) {
+      throw new Error("Giao dịch tạo hợp đồng thất bại!");
+    }
+
+    const contractId = Number(await governmentRegulator.methods.contractCount().call());
+    const contractData = await governmentRegulator.methods.checkContractStatus(contractId).call();
+
+    const contract = {
+      contractId,
+      farmId: contractData.farmId,
+      deliveryHubWalletAddress: contractData.agentAddress.toLowerCase(),
+      creationDate: new Date(Number(contractData.creationDate) * 1000),
+      expiryDate: new Date(Number(contractData.expiryDate) * 1000),
+      totalQuantity: Number(contractData.totalQuantity),
+      pricePerUnit: Number(web3.utils.fromWei(contractData.pricePerUnit, "ether")),
+      terms: terms,
+      isActive: contractData.isActive,
+      isCompleted: contractData.isCompleted,
+    };
+
+    await client.query(
+      `
+      INSERT INTO triparty_contracts (contract_id, farm_id, delivery_hub_wallet_address, creation_date, expiry_date, total_quantity, price_per_unit, terms, is_active, is_completed)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `,
+      [
+        contract.contractId,
+        contract.farmId,
+        contract.deliveryHubWalletAddress,
+        contract.creationDate,
+        contract.expiryDate,
+        contract.totalQuantity,
+        contract.pricePerUnit,
+        contract.terms,
+        contract.isActive,
+        contract.isCompleted,
+      ]
+    );
+
+    try {
+      await syncFarmStats(farmId);
+    } catch (farmStatError) {
+      console.error(`Lỗi khi đồng bộ thống kê farm ${farmId}:`, farmStatError);
+      throw new Error(`Không thể đồng bộ thống kê farm: ${farmStatError.message}`);
+    }
+
+    const farmLocationResult = await pool.query("SELECT location FROM farms WHERE farm_name = $1", [farmId]);
+    if (farmLocationResult.rows.length > 0) {
+      const province = farmLocationResult.rows[0].location;
+      try {
+        await syncProvinceStats(province);
+      } catch (provinceStatError) {
+        console.error(`Lỗi khi đồng bộ thống kê tỉnh ${province}:`, provinceStatError);
+        throw new Error(`Không thể đồng bộ thống kê tỉnh: ${provinceStatError.message}`);
+      }
+    }
+
+    await client.query("COMMIT");
+    res.status(200).json({
+      message: "Tạo hợp đồng ba bên thành công!",
+      contractId,
+      transactionHash: tx.transactionHash,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Lỗi khi tạo hợp đồng ba bên:", error);
+    res.status(500).json({
+      error: "Lỗi máy chủ nội bộ",
+      details: error.message,
+      suggestion: "Vui lòng kiểm tra log server để biết thêm chi tiết."
+    });
+  } finally {
+    client.release();
+  }
+});
+
+// Lấy thống kê farm
+app.get("/government/farm-stats/:farmId", checkAuth, checkRole(["Government"]), async (req, res) => {
+  const { farmId } = req.params;
+
+  try {
+    // Kiểm tra trong database trước
+    const farmStatsResult = await pool.query(
+      "SELECT * FROM farm_statistics WHERE farm_id = $1",
+      [farmId]
+    );
+
+    let stats;
+    if (farmStatsResult.rows.length > 0) {
+      stats = {
+        farmId,
+        totalFruitHarvested: Number(farmStatsResult.rows[0].total_fruit_harvested),
+        totalContractsCreated: Number(farmStatsResult.rows[0].total_contracts_created),
+        totalContractsCompleted: Number(farmStatsResult.rows[0].total_contracts_completed),
+        lastUpdate: Number(farmStatsResult.rows[0].last_update),
+      };
+    } else {
+      // Nếu không có trong database, đồng bộ từ blockchain
+      stats = await syncFarmStats(farmId);
+    }
+
+    if (stats.totalContractsCreated === 0) {
+      return res.status(404).json({
+        message: `Không tìm thấy dữ liệu thống kê cho farm ${farmId}`,
+      });
+    }
+
+    res.status(200).json(stats);
+  } catch (error) {
+    console.error("Lỗi khi lấy thống kê farm:", error);
+    res.status(500).json({ error: "Lỗi máy chủ nội bộ", details: error.message });
+  }
+});
+
+// Lấy thống kê tỉnh
+app.get("/government/province-stats/:province", checkAuth, checkRole(["Government"]), async (req, res) => {
+  const { province } = req.params;
+
+  try {
+    // Kiểm tra trong database trước
+    const provinceStatsResult = await pool.query(
+      "SELECT * FROM province_statistics WHERE province = $1",
+      [province]
+    );
+
+    let stats;
+    if (provinceStatsResult.rows.length > 0) {
+      stats = {
+        province,
+        totalFruitHarvested: Number(provinceStatsResult.rows[0].total_fruit_harvested),
+        totalContractsCreated: Number(provinceStatsResult.rows[0].total_contracts_created),
+        totalContractsCompleted: Number(provinceStatsResult.rows[0].total_contracts_completed),
+        farmCount: Number(provinceStatsResult.rows[0].farm_count),
+        lastUpdate: Number(provinceStatsResult.rows[0].last_update),
+      };
+    } else {
+      // Nếu không có trong database, đồng bộ từ blockchain
+      stats = await syncProvinceStats(province);
+    }
+
+    if (!stats || stats.farmCount === 0) {
+      return res.status(404).json({
+        message: `Không tìm thấy dữ liệu thống kê cho tỉnh ${province}`,
+      });
+    }
+
+    res.status(200).json(stats);
+  } catch (error) {
+    console.error("Lỗi khi lấy thống kê tỉnh:", error);
+    res.status(500).json({ error: "Lỗi máy chủ nội bộ", details: error.message });
+  }
+});
+// Đồng bộ thống kê farm từ blockchain vào database
+const syncFarmStats = async (farmId) => {
+  try {
+    const farmStat = await governmentRegulator.methods.getFarmStatistics(farmId).call();
+    const lastUpdateValue = Number(farmStat.lastStatisticsUpdate);
+    const stats = {
+      farmId,
+      totalFruitHarvested: Number(farmStat.totalFruitHarvested),
+      totalContractsCreated: Number(farmStat.totalContractsCreated),
+      totalContractsCompleted: Number(farmStat.totalContractsCompleted),
+      lastUpdate: isNaN(lastUpdateValue) ? 0 : lastUpdateValue * 1000,
+    };
+
+    await pool.query(
+      `
+      INSERT INTO farm_statistics (farm_id, total_fruit_harvested, total_contracts_created, total_contracts_completed, last_update)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (farm_id)
+      DO UPDATE SET
+        total_fruit_harvested = EXCLUDED.total_fruit_harvested,
+        total_contracts_created = EXCLUDED.total_contracts_created,
+        total_contracts_completed = EXCLUDED.total_contracts_completed,
+        last_update = EXCLUDED.last_update
+      `,
+      [
+        stats.farmId,
+        stats.totalFruitHarvested,
+        stats.totalContractsCreated,
+        stats.totalContractsCompleted,
+        stats.lastUpdate,
+      ]
+    );
+
+    return stats;
+  } catch (error) {
+    console.error(`Lỗi khi đồng bộ thống kê farm ${farmId}:`, error);
+    throw new Error(`Không thể đồng bộ thống kê farm ${farmId}: ${error.message}`);
+  }
+};
+
+// Đồng bộ thống kê tỉnh từ blockchain vào database
+const syncProvinceStats = async (province) => {
+  try {
+    const provinceStat = await governmentRegulator.methods.getProvinceStatistics(province).call();
+    const lastUpdateValue = Number(provinceStat.lastStatisticsUpdate);
+    const stats = {
+      province,
+      totalFruitHarvested: Number(provinceStat.totalFruitHarvested),
+      totalContractsCreated: Number(provinceStat.totalContractsCreated),
+      totalContractsCompleted: Number(provinceStat.totalContractsCompleted),
+      farmCount: Number(provinceStat.farmCount),
+      lastUpdate: isNaN(lastUpdateValue) ? 0 : lastUpdateValue * 1000,
+    };
+
+    await pool.query(
+      `
+      INSERT INTO province_statistics (province, total_fruit_harvested, total_contracts_created, total_contracts_completed, farm_count, last_update)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (province)
+      DO UPDATE SET
+        total_fruit_harvested = EXCLUDED.total_fruit_harvested,
+        total_contracts_created = EXCLUDED.total_contracts_created,
+        total_contracts_completed = EXCLUDED.total_contracts_completed,
+        farm_count = EXCLUDED.farm_count,
+        last_update = EXCLUDED.last_update
+      `,
+      [
+        stats.province,
+        stats.totalFruitHarvested,
+        stats.totalContractsCreated,
+        stats.totalContractsCompleted,
+        stats.farmCount,
+        stats.lastUpdate,
+      ]
+    );
+
+    return stats;
+  } catch (error) {
+    console.error(`Lỗi khi đồng bộ thống kê tỉnh ${province}:`, error);
+    throw new Error(`Không thể đồng bộ thống kê tỉnh ${province}: ${error.message}`);
+  }
+};
+// API lấy danh sách farm
+app.get("/government/farms", checkAuth, checkRole(["Government"]), async (req, res) => {
+  try {
+    const farmsResult = await pool.query("SELECT farm_name FROM farms");
+    const farms = farmsResult.rows.map(row => row.farm_name);
+    if (farms.length === 0) {
+      return res.status(404).json({
+        message: "Không tìm thấy farm nào trong cơ sở dữ liệu",
+        suggestion: "Vui lòng đăng ký farm trước bằng API /farm"
+      });
+    }
+    res.status(200).json(farms);
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách farm:", error);
+    res.status(500).json({
+      error: "Lỗi máy chủ nội bộ",
+      details: error.message,
+      suggestion: "Vui lòng kiểm tra log server để biết thêm chi tiết."
+    });
+  }
+});
+
+// API lấy danh sách tỉnh từ bảng farms
+app.get("/government/provinces", checkAuth, checkRole(["Government"]), async (req, res) => {
+  try {
+    const provincesResult = await pool.query("SELECT DISTINCT location FROM farms");
+    const provinces = provincesResult.rows.map(row => row.location);
+    if (provinces.length === 0) {
+      return res.status(404).json({
+        message: "Không tìm thấy tỉnh nào trong cơ sở dữ liệu",
+        suggestion: "Vui lòng đăng ký farm với thông tin tỉnh trước bằng API /farm"
+      });
+    }
+    res.status(200).json(provinces);
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách tỉnh:", error);
+    res.status(500).json({
+      error: "Lỗi máy chủ nội bộ",
+      details: error.message,
+      suggestion: "Vui lòng kiểm tra log server để biết thêm chi tiết."
+    });
+  }
+});
+
+// API tạo và tải PDF hợp đồng
+app.get("/government/contract/pdf/:contractId", checkAuth, checkRole(["Government"]), async (req, res) => {
+  try {
+    const { contractId } = req.params;
+
+    const contractResult = await pool.query(
+      "SELECT * FROM triparty_contracts WHERE contract_id = $1",
+      [contractId]
+    );
+
+    if (contractResult.rows.length === 0) {
+      return res.status(404).json({
+        error: `Hợp đồng với ID ${contractId} không tồn tại`,
+        suggestion: "Vui lòng kiểm tra lại ID hợp đồng"
+      });
+    }
+
+    const contract = contractResult.rows[0];
+
+    const doc = new PDFDocument({ margin: 50 });
+
+    doc.registerFont('Roboto', path.join(process.cwd(), 'fonts/Roboto-Regular.ttf'));
+    doc.font('Roboto');
+
+    res.setHeader('Content-Type', 'application/pdf');
+    const encodedFilename = encodeURIComponent(`Hợp đồng ba bên ${contract.contract_id}.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+
+    doc.pipe(res);
+
+    doc.fontSize(20).text('HỢP ĐỒNG BA BÊN', { align: 'center' });
+    doc.moveDown(1);
+
+    doc.fontSize(14).text('THÔNG TIN HỢP ĐỒNG', { align: 'center', underline: true });
+    doc.moveDown(1);
+
+    const labelWidth = 150;
+    const startX = 50;
+    const startY = doc.y;
+
+    const fields = [
+      { label: 'ID Hợp Đồng:', value: contract.contract_id },
+      { label: 'Farm ID:', value: contract.farm_id },
+      { label: 'Địa Chỉ DeliveryHub:', value: contract.delivery_hub_wallet_address },
+      { label: 'Ngày Tạo:', value: new Date(contract.creation_date).toLocaleString('vi-VN') },
+      { label: 'Ngày Hết Hạn:', value: new Date(contract.expiry_date).toLocaleString('vi-VN') },
+      { label: 'Tổng Số Lượng:', value: `${contract.total_quantity} hộp` },
+      { label: 'Giá Mỗi Đơn Vị:', value: `${Number(contract.price_per_unit).toFixed(2)} ETH` },
+    ];
+
+    doc.fontSize(12);
+    fields.forEach(field => {
+      doc.text(field.label, startX, doc.y, { width: labelWidth, continued: true });
+      doc.text(field.value, startX + labelWidth, doc.y, { width: 300 });
+      doc.moveDown(0.5);
+    });
+
+    doc.moveDown(2);
+
+    doc.fontSize(14).text('ĐIỀU KHOẢN HỢP ĐỒNG', { align: 'center', underline: true });
+    doc.moveDown(1);
+    doc.fontSize(12).text(contract.terms, { align: 'justify' });
+    doc.moveDown(2);
+
+    doc.fontSize(14).text('CHỮ KÝ CÁC BÊN', { align: 'center', underline: true });
+    doc.moveDown(1);
+
+    const signatureSpacing = 150;
+    const signatureStartX = 50;
+
+    doc.fontSize(12).text('BÊN FARM', signatureStartX, doc.y);
+    doc.moveDown(0.5);
+    doc.text('__________________________', signatureStartX, doc.y);
+    doc.text('Ngày ___ tháng ___ năm ___', signatureStartX, doc.y);
+    doc.moveDown(2);
+
+    doc.fontSize(12).text('BÊN DELIVERYHUB', signatureStartX + signatureSpacing, doc.y - 85);
+    doc.moveDown(0.5);
+    doc.text('__________________________', signatureStartX + signatureSpacing, doc.y);
+    doc.text('Ngày ___ tháng ___ năm ___', signatureStartX + signatureSpacing, doc.y);
+    doc.moveDown(2);
+
+    doc.fontSize(12).text('CHÍNH PHỦ (GOVERNMENT)', signatureStartX + 2 * signatureSpacing, doc.y - 85);
+    doc.moveDown(0.5);
+    doc.text('__________________________', signatureStartX + 2 * signatureSpacing, doc.y);
+    doc.text('Ngày ___ tháng ___ năm ___', signatureStartX + 2 * signatureSpacing, doc.y);
+
+    doc.end();
+
+  } catch (error) {
+    console.error("Lỗi khi tạo PDF hợp đồng:", error);
+    res.status(500).json({
+      error: "Lỗi máy chủ nội bộ",
+      details: error.message,
+      suggestion: "Vui lòng kiểm tra log server để biết thêm chi tiết."
+    });
+  }
+});
+// API lấy danh sách hợp đồng của người dùng
+app.get("/contracts", checkAuth, async (req, res) => {
+  console.log("Nhận yêu cầu đến /contracts");
+  console.log("Địa chỉ ví người dùng:", req.user.wallet_address);
+  console.log("Vai trò người dùng:", req.user.role);
+
+  try {
+    const userAddress = req.user.wallet_address;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    if (!userAddress) {
+      console.log("userAddress không tồn tại hoặc undefined");
+      return res.status(401).json({ error: "Địa chỉ ví người dùng không hợp lệ!" });
+    }
+
+    let query;
+    let params;
+
+    if (userRole === "Government" || userRole === "Admin") {
+      query = "SELECT * FROM triparty_contracts";
+      params = [];
+    } else if (userRole === "Farm" || userRole === "Producer") {
+      const farmCheck = await pool.query(
+        "SELECT * FROM farms WHERE producer_id = $1",
+        [userId]
+      );
+      console.log("Farm check result:", farmCheck.rows);
+
+      if (farmCheck.rows.length === 0) {
+        return res.status(200).json([]);
+      }
+
+      query = `
+        SELECT tc.*
+        FROM triparty_contracts tc
+        JOIN farms f ON tc.farm_id = f.farm_name
+        WHERE f.producer_id = $1
+      `;
+      params = [userId];
+    } else if (userRole === "Agent" || userRole === "DeliveryHub") {
+      // Chuẩn hóa địa chỉ ví bằng cách so sánh dạng chữ thường
+      query = "SELECT * FROM triparty_contracts WHERE LOWER(delivery_hub_wallet_address) = LOWER($1)";
+      params = [userAddress];
+    } else {
+      query = "SELECT * FROM triparty_contracts";
+      params = [];
+    }
+
+    console.log("Thực thi truy vấn:", query, "với tham số:", params);
+    const contractsResult = await pool.query(query, params);
+    console.log("Hợp đồng lấy được:", contractsResult.rows);
+
+    if (contractsResult.rows.length === 0) {
+      console.log("Không tìm thấy hợp đồng nào cho người dùng này.");
+    }
+
+    res.status(200).json(contractsResult.rows);
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách hợp đồng:", error);
+    res.status(500).json({
+      error: "Lỗi máy chủ nội bộ",
+      details: error.message || "Không có chi tiết lỗi",
+    });
+  }
+});
+// API ký hợp đồng
+app.post("/contract/sign/:contractId", checkAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { contractId } = req.params;
+    const { role, signature } = req.body;
+    const userAddress = req.user.wallet_address;
+
+    console.log("Nhận yêu cầu ký hợp đồng:", { contractId, role, signature, userAddress });
+
+    const contractResult = await client.query(
+      "SELECT * FROM triparty_contracts WHERE contract_id = $1",
+      [contractId]
+    );
+
+    if (contractResult.rows.length === 0) {
+      throw new Error(`Hợp đồng với ID ${contractId} không tồn tại`);
+    }
+
+    const contract = contractResult.rows[0];
+
+    let signatureField, signedField;
+    if (role === "Farm" || role === "Producer") {
+      const farmResult = await client.query(
+        "SELECT * FROM farms WHERE farm_name = $1 AND producer_id = $2",
+        [contract.farm_id, req.user.id]
+      );
+      if (farmResult.rows.length === 0) {
+        throw new Error("Bạn không có quyền ký hợp đồng này!");
+      }
+      signatureField = "farm_signature";
+      signedField = "is_farm_signed";
+    } else if (role === "Agent" || role === "DeliveryHub") {
+      if (contract.delivery_hub_wallet_address.toLowerCase() !== userAddress.toLowerCase()) {
+        throw new Error("Bạn không có quyền ký hợp đồng này!");
+      }
+      signatureField = "agent_signature";
+      signedField = "is_agent_signed";
+    } else if (role === "Government") {
+      signatureField = "government_signature";
+      signedField = "is_government_signed";
+    } else {
+      throw new Error("Vai trò không hợp lệ!");
+    }
+
+    if (contract[signedField]) {
+      throw new Error("Bạn đã ký hợp đồng này!");
+    }
+
+    await client.query(
+      `UPDATE triparty_contracts SET ${signatureField} = $1, ${signedField} = $2 WHERE contract_id = $3`,
+      [signature, true, contractId]
+    );
+
+    const updatedContractResult = await client.query(
+      "SELECT * FROM triparty_contracts WHERE contract_id = $1",
+      [contractId]
+    );
+    const updatedContract = updatedContractResult.rows[0];
+
+    if (updatedContract.is_farm_signed && updatedContract.is_agent_signed && updatedContract.is_government_signed) {
+      await client.query(
+        "UPDATE triparty_contracts SET is_completed = $1 WHERE contract_id = $2",
+        [true, contractId]
+      );
+    }
+
+    await client.query("COMMIT");
+    res.status(200).json({ message: "Ký hợp đồng thành công!" });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Lỗi khi ký hợp đồng:", error);
+    res.status(500).json({
+      error: "Lỗi máy chủ nội bộ",
+      details: error.message,
+    });
+  } finally {
+    client.release();
+  }
+});
+
+// API tạo PDF đã ký
+import { Readable } from 'stream';
+
+// API tạo PDF đã ký - Cho phép tất cả người dùng đã đăng nhập tải PDF
+// API tạo PDF đã ký - Cho phép tất cả người dùng đã đăng nhập tải PDF
+app.get("/contract/signed/pdf/:contractId", checkAuth, async (req, res) => {
+  try {
+    const { contractId } = req.params;
+
+    // Kiểm tra hợp đồng
+    const contractResult = await pool.query(
+      "SELECT * FROM triparty_contracts WHERE contract_id = $1",
+      [contractId]
+    );
+
+    if (contractResult.rows.length === 0) {
+      return res.status(404).json({
+        error: `Hợp đồng với ID ${contractId} không tồn tại`,
+        suggestion: "Vui lòng kiểm tra lại ID hợp đồng"
+      });
+    }
+
+    const contract = contractResult.rows[0];
+
+    // Kiểm tra xem cả 3 bên đã ký chưa
+    if (!contract.is_farm_signed || !contract.is_agent_signed || !contract.is_government_signed) {
+      return res.status(400).json({
+        error: "Hợp đồng chưa được ký bởi tất cả các bên!"
+      });
+    }
+
+    // Tạo PDF
+    const doc = new PDFDocument({ margin: 50 });
+
+    doc.registerFont('Roboto', path.join(process.cwd(), 'fonts/Roboto-Regular.ttf'));
+    doc.font('Roboto');
+
+    res.setHeader('Content-Type', 'application/pdf');
+    const encodedFilename = encodeURIComponent(`Hợp đồng ba bên ${contract.contract_id} - Đã ký.pdf`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+
+    doc.pipe(res);
+
+    doc.fontSize(20).text('HỢP ĐỒNG BA BÊN', { align: 'center' });
+    doc.moveDown(1);
+
+    doc.fontSize(14).text('THÔNG TIN HỢP ĐỒNG', { align: 'center', underline: true });
+    doc.moveDown(1);
+
+    const labelWidth = 150;
+    const startX = 50;
+    const fields = [
+      { label: 'ID Hợp Đồng:', value: contract.contract_id },
+      { label: 'Farm ID:', value: contract.farm_id },
+      { label: 'Địa Chỉ DeliveryHub:', value: contract.delivery_hub_wallet_address },
+      { label: 'Ngày Tạo:', value: new Date(contract.creation_date).toLocaleString('vi-VN') },
+      { label: 'Ngày Hết Hạn:', value: new Date(contract.expiry_date).toLocaleString('vi-VN') },
+      { label: 'Tổng Số Lượng:', value: `${contract.total_quantity} hộp` },
+      { label: 'Giá Mỗi Đơn Vị:', value: `${Number(contract.price_per_unit).toFixed(2)} ETH` },
+    ];
+
+    doc.fontSize(12);
+    fields.forEach(field => {
+      doc.text(field.label, startX, doc.y, { width: labelWidth, continued: true });
+      doc.text(field.value, startX + labelWidth, doc.y, { width: 300 });
+      doc.moveDown(0.5);
+    });
+
+    doc.moveDown(2);
+
+    doc.fontSize(14).text('ĐIỀU KHOẢN HỢP ĐỒNG', { align: 'center', underline: true });
+    doc.moveDown(1);
+    doc.fontSize(12).text(contract.terms, { align: 'justify' });
+    doc.moveDown(2);
+
+    doc.fontSize(14).text('CHỮ KÝ CÁC BÊN', { align: 'center', underline: true });
+    doc.moveDown(1);
+
+    const signatureSpacing = 150;
+    const signatureStartX = 50;
+    const signatureWidth = 100;
+    const signatureHeight = 50;
+
+    // Chữ ký bên Farm
+    doc.fontSize(12).text('BÊN FARM', signatureStartX, doc.y);
+    doc.moveDown(0.5);
+    // Truyền Buffer trực tiếp thay vì Readable stream
+    const farmSignatureBuffer = Buffer.from(contract.farm_signature.split(',')[1], 'base64');
+    doc.image(farmSignatureBuffer, signatureStartX, doc.y, {
+      width: signatureWidth,
+      height: signatureHeight
+    });
+    doc.moveDown(3);
+    doc.text('Ngày ___ tháng ___ năm ___', signatureStartX, doc.y);
+
+    // Chữ ký bên DeliveryHub
+    doc.fontSize(12).text('BÊN DELIVERYHUB', signatureStartX + signatureSpacing, doc.y - 85);
+    doc.moveDown(0.5);
+    // Truyền Buffer trực tiếp thay vì Readable stream
+    const agentSignatureBuffer = Buffer.from(contract.agent_signature.split(',')[1], 'base64');
+    doc.image(agentSignatureBuffer, signatureStartX + signatureSpacing, doc.y, {
+      width: signatureWidth,
+      height: signatureHeight
+    });
+    doc.moveDown(3);
+    doc.text('Ngày ___ tháng ___ năm ___', signatureStartX + signatureSpacing, doc.y);
+
+    // Chữ ký bên Government
+    doc.fontSize(12).text('CHÍNH PHỦ (GOVERNMENT)', signatureStartX + 2 * signatureSpacing, doc.y - 85);
+    doc.moveDown(0.5);
+    // Truyền Buffer trực tiếp thay vì Readable stream
+    const governmentSignatureBuffer = Buffer.from(contract.government_signature.split(',')[1], 'base64');
+    doc.image(governmentSignatureBuffer, signatureStartX + 2 * signatureSpacing, doc.y, {
+      width: signatureWidth,
+      height: signatureHeight
+    });
+    doc.moveDown(3);
+    doc.text('Ngày ___ tháng ___ năm ___', signatureStartX + 2 * signatureSpacing, doc.y);
+
+    doc.end();
+
+  } catch (error) {
+    console.error("Lỗi khi tạo PDF đã ký:", error);
+    res.status(500).json({
+      error: "Lỗi máy chủ nội bộ",
+      details: error.message,
+      suggestion: "Vui lòng kiểm tra log server để biết thêm chi tiết."
+    });
+  }
+});
 // Phục vụ file tĩnh từ thư mục uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 

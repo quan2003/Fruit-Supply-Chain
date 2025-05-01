@@ -27,12 +27,11 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const { connectWallet, account } = useWeb3();
   const { login } = useAuth();
-  const [role, setRole] = useState("Customer"); // Đặt giá trị mặc định là "Customer"
+  const [role, setRole] = useState("Customer");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [error, setError] = useState("");
-  const [expectedWallet, setExpectedWallet] = useState("");
+  const [walletConnected, setWalletConnected] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -45,6 +44,20 @@ const LoginPage = () => {
   const handleRoleChange = (event) => {
     setRole(event.target.value);
     setError("");
+  };
+
+  const handleConnectWallet = async () => {
+    try {
+      await connectWallet();
+      if (!account) {
+        setError("Không thể kết nối ví MetaMask! Vui lòng thử lại nhé! 😓");
+        return;
+      }
+      setWalletConnected(true);
+    } catch (error) {
+      console.error("Lỗi khi kết nối ví MetaMask:", error);
+      setError(error.message || "Không thể kết nối ví MetaMask! 😓");
+    }
   };
 
   const handleLogin = async (e) => {
@@ -64,83 +77,46 @@ const LoginPage = () => {
       return;
     }
 
+    // Yêu cầu kết nối ví trước khi đăng nhập
+    if (!walletConnected || !account) {
+      setError("Vui lòng kết nối ví MetaMask trước khi đăng nhập! 😅");
+      return;
+    }
+
     try {
       console.log("Dữ liệu gửi đi:", { email, password, role });
       // Gọi hàm login từ useAuth
       const userData = await login(email, password, role);
-      setIsLoggedIn(true);
-      setExpectedWallet(userData.walletAddress?.toLowerCase() || "");
 
-      // Lưu dữ liệu người dùng vào localStorage
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          id: userData.id,
-          name: userData.name,
-          email: userData.email,
-          role: userData.role,
-          walletAddress: userData.walletAddress,
-        })
-      );
+      // Cập nhật walletAddress vào backend
+      const response = await fetch("http://localhost:3000/update-wallet", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, walletAddress: account }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Không thể cập nhật ví MetaMask!");
+      }
+
+      // Chuyển hướng dựa trên vai trò
+      if (userData.role === "Producer") {
+        navigate("/farms");
+      } else if (userData.role === "Admin") {
+        navigate("/quan-ly");
+      } else if (userData.role === "Customer") {
+        navigate("/");
+      } else if (userData.role === "Government") {
+        navigate("/government");
+      } else if (userData.role === "DeliveryHub") {
+        navigate("/delivery-hub");
+      }
     } catch (error) {
       console.error("Lỗi khi đăng nhập:", error);
       setError(error.message || "Đăng nhập thất bại! 😓");
-    }
-  };
-
-  const handleConnectWallet = async () => {
-    try {
-      await connectWallet();
-      if (!account) {
-        setError("Không thể kết nối ví MetaMask! Vui lòng thử lại nhé! 😓");
-        return;
-      }
-
-      if (!expectedWallet || account.toLowerCase() === expectedWallet) {
-        const response = await fetch("http://localhost:3000/update-wallet", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ email, walletAddress: account }),
-        });
-
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.message || "Không thể cập nhật ví MetaMask!");
-        }
-
-        // Cập nhật lại user trong localStorage với walletAddress mới
-        const user = JSON.parse(localStorage.getItem("user")) || {};
-        user.walletAddress = account;
-        localStorage.setItem("user", JSON.stringify(user));
-
-        // Chuyển hướng dựa trên vai trò
-        if (user.role === "Producer") {
-          navigate("/farms");
-        } else if (user.role === "Admin") {
-          navigate("/quan-ly");
-        } else if (user.role === "Customer") {
-          navigate("/");
-        } else if (user.role === "ThirdParty") {
-          navigate("/third-party");
-        } else if (user.role === "DeliveryHub") {
-          navigate("/delivery-hub");
-        }
-      } else {
-        setError(
-          "Ví MetaMask không khớp với ví đã đăng ký! Vui lòng chọn đúng ví nhé! 😓"
-        );
-        if (window.ethereum) {
-          await window.ethereum.request({
-            method: "wallet_requestPermissions",
-            params: [{ eth_accounts: {} }],
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Lỗi khi kết nối ví MetaMask:", error);
-      setError(error.message || "Không thể kết nối ví MetaMask! 😓");
     }
   };
 
@@ -171,166 +147,127 @@ const LoginPage = () => {
             </Grid>
 
             <Grid item xs={12} md={6}>
-              {!isLoggedIn ? (
-                <>
-                  <Typography
-                    variant="h4"
-                    sx={{
-                      fontWeight: "bold",
-                      color: "black",
-                      mb: 2,
-                      textAlign: "center",
-                    }}
-                  >
-                    Đăng nhập nhanh đi nào! 😍
-                  </Typography>
+              <>
+                <Typography
+                  variant="h4"
+                  sx={{
+                    fontWeight: "bold",
+                    color: "black",
+                    mb: 2,
+                    textAlign: "center",
+                  }}
+                >
+                  Đăng nhập nhanh đi nào! 😍
+                </Typography>
 
-                  <Box
-                    sx={{ display: "flex", justifyContent: "center", mb: 2 }}
-                  >
-                    <IconButton sx={{ color: "#3b5998", mx: 1 }}>
-                      <Facebook />
-                    </IconButton>
-                    <IconButton sx={{ color: "#1da1f2", mx: 1 }}>
-                      <Twitter />
-                    </IconButton>
-                    <IconButton sx={{ color: "#db4437", mx: 1 }}>
-                      <Google />
-                    </IconButton>
-                  </Box>
+                <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
+                  <IconButton sx={{ color: "#3b5998", mx: 1 }}>
+                    <Facebook />
+                  </IconButton>
+                  <IconButton sx={{ color: "#1da1f2", mx: 1 }}>
+                    <Twitter />
+                  </IconButton>
+                  <IconButton sx={{ color: "#db4437", mx: 1 }}>
+                    <Google />
+                  </IconButton>
+                </Box>
 
-                  <Typography
-                    variant="body1"
-                    sx={{ textAlign: "center", mb: 2, color: "text.secondary" }}
-                  >
-                    Or
-                  </Typography>
+                <Typography
+                  variant="body1"
+                  sx={{ textAlign: "center", mb: 2, color: "text.secondary" }}
+                >
+                  Or
+                </Typography>
 
-                  {error && (
-                    <Typography
-                      variant="body2"
-                      sx={{ color: "red", textAlign: "center", mb: 2 }}
-                    >
-                      {error}
-                    </Typography>
-                  )}
-
-                  <Box component="form" sx={{ maxWidth: "400px", mx: "auto" }}>
-                    <TextField
-                      fullWidth
-                      label="Nhập Email"
-                      variant="outlined"
-                      sx={{ mb: 2 }}
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                    />
-                    <TextField
-                      fullWidth
-                      label="Nhập mật khẩu"
-                      type="password"
-                      variant="outlined"
-                      sx={{ mb: 2 }}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                    />
-
-                    <FormControl fullWidth sx={{ mb: 2 }}>
-                      <InputLabel>Bạn là ai? 🌟</InputLabel>
-                      <Select
-                        value={role}
-                        onChange={handleRoleChange}
-                        label="Bạn là ai? 🌟"
-                        required
-                      >
-                        <MenuItem value="Producer">Người dân</MenuItem>
-                        <MenuItem value="Admin">Nhà quản lý</MenuItem>
-                        <MenuItem value="Customer">Người tiêu dùng</MenuItem>
-                        <MenuItem value="ThirdParty">Nhà vận chuyển</MenuItem>
-                        <MenuItem value="DeliveryHub">
-                          Trung tâm phân phối
-                        </MenuItem>
-                      </Select>
-                    </FormControl>
-
-                    <Box sx={{ textAlign: "right", mb: 2 }}>
-                      <Link
-                        to="/forgot-password"
-                        style={{ color: "#42A5F5", textDecoration: "none" }}
-                      >
-                        Quên mật khẩu?
-                      </Link>
-                    </Box>
-
-                    <Button
-                      fullWidth
-                      variant="contained"
-                      onClick={handleLogin}
-                      sx={{
-                        bgcolor: "#42A5F5",
-                        color: "white",
-                        py: 1.5,
-                        fontWeight: "bold",
-                        "&:hover": { bgcolor: "#1E88E5" },
-                      }}
-                    >
-                      Đăng nhập ngay! 🚀
-                    </Button>
-                  </Box>
-                </>
-              ) : (
-                <>
-                  <Typography
-                    variant="h4"
-                    sx={{
-                      fontWeight: "bold",
-                      color: "black",
-                      mb: 2,
-                      textAlign: "center",
-                    }}
-                  >
-                    Kết nối ví MetaMask để bắt đầu nào! 🚀
-                  </Typography>
-                  <Typography
-                    variant="body1"
-                    sx={{ textAlign: "center", mb: 2, color: "text.secondary" }}
-                  >
-                    Bạn đã đăng nhập thành công! Bây giờ hãy kết nối ví MetaMask
-                    để tiếp tục nhé! 🌟
-                  </Typography>
+                {error && (
                   <Typography
                     variant="body2"
-                    sx={{ textAlign: "center", mb: 2, color: "#FF6F91" }}
+                    sx={{ color: "red", textAlign: "center", mb: 2 }}
                   >
-                    Không kết nối ví MetaMask ư? 😕
+                    {error}
                   </Typography>
-                  {error && (
-                    <Typography
-                      variant="body2"
-                      sx={{ color: "red", textAlign: "center", mb: 2 }}
+                )}
+
+                <Box component="form" sx={{ maxWidth: "400px", mx: "auto" }}>
+                  <TextField
+                    fullWidth
+                    label="Nhập Email"
+                    variant="outlined"
+                    sx={{ mb: 2 }}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                  <TextField
+                    fullWidth
+                    label="Nhập mật khẩu"
+                    type="password"
+                    variant="outlined"
+                    sx={{ mb: 2 }}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>Bạn là ai? 🌟</InputLabel>
+                    <Select
+                      value={role}
+                      onChange={handleRoleChange}
+                      label="Bạn là ai? 🌟"
+                      required
                     >
-                      {error}
-                    </Typography>
-                  )}
-                  <Box sx={{ maxWidth: "400px", mx: "auto" }}>
-                    <Button
-                      fullWidth
-                      variant="contained"
-                      onClick={handleConnectWallet}
-                      sx={{
-                        bgcolor: "#FF6F91",
-                        color: "white",
-                        py: 1.5,
-                        fontWeight: "bold",
-                        "&:hover": { bgcolor: "#E65B7B" },
-                      }}
+                      <MenuItem value="Producer">Người dân</MenuItem>
+                      <MenuItem value="Admin">Nhà quản lý</MenuItem>
+                      <MenuItem value="Customer">Người tiêu dùng</MenuItem>
+                      <MenuItem value="Government">Cơ quan quản lý</MenuItem>
+                      <MenuItem value="DeliveryHub">
+                        Trung tâm phân phối
+                      </MenuItem>
+                    </Select>
+                  </FormControl>
+
+                  <Box sx={{ textAlign: "right", mb: 2 }}>
+                    <Link
+                      to="/forgot-password"
+                      style={{ color: "#42A5F5", textDecoration: "none" }}
                     >
-                      Kết nối ngay! 🌟
-                    </Button>
+                      Quên mật khẩu?
+                    </Link>
                   </Box>
-                </>
-              )}
+
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    onClick={handleConnectWallet}
+                    sx={{
+                      bgcolor: "#FF6F91",
+                      color: "white",
+                      py: 1.5,
+                      fontWeight: "bold",
+                      "&:hover": { bgcolor: "#E65B7B" },
+                      mb: 2,
+                    }}
+                  >
+                    Kết Nối Ví MetaMask
+                  </Button>
+
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    onClick={handleLogin}
+                    sx={{
+                      bgcolor: "#42A5F5",
+                      color: "white",
+                      py: 1.5,
+                      fontWeight: "bold",
+                      "&:hover": { bgcolor: "#1E88E5" },
+                    }}
+                  >
+                    Đăng nhập ngay! 🚀
+                  </Button>
+                </Box>
+              </>
             </Grid>
           </Grid>
         </Container>

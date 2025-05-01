@@ -204,7 +204,7 @@ const RegisterPage = () => {
                     <MenuItem value="Producer">Người dân</MenuItem>
                     <MenuItem value="Admin">Nhà quản lý</MenuItem>
                     <MenuItem value="Customer">Người tiêu dùng</MenuItem>
-                    <MenuItem value="ThirdParty">Nhà vận chuyển</MenuItem>
+                    <MenuItem value="Government">Cơ quan quản lý</MenuItem>
                     <MenuItem value="DeliveryHub">Trung tâm phân phối</MenuItem>
                   </Select>
                 </FormControl>

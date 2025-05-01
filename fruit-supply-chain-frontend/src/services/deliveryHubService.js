@@ -57,7 +57,19 @@ export const getInventory = async (deliveryHubId) => {
       headers,
     });
     console.log("Kết quả kho:", response.data);
-    return response.data;
+    response.data.forEach((item) => {
+      console.log("Item trong kho:", item);
+      if (!item.product_id || !item.fruit_id) {
+        console.warn("Item thiếu product_id hoặc fruit_id:", item);
+      }
+    });
+    return response.data.map((item) => ({
+      ...item,
+      productdate: item.productdate || new Date().toISOString(),
+      expirydate:
+        item.expirydate ||
+        new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString(),
+    }));
   } catch (error) {
     console.error("Lỗi khi lấy danh sách kho:", error);
     throw new Error(
@@ -67,7 +79,6 @@ export const getInventory = async (deliveryHubId) => {
     );
   }
 };
-
 // Nhận lô hàng
 export const receiveShipment = async (shipmentId) => {
   try {
