@@ -1,631 +1,307 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { ethers } from "ethers"; // Sử dụng ethers thay vì web3.js
-import axios from "axios";
+import Web3 from "web3";
 import contractData from "../contracts/FruitSupplyChain.json";
-import governmentRegulatorData from "../contracts/GovernmentRegulator.json"; // Thêm ABI của GovernmentRegulator
+import governmentRegulatorData from "../contracts/GovernmentRegulator.json";
 
 const Web3Context = createContext();
 
-export function useWeb3() {
-  return useContext(Web3Context);
-}
+export const Web3Provider = ({ children }) => {
+  const [web3State, setWeb3State] = useState({
+    account: null,
+    web3: null,
+    contract: null,
+    governmentRegulator: null,
+    loading: true,
+    walletError: null,
+    userError: null,
+    contractError: null,
+    isInitialized: false,
+  });
 
-export function Web3Provider({ children }) {
-  const [provider, setProvider] = useState(null);
-  const [signer, setSigner] = useState(null);
-  const [account, setAccount] = useState(null);
-  const [fruitSupplyChain, setFruitSupplyChain] = useState(null);
-  const [governmentRegulator, setGovernmentRegulator] = useState(null);
-  const [contractAddress, setContractAddress] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [walletError, setWalletError] = useState(null);
-  const [userError, setUserError] = useState(null);
-  const [contractError, setContractError] = useState(null);
-
-  const contractABI = contractData.abi;
-  const governmentRegulatorABI = governmentRegulatorData.abi;
-
-  const getContractAddress = async () => {
-    try {
-      const response = await axios.get(
-        "http://localhost:3000/contract-address"
-      );
-      const address = response.data.address;
-      if (!ethers.isAddress(address)) {
-        throw new Error("Địa chỉ hợp đồng không hợp lệ: " + address);
-      }
-      return address;
-    } catch (error) {
-      throw new Error(
-        "Không thể lấy địa chỉ hợp đồng từ backend: " + error.message
-      );
+  const updateWalletAddress = async (email) => {
+    if (!web3State.account) {
+      throw new Error("Không có ví MetaMask nào được kết nối!");
     }
-  };
 
-  useEffect(() => {
-    const initWeb3 = async () => {
-      setLoading(true);
-      setWalletError(null);
-      setContractError(null);
-      setUserError(null);
+    const response = await fetch("http://localhost:3000/update-wallet", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, walletAddress: web3State.account }),
+    });
 
-      try {
-        if (!window.ethereum) {
-          throw new Error("Vui lòng cài đặt MetaMask để tiếp tục!");
-        }
-
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        setProvider(provider);
-        console.log("Đã khởi tạo Provider");
-
-        const chainId = Number(await provider.send("eth_chainId", []));
-        console.log("Chain ID:", chainId);
-        if (chainId !== 1337) {
-          try {
-            await window.ethereum.request({
-              method: "wallet_switchEthereumChain",
-              params: [{ chainId: "0x539" }],
-            });
-          } catch (switchError) {
-            if (switchError.code === 4902) {
-              await window.ethereum.request({
-                method: "wallet_addEthereumChain",
-                params: [
-                  {
-                    chainId: "0x539",
-                    chainName: "Hardhat Localhost",
-                    rpcUrls: ["http://127.0.0.1:8545/"],
-                    nativeCurrency: {
-                      name: "ETH",
-                      symbol: "ETH",
-                      decimals: 18,
-                    },
-                    blockExplorerUrls: null,
-                  },
-                ],
-              });
-            } else {
-              throw new Error(
-                `Vui lòng chuyển MetaMask sang Hardhat Localhost (Chain ID: 1337)! Hiện tại: ${chainId}`
-              );
-            }
-          }
-          const newChainId = Number(await provider.send("eth_chainId", []));
-          if (newChainId !== 1337) {
-            throw new Error(
-              `Vui lòng chuyển MetaMask sang Hardhat Localhost (Chain ID: 1337)! Hiện tại: ${newChainId}`
-            );
-          }
-        }
-
-        const accounts = await provider.send("eth_accounts", []);
-        if (accounts.length === 0) {
-          setWalletError("Vui lòng kết nối ví MetaMask để tiếp tục!");
-        } else {
-          const signer = await provider.getSigner();
-          setSigner(signer);
-          setAccount(accounts[0]);
-          await checkUserAndWallet(accounts[0]);
-        }
-
-        const fruitSupplyChainAddress = await getContractAddress();
-        console.log("Địa chỉ FruitSupplyChain:", fruitSupplyChainAddress);
-        setContractAddress(fruitSupplyChainAddress);
-
-        // Kiểm tra mã bytecode tại địa chỉ hợp đồng
-        const code = await provider.getCode(fruitSupplyChainAddress);
-        if (code === "0x") {
-          throw new Error(
-            `Không có hợp đồng tại địa chỉ: ${fruitSupplyChainAddress}`
-          );
-        }
-
-        const fruitSupplyChainContract = new ethers.Contract(
-          fruitSupplyChainAddress,
-          contractABI,
-          provider
-        );
-        console.log("Hợp đồng FruitSupplyChain:", fruitSupplyChainContract);
-        setFruitSupplyChain(fruitSupplyChainContract);
-
-        const governmentRegulatorAddress =
-          "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
-        const governmentRegulatorContract = new ethers.Contract(
-          governmentRegulatorAddress,
-          governmentRegulatorABI,
-          provider
-        );
-        setGovernmentRegulator(governmentRegulatorContract);
-
-        // Kiểm tra các phương thức của hợp đồng
-        if (
-          typeof fruitSupplyChainContract.listProductForSale !== "function" ||
-          typeof fruitSupplyChainContract.purchaseProduct !== "function"
-        ) {
-          throw new Error(
-            "Hợp đồng FruitSupplyChain không có các hàm cần thiết!"
-          );
-        }
-        if (
-          typeof governmentRegulatorContract.createTripartyContract !==
-            "function" ||
-          typeof governmentRegulatorContract.signContract !== "function"
-        ) {
-          throw new Error(
-            "Hợp đồng GovernmentRegulator không có các hàm cần thiết!"
-          );
-        }
-
-        window.ethereum.on("accountsChanged", handleAccountsChanged);
-        window.ethereum.on("disconnect", handleDisconnect);
-      } catch (error) {
-        console.error("Lỗi khi khởi tạo Web3:", error);
-        if (error.message.includes("MetaMask")) {
-          setWalletError(error.message);
-        } else if (error.message.includes("Hợp đồng")) {
-          setContractError(error.message);
-        } else {
-          setContractError(
-            "Không thể khởi tạo hợp đồng thông minh: " + error.message
-          );
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initWeb3();
-
-    return () => {
-      if (window.ethereum) {
-        window.ethereum.removeListener(
-          "accountsChanged",
-          handleAccountsChanged
-        );
-        window.ethereum.removeListener("disconnect", handleDisconnect);
-      }
-    };
-  }, []);
-
-  const handleAccountsChanged = async (accounts) => {
-    const newAccount = accounts[0] || null;
-    setAccount(newAccount);
-    if (newAccount) {
-      const signer = await provider.getSigner();
-      setSigner(signer);
-      await checkUserAndWallet(newAccount);
-    } else {
-      setWalletError("Ví MetaMask đã ngắt kết nối! Vui lòng kết nối lại.");
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || "Không thể cập nhật ví MetaMask!");
     }
-  };
-
-  const handleDisconnect = () => {
-    setAccount(null);
-    setSigner(null);
-    setWalletError("Ví MetaMask đã ngắt kết nối! Vui lòng kết nối lại.");
+    console.log("Cập nhật ví thành công:", await response.json());
   };
 
   const connectWallet = async () => {
-    if (!provider) throw new Error("Provider chưa được khởi tạo!");
     try {
+      if (!window.ethereum) {
+        throw new Error("MetaMask không được cài đặt!");
+      }
+
+      const web3 = new Web3(window.ethereum);
+      console.log("Đã khởi tạo Provider");
+
+      const chainId = await web3.eth.getChainId();
+      console.log("Chain ID:", chainId);
+
       const accounts = await window.ethereum.request({
         method: "eth_requestAccounts",
       });
-      const signer = await provider.getSigner();
-      setSigner(signer);
-      setAccount(accounts[0]);
-      setWalletError(null);
-      await checkUserAndWallet(accounts[0]);
-    } catch (error) {
-      if (error.code === -32002) {
-        setWalletError("Yêu cầu kết nối đang chờ xử lý trong MetaMask!");
-      } else {
-        setWalletError("Không thể kết nối ví MetaMask: " + error.message);
-      }
-    }
-  };
+      const account = accounts[0];
 
-  const checkUserAndWallet = async (currentAccount) => {
-    try {
-      const user = JSON.parse(localStorage.getItem("user"));
-      if (!user || !user.email) {
-        setUserError("Vui lòng đăng nhập để sử dụng chức năng này!");
-        setWalletError(null);
-        return;
-      }
-
-      if (!currentAccount) {
-        setWalletError("Không tìm thấy địa chỉ ví MetaMask!");
-        setUserError(null);
-        return;
-      }
-
-      const response = await axios.get("http://localhost:3000/check-role", {
-        headers: { "x-ethereum-address": currentAccount },
-      });
-
-      const { walletAddress, role } = response.data;
-      if (role !== user.role) {
-        setUserError("Vai trò của bạn đã thay đổi. Vui lòng đăng nhập lại!");
-        setWalletError(null);
-        return;
-      }
-
-      if (
-        walletAddress &&
-        walletAddress.toLowerCase() !== currentAccount.toLowerCase()
-      ) {
-        setWalletError("Địa chỉ ví MetaMask không khớp với tài khoản của bạn!");
-        setUserError(null);
-      } else {
-        setWalletError(null);
-        setUserError(null);
-      }
-    } catch (error) {
-      if (error.response && error.response.status === 401) {
-        setWalletError(
-          "Địa chỉ ví MetaMask không được liên kết với tài khoản. Vui lòng cập nhật ví trong hệ thống."
-        );
-      } else {
-        setWalletError("Không thể xác thực ví MetaMask: " + error.message);
-      }
-      setUserError(null);
-    }
-  };
-
-  const updateWalletAddress = async (email) => {
-    if (!account) throw new Error("Ví MetaMask chưa được kết nối!");
-    try {
-      await axios.post("http://localhost:3000/update-wallet", {
-        email,
-        walletAddress: account,
-      });
-      setWalletError(null);
-    } catch (error) {
-      throw new Error("Không thể cập nhật ví: " + error.message);
-    }
-  };
-
-  const checkNodeSync = async () => {
-    try {
-      if (!provider) throw new Error("Provider chưa được khởi tạo!");
-      const isListening = await provider.send("net_listening", []);
-      if (!isListening) {
-        throw new Error(
-          "Hardhat Network không đang chạy! Vui lòng khởi động node bằng lệnh 'npx hardhat node'."
-        );
-      }
-
-      const blockNumber = await provider.getBlockNumber();
-      const networkId = Number(await provider.send("net_version", []));
-      if (networkId !== 1337) {
-        throw new Error(
-          `Sai mạng! Đang kết nối với Network ID ${networkId}, yêu cầu Hardhat Network (1337).`
-        );
-      }
-      if (blockNumber === undefined || blockNumber === null) {
-        throw new Error(
-          "Node không phản hồi! Vui lòng kiểm tra Hardhat Network."
-        );
-      }
-      return { networkId, blockNumber };
-    } catch (error) {
-      throw new Error(
-        error.message.includes("Hardhat Network không đang chạy") ||
-        error.message.includes("Node không phản hồi")
-          ? error.message
-          : "Không thể kết nối với node Ethereum: " + error.message
+      const contractAddresses = await fetch(
+        "http://localhost:3000/contract-address"
+      ).then((res) => res.json());
+      console.log(
+        "Địa chỉ FruitSupplyChain từ API:",
+        contractAddresses.FruitSupplyChain
       );
+      console.log(
+        "Địa chỉ GovernmentRegulator từ API:",
+        contractAddresses.GovernmentRegulator
+      );
+
+      const contractBytecode = await web3.eth.getCode(
+        contractAddresses.FruitSupplyChain
+      );
+      console.log(
+        "Bytecode tại địa chỉ FruitSupplyChain:",
+        contractBytecode.substring(0, 100) + "..."
+      );
+
+      const governmentRegulatorBytecode = await web3.eth.getCode(
+        contractAddresses.GovernmentRegulator
+      );
+      console.log(
+        "Bytecode tại địa chỉ GovernmentRegulator:",
+        governmentRegulatorBytecode.substring(0, 100) + "..."
+      );
+
+      const contract = new web3.eth.Contract(
+        contractData.abi,
+        contractAddresses.FruitSupplyChain
+      );
+      console.log("Hợp đồng FruitSupplyChain:", contract);
+
+      const governmentRegulator = new web3.eth.Contract(
+        governmentRegulatorData.abi,
+        contractAddresses.GovernmentRegulator
+      );
+      console.log("Hợp đồng GovernmentRegulator:", governmentRegulator);
+
+      console.log("Tài khoản:", account);
+      setWeb3State((prev) => ({
+        ...prev,
+        account,
+        web3,
+        contract,
+        governmentRegulator,
+        loading: false,
+        walletError: null,
+        userError: null,
+        contractError: null,
+        isInitialized: true,
+      }));
+      console.log("Đã đặt isInitialized = true, web3Loading = false");
+
+      return account;
+    } catch (error) {
+      console.error("Lỗi khi kết nối ví MetaMask:", error);
+      setWeb3State((prev) => ({
+        ...prev,
+        walletError: error.message,
+        loading: false,
+        isInitialized: false,
+      }));
+      throw error;
     }
   };
 
-  const testContract = async () => {
-    try {
-      if (!fruitSupplyChain || !governmentRegulator) {
-        throw new Error("Contract chưa được khởi tạo đúng!");
-      }
-      if (!contractAddress) {
-        throw new Error("Địa chỉ hợp đồng không được định nghĩa!");
-      }
-      const code = await provider.getCode(contractAddress);
-      if (code === "0x") {
-        throw new Error(
-          `Hợp đồng không tồn tại tại địa chỉ: ${contractAddress}! Vui lòng kiểm tra file D:\\fruit-supply-chain\\contract-address.txt hoặc triển khai lại hợp đồng bằng 'npx hardhat run scripts/deploy.js --network localhost'.`
-        );
-      }
-      const owner = await fruitSupplyChain.owner();
-      return true;
-    } catch (error) {
-      throw new Error(
-        `Hợp đồng hoặc ABI không hợp lệ! Chi tiết: ${error.message}`
-      );
-    }
+  const resetAccount = () => {
+    setWeb3State((prev) => ({
+      ...prev,
+      account: null,
+      contract: null,
+      governmentRegulator: null,
+      loading: false,
+      isInitialized: false,
+    }));
+    console.log("Reset account state");
   };
 
   const executeTransaction = async ({
     type,
     productId,
+    fruitId,
     price,
     quantity,
     inventoryId,
-    listingId,
-    totalPrice,
   }) => {
-    if (!provider || !fruitSupplyChain || !governmentRegulator || !account) {
-      throw new Error("Provider, contract hoặc account chưa được khởi tạo!");
-    }
-    if (userError) throw new Error(userError);
-    if (walletError) throw new Error(walletError);
-
-    const user = JSON.parse(localStorage.getItem("user"));
-    if (!user) {
-      throw new Error("Vui lòng đăng nhập để thực hiện hành động này!");
+    if (!web3State.web3 || !web3State.contract || !web3State.account) {
+      throw new Error("Web3 hoặc hợp đồng chưa được khởi tạo!");
     }
 
-    if (type === "listProductForSale" && user.role !== "DeliveryHub") {
-      throw new Error("Chỉ DeliveryHub mới có thể đăng bán sản phẩm!");
-    }
-    if (type === "purchaseProduct" && user.role !== "Customer") {
-      throw new Error("Chỉ Customer mới có thể mua sản phẩm!");
-    }
-
-    const contractWithSigner = fruitSupplyChain.connect(signer);
-
-    if (type === "listProductForSale") {
-      try {
-        await checkNodeSync();
-        await testContract();
-
-        const owner = await contractWithSigner.owner();
-        const isManager = await contractWithSigner.authorizedManagers(account);
-        if (owner.toLowerCase() !== account.toLowerCase() && !isManager) {
-          throw new Error(
-            `Bạn không có quyền thực hiện giao dịch này! Owner: ${owner}, Account: ${account}`
-          );
+    try {
+      if (type === "listProductForSale") {
+        if (!productId || !fruitId || !price || !quantity || !inventoryId) {
+          throw new Error("Thiếu thông tin cần thiết để đăng bán sản phẩm!");
         }
 
-        if (!productId || productId === "undefined" || isNaN(productId)) {
-          throw new Error("ID sản phẩm không hợp lệ!");
-        }
-
-        const productResponse = await axios.get(
-          `http://localhost:3000/products/${productId}`,
-          { headers: { "x-ethereum-address": account } }
+        const priceInWei = web3State.web3.utils.toWei(
+          price.toString(),
+          "ether"
         );
-        const product = productResponse.data;
-        const farmResponse = await axios.get(
-          `http://localhost:3000/farms/${product.farm_id}`,
-          { headers: { "x-ethereum-address": account } }
-        );
-        const farm = farmResponse.data;
 
-        const {
-          name: fruitType,
-          origin = "Việt Nam",
-          quality = "Tốt",
-        } = product;
-        const farmId = farm.farm_name;
+        const gasEstimate = await web3State.contract.methods
+          .listProductForSale(fruitId, priceInWei, quantity, true)
+          .estimateGas({ from: web3State.account });
 
-        let catalogExists = false;
-        try {
-          const catalog = await contractWithSigner.getFruitCatalog(fruitType);
-          catalogExists = catalog[0].length > 0;
-        } catch (e) {
-          console.log("Catalog chưa tồn tại, sẽ thêm mới:", e.message);
-        }
+        const result = await web3State.contract.methods
+          .listProductForSale(fruitId, priceInWei, quantity, true)
+          .send({
+            from: web3State.account,
+            gas: (BigInt(gasEstimate) + BigInt(gasEstimate / 5n)).toString(),
+          });
 
-        if (!catalogExists) {
-          const tx = await contractWithSigner.addFruitCatalog(
-            fruitType,
-            `Mô tả về ${fruitType}`,
-            "Tháng 8 - Tháng 12",
-            "Chứa nhiều vitamin",
-            "Bảo quản khô ráo",
-            [`${fruitType} Giống 1`, `${fruitType} Giống 2`]
-          );
-          await tx.wait();
-          console.log("Đã thêm fruit catalog:", fruitType);
-        }
+        const listingId = result.events.ProductListed.returnValues.listingId;
 
-        let farmExists = false;
-        try {
-          const farmData = await contractWithSigner.getFarmData(farmId);
-          farmExists = farmData[0].length > 0;
-        } catch (e) {
-          console.log("Farm chưa tồn tại, sẽ đăng ký mới:", e.message);
-        }
-
-        if (!farmExists) {
-          const tx = await contractWithSigner.registerFarm(
-            farmId,
-            farm.location || "Unknown",
-            farm.weather_condition || "Unknown",
-            "Đất phù sa",
-            farm.current_conditions || "19.65°C"
-          );
-          await tx.wait();
-          console.log("Đã đăng ký farm:", farmId);
-        }
-
-        const inventoryResponse = await axios.get(
-          `http://localhost:3000/inventory/by-id/${inventoryId}`,
-          { headers: { "x-ethereum-address": account } }
-        );
-        let fruitId = inventoryResponse.data?.fruit_id || 0;
-
-        const fruitCount = await contractWithSigner.fruitCount();
-        if (fruitId <= 0 || fruitId > Number(fruitCount)) {
-          console.log("Fruit ID không hợp lệ, sẽ gọi harvestFruit...");
-          const tx = await contractWithSigner.harvestFruit(
-            fruitType,
-            origin,
-            farmId,
-            quality,
-            quantity
-          );
-          await tx.wait();
-          fruitId = Number(await contractWithSigner.fruitCount());
-          await axios.put(
-            `http://localhost:3000/inventory/${inventoryId}/fruit-id`,
-            { fruitId },
-            { headers: { "x-ethereum-address": account } }
-          );
-          console.log("Đã thu hoạch fruit với ID:", fruitId);
-        } else {
-          const fruitData = await contractWithSigner.getFruit(fruitId);
-          const fruitQuantity = Number(fruitData[7]);
-          if (quantity > fruitQuantity) {
-            console.log("Số lượng không đủ, sẽ gọi harvestFruit để bổ sung...");
-            const tx = await contractWithSigner.harvestFruit(
-              fruitType,
-              origin,
-              farmId,
-              quality,
-              quantity
-            );
-            await tx.wait();
-            fruitId = Number(await contractWithSigner.fruitCount());
-            await axios.put(
-              `http://localhost:3000/inventory/${inventoryId}/fruit-id`,
-              { fruitId },
-              { headers: { "x-ethereum-address": account } }
-            );
-            console.log("Đã thu hoạch fruit với ID:", fruitId);
-          }
-        }
-
-        const priceInWei = ethers.parseEther(price.toString());
-        const tx = await contractWithSigner.listProductForSale(
-          fruitId,
-          priceInWei,
-          quantity,
-          true
-        );
-        const receipt = await tx.wait();
-        const listingId = receipt.logs
-          .filter(
-            (log) =>
-              log.topics[0] ===
-              ethers.id("ProductListed(uint256,uint256,uint256,uint256,bool)")
-          )[0]
-          .args.listingId.toString();
-
-        console.log("Đã đăng bán sản phẩm với Listing ID:", listingId);
-        return { transactionHash: tx.hash, listingId };
-      } catch (error) {
-        throw new Error(
-          error.message.includes("Hardhat Network") ||
-          error.message.includes("Node không phản hồi")
-            ? error.message
-            : "Không thể thực hiện giao dịch: " + error.message
-        );
+        console.log("Giao dịch listProductForSale thành công:", result);
+        return {
+          transactionHash: result.transactionHash,
+          listingId: listingId,
+          fruitId: fruitId,
+        };
+      } else {
+        throw new Error("Loại giao dịch không được hỗ trợ: " + type);
       }
-    } else if (type === "purchaseProduct") {
-      try {
-        await checkNodeSync();
-        await testContract();
-
-        const productResponse = await contractWithSigner.getListedProduct(
-          listingId
-        );
-        if (!productResponse.isActive) {
-          throw new Error(
-            `Sản phẩm với Listing ID ${listingId} không còn khả dụng!`
-          );
-        }
-        if (productResponse.quantity <= 0) {
-          throw new Error(`Sản phẩm với Listing ID ${listingId} đã hết hàng!`);
-        }
-        if (
-          ethers.parseEther(totalPrice.toString()) <
-          ethers.parseEther(productResponse.price.toString())
-        ) {
-          throw new Error(
-            `Số tiền không đủ để mua sản phẩm! Cần ít nhất ${ethers.formatEther(
-              productResponse.price
-            )} ETH`
-          );
-        }
-
-        const balance = await provider.getBalance(account);
-        if (balance < ethers.parseEther(totalPrice.toString())) {
-          throw new Error(
-            `Số dư ví không đủ! Cần ít nhất ${ethers.formatEther(
-              totalPrice
-            )} ETH, nhưng ví chỉ có ${ethers.formatEther(balance)} ETH`
-          );
-        }
-
-        const tx = await contractWithSigner.purchaseProduct(listingId, {
-          value: ethers.parseEther(totalPrice.toString()),
-        });
-        await tx.wait();
-
-        console.log("Đã mua sản phẩm với Listing ID:", listingId);
-        return { transactionHash: tx.hash };
-      } catch (error) {
-        throw new Error(
-          error.message.includes("Hardhat Network") ||
-          error.message.includes("Node không phản hồi")
-            ? error.message
-            : "Không thể thực hiện giao dịch mua sản phẩm: " + error.message
-        );
-      }
-    } else {
-      throw new Error("Loại giao dịch không được hỗ trợ!");
+    } catch (error) {
+      console.error("Lỗi khi thực hiện giao dịch:", error);
+      throw new Error(
+        error.message || "Không thể thực hiện giao dịch blockchain!"
+      );
     }
   };
 
   const addManager = async (managerAddress) => {
-    if (!provider || !fruitSupplyChain || !account) {
-      throw new Error("Provider chưa được khởi tạo!");
+    if (!web3State.web3 || !web3State.contract || !web3State.account) {
+      throw new Error("Web3 hoặc hợp đồng chưa được khởi tạo!");
     }
     try {
-      await checkNodeSync();
-
-      const contractWithSigner = fruitSupplyChain.connect(signer);
-      const owner = await contractWithSigner.owner();
-      if (account.toLowerCase() !== owner.toLowerCase()) {
-        throw new Error(
-          `Chỉ owner (${owner}) mới có thể thêm manager! Vui lòng chuyển sang tài khoản owner.`
-        );
+      if (!web3State.web3.utils.isAddress(managerAddress)) {
+        throw new Error("Địa chỉ ví không hợp lệ!");
       }
 
-      const tx = await contractWithSigner.addManager(managerAddress);
-      await tx.wait();
+      const gasEstimate = await web3State.contract.methods
+        .addManager(managerAddress)
+        .estimateGas({ from: web3State.account });
 
-      const isManager = await contractWithSigner.authorizedManagers(
-        managerAddress
-      );
-      if (!isManager) {
-        throw new Error(
-          "Giao dịch thành công nhưng địa chỉ này không được cấp quyền manager!"
-        );
-      }
+      const result = await web3State.contract.methods
+        .addManager(managerAddress)
+        .send({
+          from: web3State.account,
+          gas: (BigInt(gasEstimate) + BigInt(gasEstimate / 5n)).toString(),
+        });
 
-      return { transactionHash: tx.hash };
+      console.log("Giao dịch addManager thành công:", result);
+      return { transactionHash: result.transactionHash };
     } catch (error) {
-      throw new Error("Không thể thêm manager: " + error.message);
+      console.error("Lỗi khi thêm manager:", error);
+      throw new Error(error.message || "Không thể thêm manager!");
     }
   };
 
-  const value = {
-    provider,
-    account,
-    fruitSupplyChain,
-    governmentRegulator,
-    connectWallet,
-    executeTransaction,
-    addManager,
-    loading,
-    walletError,
-    userError,
-    contractError,
-    updateWalletAddress,
-    setWalletError,
-  };
+  useEffect(() => {
+    const init = async () => {
+      if (window.ethereum) {
+        try {
+          const accounts = await window.ethereum.request({
+            method: "eth_accounts",
+          });
+          if (accounts.length > 0) {
+            await connectWallet();
+          } else {
+            setWeb3State((prev) => ({
+              ...prev,
+              loading: false,
+              isInitialized: false,
+            }));
+          }
+        } catch (error) {
+          console.error("Lỗi khi khởi tạo Web3:", error);
+          setWeb3State((prev) => ({
+            ...prev,
+            walletError: error.message,
+            loading: false,
+            isInitialized: false,
+          }));
+        }
 
-  return <Web3Context.Provider value={value}>{children}</Web3Context.Provider>;
-}
+        // Xử lý sự kiện accountsChanged
+        window.ethereum.on("accountsChanged", async (accounts) => {
+          console.log("Accounts changed:", accounts);
+          if (accounts.length === 0) {
+            console.log("No accounts available, resetting...");
+            resetAccount();
+          } else {
+            try {
+              await connectWallet();
+            } catch (error) {
+              console.error("Lỗi khi xử lý accountsChanged:", error);
+              resetAccount();
+            }
+          }
+        });
 
-export default Web3Provider;
+        // Xử lý sự kiện chainChanged
+        window.ethereum.on("chainChanged", async () => {
+          console.log("Chain changed, resetting state and reconnecting...");
+          resetAccount();
+          try {
+            await connectWallet();
+          } catch (error) {
+            console.error("Lỗi khi xử lý chainChanged:", error);
+            resetAccount();
+          }
+        });
+      } else {
+        setWeb3State((prev) => ({
+          ...prev,
+          walletError: "MetaMask không được cài đặt!",
+          loading: false,
+          isInitialized: false,
+        }));
+      }
+    };
+
+    init();
+
+    // Cleanup listeners on unmount
+    return () => {
+      if (window.ethereum) {
+        window.ethereum.removeAllListeners("accountsChanged");
+        window.ethereum.removeAllListeners("chainChanged");
+      }
+    };
+  }, []);
+
+  return (
+    <Web3Context.Provider
+      value={{
+        ...web3State,
+        connectWallet,
+        updateWalletAddress,
+        resetAccount,
+        executeTransaction,
+        addManager,
+      }}
+    >
+      {children}
+    </Web3Context.Provider>
+  );
+};
+
+export const useWeb3 = () => useContext(Web3Context);

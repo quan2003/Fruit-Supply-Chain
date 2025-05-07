@@ -8,10 +8,20 @@ const api = axios.create({
   baseURL: API_URL,
 });
 
+// Hàm lấy token hoặc địa chỉ ví từ context (giả định)
+const getAuthHeaders = () => {
+  const walletAddress =
+    localStorage.getItem("walletAddress") ||
+    "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"; // Thay bằng logic thực tế để lấy wallet address
+  return { "x-ethereum-address": walletAddress };
+};
+
 // === Quản lý trái cây ===
 export const getAllFruits = async () => {
   try {
-    const response = await api.get("/all-fruits");
+    const response = await api.get("/all-fruits", {
+      headers: getAuthHeaders(),
+    });
     return response.data;
   } catch (error) {
     console.error("Error fetching all fruits:", error);
@@ -21,7 +31,9 @@ export const getAllFruits = async () => {
 
 export const getFruit = async (fruitId) => {
   try {
-    const response = await api.get(`/fruit/${fruitId}`);
+    const response = await api.get(`/fruit/${fruitId}`, {
+      headers: getAuthHeaders(),
+    });
     return response.data;
   } catch (error) {
     console.error(`Error fetching fruit with ID ${fruitId}:`, error);
@@ -31,7 +43,9 @@ export const getFruit = async (fruitId) => {
 
 export const harvestFruit = async (data) => {
   try {
-    const response = await api.post("/harvest", data);
+    const response = await api.post("/harvest", data, {
+      headers: getAuthHeaders(),
+    });
     return response.data;
   } catch (error) {
     console.error("Error harvesting fruit:", error);
@@ -41,7 +55,9 @@ export const harvestFruit = async (data) => {
 
 export const recordStep = async (data) => {
   try {
-    const response = await api.post("/record-step", data);
+    const response = await api.post("/record-step", data, {
+      headers: getAuthHeaders(),
+    });
     return response.data;
   } catch (error) {
     console.error("Error recording step:", error);
@@ -51,7 +67,9 @@ export const recordStep = async (data) => {
 
 export const updateRegion = async (data) => {
   try {
-    const response = await api.post("/update-region", data);
+    const response = await api.post("/update-region", data, {
+      headers: getAuthHeaders(),
+    });
     return response.data;
   } catch (error) {
     console.error("Error updating region:", error);
@@ -61,7 +79,7 @@ export const updateRegion = async (data) => {
 
 export const getPopularFruit = async () => {
   try {
-    const response = await api.get("/popular");
+    const response = await api.get("/popular", { headers: getAuthHeaders() });
     return response.data;
   } catch (error) {
     console.error("Error fetching popular fruit:", error);
@@ -72,54 +90,25 @@ export const getPopularFruit = async () => {
 // === Quản lý sản phẩm ===
 export const getAllFruitProducts = async () => {
   try {
-    const response = await api.get("/products");
+    const response = await api.get("/products", { headers: getAuthHeaders() });
     console.log("API response from /products:", response.data);
     return response.data;
   } catch (error) {
     console.error("Error fetching all fruit products:", error);
-    // Dữ liệu giả lập nếu API thất bại
-    const fakeData = [
-      {
-        id: "1",
-        name: "Táo Fuji",
-        productcode: "TAO001",
-        category: "ban cho",
-        description: "Táo ngon, ngọt, giòn",
-        price: 50000,
-        quantity: 100,
-        imageurl: "https://via.placeholder.com/150",
-        productiondate: "2025-01-01",
-        expirydate: "2025-06-01",
-      },
-      {
-        id: "2",
-        name: "Chuối Đà Lạt",
-        productcode: "CHUOI001",
-        category: "nhap vao",
-        description: "Chuối ngọt, thơm",
-        price: 30000,
-        quantity: 200,
-        imageurl: "https://via.placeholder.com/150",
-        productiondate: "2025-02-01",
-        expirydate: "2025-04-01",
-      },
-    ];
-    console.log("Returning fake data:", fakeData);
-    return fakeData;
+    throw error;
   }
 };
 
 export const getFruitProduct = async (productId) => {
   try {
-    const response = await api.get(`/products/${productId}`);
+    const response = await api.get(`/products/${productId}`, {
+      headers: getAuthHeaders(),
+    });
     console.log(`API response for product ${productId}:`, response.data);
     return response.data;
   } catch (error) {
     console.error(`Error fetching fruit product with ID ${productId}:`, error);
-    const products = await getAllFruitProducts();
-    const product = products.find((p) => p.id === productId);
-    if (!product) throw new Error("Product not found");
-    return product;
+    throw error;
   }
 };
 
@@ -128,46 +117,46 @@ export const createFruitProduct = async (formData) => {
     const response = await api.post("/products", formData, {
       headers: {
         "Content-Type": "multipart/form-data",
+        ...getAuthHeaders(),
       },
     });
     console.log("API response for creating product:", response.data);
     return response.data;
   } catch (error) {
     console.error("Error creating fruit product:", error);
-    throw error; // Ném lỗi để xử lý ở fruitService.js
+    throw error;
   }
 };
 
 // === Quản lý nông trại ===
 export const getAllFarms = async () => {
   try {
-    // Gọi API thực tế để lấy danh sách farms từ database
-    const response = await api.get("/farms");
+    const response = await api.get("/farms", { headers: getAuthHeaders() });
     return response.data;
   } catch (error) {
     console.error("Error fetching all farms:", error);
-    return [];
+    throw error;
   }
 };
 
 export const getFarm = async (farmId) => {
   try {
-    // Gọi API thực tế để lấy thông tin farm theo ID
-    const response = await api.get(`/farms/${farmId}`);
+    const response = await api.get(`/farms/${farmId}`, {
+      headers: getAuthHeaders(),
+    });
     return response.data;
   } catch (error) {
-    if (error.response && error.response.status === 404) {
-      console.error(`Farm with ID ${farmId} not found in database`);
-    } else {
-      console.error(`Error fetching farm with ID ${farmId}:`, error);
-    }
+    console.error(`Error fetching farm with ID ${farmId}:`, error);
     throw error;
   }
 };
 
 export const registerFarm = async (farmData) => {
   try {
-    return { id: "3", ...farmData };
+    const response = await api.post("/farm", farmData, {
+      headers: getAuthHeaders(),
+    });
+    return response.data;
   } catch (error) {
     console.error("Error registering farm:", error);
     throw error;
@@ -176,7 +165,12 @@ export const registerFarm = async (farmData) => {
 
 export const updateFarmConditions = async (farmId, conditions) => {
   try {
-    return { id: farmId, conditions };
+    const response = await api.put(
+      `/farm/${farmId}`,
+      { conditions },
+      { headers: getAuthHeaders() }
+    );
+    return response.data;
   } catch (error) {
     console.error(`Error updating conditions for farm ${farmId}:`, error);
     throw error;
@@ -186,18 +180,8 @@ export const updateFarmConditions = async (farmId, conditions) => {
 // === Quản lý người quản lý ===
 export const getAllManagers = async () => {
   try {
-    return [
-      {
-        id: "1",
-        name: "Manager 1",
-        walletAddress: "0x33dbE90872BbF0a67692D7B533D57A6c185F42bC",
-      },
-      {
-        id: "2",
-        name: "Manager 2",
-        walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
-      },
-    ];
+    const response = await api.get("/users", { headers: getAuthHeaders() });
+    return response.data.filter((user) => user.role === "Admin");
   } catch (error) {
     console.error("Error fetching all managers:", error);
     throw error;
@@ -206,34 +190,50 @@ export const getAllManagers = async () => {
 
 export const addManager = async (managerData) => {
   try {
-    return { id: "3", ...managerData };
+    const response = await api.post("/manager", managerData, {
+      headers: getAuthHeaders(),
+    });
+    return response.data;
   } catch (error) {
     console.error("Error adding manager:", error);
-    throw error;
+    if (error.response) {
+      // Backend trả về lỗi cụ thể (như 404, 400, v.v.)
+      if (error.response.status === 404) {
+        const message =
+          error.response.data.message ||
+          "Không tìm thấy endpoint hoặc người dùng với địa chỉ ví này!";
+        throw new Error(message);
+      } else if (error.response.status === 400) {
+        throw new Error(
+          error.response.data.message || "Địa chỉ ví không hợp lệ!"
+        );
+      } else {
+        throw new Error(error.response.data.message || "Lỗi khi thêm quản lý!");
+      }
+    } else if (error.request) {
+      // Không nhận được phản hồi từ backend
+      throw new Error(
+        "Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối!"
+      );
+    } else {
+      throw new Error("Lỗi không xác định khi thêm quản lý!");
+    }
   }
 };
-
-export const revokeManagerRole = async (managerId) => {
-  try {
-    console.log(`Revoking manager role for ID: ${managerId}`);
-    return { success: true };
-  } catch (error) {
-    console.error(`Error revoking manager role for ID ${managerId}:`, error);
-    throw error;
-  }
-};
-
 // === Thông tin blockchain và hệ thống ===
 export const getBlockchainInfo = async () => {
   try {
+    const response = await api.get("/contract-address", {
+      headers: getAuthHeaders(),
+    });
     return {
-      network: "Ganache",
+      network: "Localhost",
       contractStatus: "Active",
-      currentBlock: 123456,
-      contractAddress: "0x20456308Aef9aF8D43C2f831bF666Fe4451eC36d",
+      currentBlock: "N/A", // Có thể lấy từ blockchain nếu cần
+      contractAddress: response.data.address,
       version: "1.0.0",
-      deploymentDate: Date.now() - 1000000,
-      lastUpdated: Date.now(),
+      deploymentDate: new Date().toISOString(),
+      lastUpdated: new Date().toISOString(),
     };
   } catch (error) {
     console.error("Error fetching blockchain info:", error);
@@ -243,35 +243,32 @@ export const getBlockchainInfo = async () => {
 
 export const getSystemStats = async () => {
   try {
-    return {
-      totalFarms: 5,
-      totalBatches: 10,
-      totalTransactions: 500,
-      totalUsers: 100,
-      recentActivities: [
-        {
-          message: "Lô trái cây mới được thu hoạch",
-          timestamp: Date.now() - 100000,
-        },
-        {
-          message: "Giao dịch mới được ghi nhận",
-          timestamp: Date.now() - 50000,
-        },
-      ],
-    };
+    const response = await api.get("/stats", { headers: getAuthHeaders() });
+    return response.data;
   } catch (error) {
     console.error("Error fetching system stats:", error);
-    throw error;
+    return {
+      totalFarms: 0,
+      totalUsers: 0,
+      totalOrders: 0,
+      totalShipments: 0,
+      totalProductsListed: 0,
+      totalTransactions: 0,
+      recentActivities: [],
+    }; // Trả về dữ liệu mặc định để tránh crash
   }
 };
 
 // === Thống kê và hoạt động ===
 export const getFruitStatistics = async () => {
   try {
+    const response = await api.get("/analytics/trends", {
+      headers: getAuthHeaders(),
+    });
     return {
-      totalFruits: 10,
-      totalFarms: 5,
-      popularFruits: ["Xoài", "Thanh Long", "Chuối"],
+      totalFruits: response.data.popularFruits.length,
+      totalFarms: Object.keys(response.data.growingRegions).length,
+      popularFruits: response.data.popularFruits,
     };
   } catch (error) {
     console.error("Error fetching fruit statistics:", error);
@@ -281,16 +278,8 @@ export const getFruitStatistics = async () => {
 
 export const getRecentActivities = async (account) => {
   try {
-    return [
-      {
-        message: `Người dùng ${account} đã thu hoạch lô trái cây mới`,
-        timestamp: Date.now() - 100000,
-      },
-      {
-        message: `Người dùng ${account} đã ghi nhận bước vận chuyển`,
-        timestamp: Date.now() - 50000,
-      },
-    ];
+    const response = await api.get("/stats", { headers: getAuthHeaders() });
+    return response.data.recentActivities || [];
   } catch (error) {
     console.error(
       `Error fetching recent activities for account ${account}:`,
@@ -303,20 +292,8 @@ export const getRecentActivities = async (account) => {
 // === Danh mục trái cây ===
 export const getAllFruitCatalogs = async () => {
   try {
-    return [
-      {
-        id: "1",
-        name: "Xoài",
-        origin: "Tiền Giang",
-        description: "Xoài ngọt, chất lượng cao",
-      },
-      {
-        id: "2",
-        name: "Thanh Long",
-        origin: "Bình Thuận",
-        description: "Thanh long đỏ, tươi ngon",
-      },
-    ];
+    const response = await api.get("/catalogs", { headers: getAuthHeaders() });
+    return response.data;
   } catch (error) {
     console.error("Error fetching fruit catalogs:", error);
     throw error;
@@ -325,9 +302,61 @@ export const getAllFruitCatalogs = async () => {
 
 export const addRecommendation = async (data) => {
   try {
-    return { id: "rec1", ...data };
+    const response = await api.post("/recommendation", data, {
+      headers: getAuthHeaders(),
+    });
+    return response.data;
   } catch (error) {
     console.error("Error adding recommendation:", error);
+    throw error;
+  }
+};
+export const revokeManagerRole = async (walletAddress) => {
+  try {
+    const response = await api.delete(`/manager/${walletAddress}`, {
+      headers: getAuthHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    console.error(
+      `Error revoking manager role for wallet ${walletAddress}:`,
+      error
+    );
+    if (error.response) {
+      if (error.response.status === 404) {
+        throw new Error("Không tìm thấy quản lý với địa chỉ ví này!");
+      } else if (error.response.status === 400) {
+        throw new Error(
+          error.response.data.message || "Địa chỉ ví không hợp lệ!"
+        );
+      } else if (error.response.status === 403) {
+        throw new Error(
+          error.response.data.message ||
+            "Không có quyền thực hiện hành động này!"
+        );
+      } else {
+        throw new Error(
+          error.response.data.message || "Lỗi khi thu hồi quyền quản lý!"
+        );
+      }
+    } else if (error.request) {
+      throw new Error(
+        "Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối!"
+      );
+    } else {
+      throw new Error("Lỗi không xác định khi thu hồi quyền quản lý!");
+    }
+  }
+};
+export const searchUsers = async (role = "", search = "") => {
+  try {
+    const response = await api.get("/users", {
+      headers: getAuthHeaders(),
+      params: { role, search },
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error searching users:", error);
     throw error;
   }
 };

@@ -14,6 +14,7 @@ import {
 } from "@mui/material";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Facebook, Twitter, Google } from "@mui/icons-material";
+import { useWeb3 } from "../contexts/Web3Context";
 import Layout from "../components/common/Layout";
 import Footer from "../components/common/Footer";
 
@@ -23,13 +24,15 @@ const illustrationImage =
 const RegisterPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { connectWallet, account } = useWeb3();
   const [role, setRole] = useState("");
-  const [name, setName] = useState(""); // Thêm state cho name
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [walletConnected, setWalletConnected] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -42,6 +45,20 @@ const RegisterPage = () => {
   const handleRoleChange = (event) => {
     setRole(event.target.value);
     setError("");
+  };
+
+  const handleConnectWallet = async () => {
+    try {
+      await connectWallet();
+      if (!account) {
+        setError("Không thể kết nối ví MetaMask! Vui lòng thử lại nhé! 😓");
+        return;
+      }
+      setWalletConnected(true);
+    } catch (error) {
+      console.error("Lỗi khi kết nối ví MetaMask:", error);
+      setError(error.message || "Không thể kết nối ví MetaMask! 😓");
+    }
   };
 
   const handleRegister = async (e) => {
@@ -59,23 +76,37 @@ const RegisterPage = () => {
       return;
     }
 
+    if (!walletConnected || !account) {
+      setError("Vui lòng kết nối ví MetaMask trước khi đăng ký! 😅");
+      return;
+    }
+
     try {
       const response = await fetch("http://localhost:3000/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name, email, password, role }), // Thêm name vào dữ liệu gửi lên
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          role,
+          walletAddress: account,
+        }),
       });
 
       const data = await response.json();
       if (response.ok) {
-        setSuccess(data.message);
+        setSuccess(
+          data.message ||
+            "Đăng ký thành công! Chuyển hướng đến trang đăng nhập... 🎉"
+        );
         setTimeout(() => {
           navigate("/dang-nhap");
-        }, 2000);
+        }, 3000); // Tăng thời gian hiển thị thông báo lên 3 giây
       } else {
-        setError(data.message);
+        setError(data.message || "Đăng ký thất bại! 😓");
       }
     } catch (error) {
       console.error("Lỗi khi đăng ký:", error);
@@ -165,7 +196,7 @@ const RegisterPage = () => {
                   variant="outlined"
                   sx={{ mb: 2 }}
                   value={name}
-                  onChange={(e) => setName(e.target.value)} // Thêm trường nhập name
+                  onChange={(e) => setName(e.target.value)}
                 />
                 <TextField
                   fullWidth
@@ -208,6 +239,22 @@ const RegisterPage = () => {
                     <MenuItem value="DeliveryHub">Trung tâm phân phối</MenuItem>
                   </Select>
                 </FormControl>
+
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={handleConnectWallet}
+                  sx={{
+                    bgcolor: "#FF6F91",
+                    color: "white",
+                    py: 1.5,
+                    fontWeight: "bold",
+                    "&:hover": { bgcolor: "#E65B7B" },
+                    mb: 2,
+                  }}
+                >
+                  Kết Nối Ví MetaMask
+                </Button>
 
                 <Button
                   fullWidth

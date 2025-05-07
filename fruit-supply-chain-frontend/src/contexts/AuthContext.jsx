@@ -1,190 +1,223 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useWeb3 } from "./Web3Context";
-import axios from "axios";
 
 const AuthContext = createContext();
 
-export function useAuth() {
-  return useContext(AuthContext);
-}
-
-export function AuthProvider({ children }) {
-  const { account, loading: web3Loading, walletError } = useWeb3();
-  const [isManager, setIsManager] = useState(false);
-  const [isFarmer, setIsFarmer] = useState(false);
-  const [isCustomer, setIsCustomer] = useState(false);
-  const [isDeliveryHub, setIsDeliveryHub] = useState(false);
-  const [isGovernment, setIsGovernment] = useState(false);
-  const [userFarms, setUserFarms] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [user, setUser] = useState(() => {
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
-      const parsedUser = JSON.parse(savedUser);
-      if (
-        !parsedUser ||
-        !parsedUser.id ||
-        !parsedUser.email ||
-        !parsedUser.role
-      ) {
-        localStorage.removeItem("user");
-        return null;
-      }
-      return parsedUser;
-    }
-    return null;
+export const AuthProvider = ({ children }) => {
+  const { account, web3Loading, resetAccount } = useWeb3();
+  const [authState, setAuthState] = useState({
+    user: null,
+    error: null,
+    loading: true,
   });
+  const [isUserLoaded, setIsUserLoaded] = useState(false);
+  const [shouldLoadUser, setShouldLoadUser] = useState(true);
 
-  const [storedAccount, setStoredAccount] = useState(() => {
-    return localStorage.getItem("account") || null;
-  });
+  // Tính isGovernment từ user.role
+  const isGovernment = authState.user?.role === "Government";
 
+  // Tải dữ liệu từ localStorage khi khởi tạo
   useEffect(() => {
-    if (account) {
-      setStoredAccount(account);
-      localStorage.setItem("account", account);
+    const storedUser = localStorage.getItem("user");
+    const storedAccount = localStorage.getItem("account");
 
-      // Chỉ cập nhật user nếu walletAddress thay đổi
-      if (user && user.walletAddress !== account) {
-        const updatedUser = { ...user, walletAddress: account };
-        setUser(updatedUser);
-        localStorage.setItem("user", JSON.stringify(updatedUser));
-      }
+    if (storedUser && storedAccount) {
+      console.log("Khôi phục user từ localStorage:", storedUser);
+      setAuthState((prev) => ({
+        ...prev,
+        user: JSON.parse(storedUser),
+        error: null,
+        loading: false,
+      }));
+      setIsUserLoaded(true);
+    } else {
+      setAuthState((prev) => ({ ...prev, loading: false }));
     }
-  }, [account, user]);
+  }, []);
 
-  useEffect(() => {
-    const checkUserRole = async () => {
-      setLoading(true);
-      setError(null);
+  const loadUserFromApi = async () => {
+    console.log("loadUserFromApi called with:", {
+      account,
+      web3Loading,
+      isUserLoaded,
+      shouldLoadUser,
+    });
 
-      try {
-        if (web3Loading) {
-          return;
-        }
-
-        console.log("User after load:", user);
-        console.log("IsGovernment:", user?.role === "Government");
-        console.log("Account:", storedAccount);
-
-        if (!user) {
-          setIsFarmer(false);
-          setIsManager(false);
-          setIsCustomer(false);
-          setIsDeliveryHub(false);
-          setIsGovernment(false);
-          setUserFarms([]);
-          return;
-        }
-
-        setIsFarmer(user.role === "Producer");
-        setIsManager(user.role === "Admin");
-        setIsCustomer(user.role === "Customer");
-        setIsDeliveryHub(user.role === "DeliveryHub");
-        setIsGovernment(user.role === "Government");
-
-        if (user.role === "Producer" && storedAccount) {
-          const response = await fetch(
-            `http://localhost:3000/farms/user?email=${user.email}`,
-            {
-              headers: {
-                "Content-Type": "application/json",
-                "x-ethereum-address": storedAccount,
-              },
-            }
-          );
-
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(
-              errorData.message || "Không thể lấy danh sách farm"
-            );
-          }
-
-          const farms = await response.json();
-          setUserFarms(farms);
-        } else {
-          setUserFarms([]); // Đặt lại userFarms nếu không phải Producer
-        }
-      } catch (error) {
-        setError(error.message);
-        setUserFarms([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkUserRole();
-  }, [user?.email, user?.role, storedAccount, web3Loading]); // Chỉ phụ thuộc vào email và role của user
-
-  useEffect(() => {
-    if (walletError && walletError.includes("không khớp")) {
-      logout();
-    }
-  }, [walletError]);
-
-  const login = async (email, password, role) => {
-    try {
-      const response = await axios.post("http://localhost:3000/login", {
-        email,
-        password,
-        role,
+    if (!shouldLoadUser || !account || web3Loading || isUserLoaded) {
+      console.log("Bỏ qua loadUserFromApi do không thỏa mãn điều kiện:", {
+        account,
+        web3Loading,
+        isUserLoaded,
+        shouldLoadUser,
       });
-      const userData = response.data.user;
-      if (!userData || !userData.id || !userData.email || !userData.role) {
-        throw new Error("Dữ liệu người dùng không hợp lệ!");
+      if (!web3Loading && account && !isUserLoaded) {
+        setAuthState((prev) => ({ ...prev, loading: false }));
       }
+      return;
+    }
+
+    try {
+      setAuthState((prev) => ({ ...prev, loading: true }));
+      console.log("Bắt đầu gọi API /auth/user với walletAddress:", account);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const response = await fetch(
+        `http://localhost:3000/auth/user?walletAddress=${account}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Không tìm thấy người dùng: ${errorText}`);
+      }
+
+      const userData = await response.json();
+      console.log("User loaded from API:", userData);
 
       const updatedUser = {
         ...userData,
-        walletAddress: storedAccount || account || userData.wallet_address,
+        walletAddress: account,
       };
 
-      setUser(updatedUser);
+      setAuthState((prev) => ({
+        ...prev,
+        user: updatedUser,
+        error: null,
+        loading: false,
+      }));
       localStorage.setItem("user", JSON.stringify(updatedUser));
-      return updatedUser;
+      localStorage.setItem("account", account);
+      setIsUserLoaded(true);
     } catch (error) {
-      const errorMessage =
-        error.response?.data?.message || "Đăng nhập thất bại!";
-      setError(errorMessage);
-      throw new Error(errorMessage);
+      console.error("Lỗi khi tải người dùng từ API:", error.message);
+      setAuthState((prev) => ({
+        ...prev,
+        user: null,
+        error: error.message,
+        loading: false,
+      }));
+      setIsUserLoaded(true);
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    setUserFarms([]);
-    setIsFarmer(false);
-    setIsManager(false);
-    setIsCustomer(false);
-    setIsDeliveryHub(false);
-    setIsGovernment(false);
-    setError(null);
-    setStoredAccount(null);
+  useEffect(() => {
+    if (account && !shouldLoadUser) {
+      setShouldLoadUser(true);
+    }
+
+    loadUserFromApi();
+  }, [account, web3Loading, isUserLoaded, shouldLoadUser]);
+
+  const logout = async () => {
+    try {
+      await fetch("http://localhost:3000/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress: account }),
+      });
+    } catch (error) {
+      console.error("Lỗi khi đăng xuất:", error);
+    }
+
+    setAuthState({
+      user: null,
+      error: null,
+      loading: false,
+    });
+    setIsUserLoaded(false);
+    setShouldLoadUser(false);
     localStorage.removeItem("user");
     localStorage.removeItem("account");
+    resetAccount();
   };
 
-  const value = {
-    user,
-    isManager,
-    isFarmer,
-    isCustomer,
-    isDeliveryHub,
-    isGovernment,
-    userFarms,
-    loading,
-    error,
-    login,
-    logout,
-    checkFarmOwnership: (farmId) => {
-      return userFarms.some((farm) => farm.id === farmId);
-    },
-    account: storedAccount,
+  const login = () => {
+    setShouldLoadUser(true);
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
+  const loginWithCredentials = async (email, password, role) => {
+    try {
+      const response = await fetch("http://localhost:3000/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password, role }),
+      });
 
-export default AuthProvider;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Đăng nhập thất bại!");
+      }
+
+      const data = await response.json();
+      const userData = data.user;
+
+      // Cập nhật walletAddress vào backend
+      const updateResponse = await fetch(
+        "http://localhost:3000/update-wallet",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email, walletAddress: account }),
+        }
+      );
+
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json();
+        throw new Error(errorData.message || "Không thể cập nhật ví MetaMask!");
+      }
+
+      // Cập nhật trạng thái user trong AuthContext
+      const updatedUser = {
+        ...userData,
+        walletAddress: account,
+      };
+
+      setAuthState((prev) => ({
+        ...prev,
+        user: updatedUser,
+        error: null,
+        loading: false,
+      }));
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      localStorage.setItem("account", account);
+      setIsUserLoaded(true);
+
+      // Gọi lại loadUserFromApi để đảm bảo trạng thái được đồng bộ
+      await loadUserFromApi();
+
+      return userData; // Trả về dữ liệu người dùng để sử dụng trong LoginPage
+    } catch (error) {
+      setAuthState((prev) => ({
+        ...prev,
+        error: error.message,
+        loading: false,
+      }));
+      throw error;
+    }
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user: authState.user,
+        account,
+        isGovernment,
+        loading: authState.loading,
+        error: authState.error,
+        logout,
+        login,
+        loginWithCredentials,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => useContext(AuthContext);

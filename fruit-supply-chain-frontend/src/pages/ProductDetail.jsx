@@ -26,11 +26,16 @@ import LocalAtmIcon from "@mui/icons-material/LocalAtm";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import debounce from "lodash/debounce";
 
+// Định nghĩa hằng số
+const API_URL = "http://localhost:3000";
+const SHIPPING_FEE = 14;
+const OPENCAGE_API_KEY = "71eedb55387e4304b5cc8d19af2d8525";
+
 const ProductDetail = () => {
   const { listingId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { account, web3, contract, executeTransaction } = useWeb3();
+  const { account, web3, contract } = useWeb3();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -49,101 +54,7 @@ const ProductDetail = () => {
   const [isAddressSelected, setIsAddressSelected] = useState(false);
   const [quantityError, setQuantityError] = useState("");
 
-  const SHIPPING_FEE = 14;
-  const OPENCAGE_API_KEY = "71eedb55387e4304b5cc8d19af2d8525";
-
-  const fetchProductDetail = async () => {
-    try {
-      setLoading(true);
-
-      // Lấy chi tiết sản phẩm từ API
-      const response = await axios.get(
-        `http://localhost:3000/product-detail/${listingId}`,
-        {
-          headers: { "x-ethereum-address": account },
-        }
-      );
-      setProduct(response.data);
-
-      let available =
-        response.data.status === "Available" && response.data.quantity > 0;
-
-      if (available && contract) {
-        // Đồng bộ dữ liệu với blockchain
-        try {
-          const syncResponse = await axios.post(
-            "http://localhost:3000/sync-product",
-            {
-              listingId: listingId,
-            },
-            {
-              headers: { "x-ethereum-address": account },
-            }
-          );
-          console.log("Kết quả đồng bộ:", syncResponse.data);
-
-          // Lấy lại dữ liệu sản phẩm sau khi đồng bộ
-          const updatedResponse = await axios.get(
-            `http://localhost:3000/product-detail/${listingId}`,
-            {
-              headers: { "x-ethereum-address": account },
-            }
-          );
-          setProduct(updatedResponse.data);
-          available =
-            updatedResponse.data.status === "Available" &&
-            updatedResponse.data.quantity > 0;
-        } catch (syncError) {
-          console.error("Lỗi khi đồng bộ sản phẩm:", syncError);
-          if (
-            syncError.response?.status === 404 ||
-            syncError.response?.status === 200
-          ) {
-            available = false; // Sản phẩm không tồn tại hoặc đã được đánh dấu Sold
-            setProduct({ ...response.data, status: "Sold", quantity: 0 });
-          } else {
-            throw syncError; // Ném lỗi khác để xử lý tiếp
-          }
-        }
-      }
-
-      setIsAvailable(available);
-
-      // Lấy đánh giá
-      const ratingResponse = await axios.get(
-        `http://localhost:3000/products/${listingId}/rating`
-      );
-      setAverageRating(parseFloat(ratingResponse.data.average_rating) || 0);
-
-      if (user) {
-        const purchaseCheck = await axios.get(
-          `http://localhost:3000/orders/check-purchase`,
-          {
-            params: { customerId: user.id, listingId: listingId },
-            headers: { "x-ethereum-address": account },
-          }
-        );
-        setHasPurchased(purchaseCheck.data.hasPurchased);
-
-        if (purchaseCheck.data.hasPurchased) {
-          const userRatingResponse = await axios.get(
-            `http://localhost:3000/products/${listingId}/rating`
-          );
-          setUserRating(userRatingResponse.data.user_rating || null);
-        }
-      }
-    } catch (err) {
-      console.error("Lỗi khi tải chi tiết sản phẩm:", err);
-      setError("Không thể tải thông tin sản phẩm. Vui lòng thử lại sau.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProductDetail();
-  }, [listingId, contract, user, account]);
-
+  // Hàm tìm kiếm địa chỉ với debounce để tránh gọi API quá nhiều
   const handleAddressSearch = debounce(async (value) => {
     if (!value || value.length < 2 || isAddressSelected) {
       setAddressSuggestions([]);
@@ -191,6 +102,104 @@ const ProductDetail = () => {
     }
   }, 300);
 
+  // Hàm lấy chi tiết sản phẩm và đồng bộ với blockchain
+  const fetchProductDetail = async () => {
+    try {
+      setLoading(true);
+
+      // Lấy chi tiết sản phẩm từ API
+      const response = await axios.get(
+        `${API_URL}/product-detail/${listingId}`,
+        {
+          headers: { "x-ethereum-address": account },
+        }
+      );
+      setProduct(response.data);
+
+      let available =
+        response.data.status === "Available" && response.data.quantity > 0;
+
+      if (available && contract) {
+        // Đồng bộ dữ liệu với blockchain
+        try {
+          const syncResponse = await axios.post(
+            `${API_URL}/sync-product`,
+            { listingId: listingId },
+            { headers: { "x-ethereum-address": account } }
+          );
+          console.log("Kết quả đồng bộ:", syncResponse.data);
+
+          // Lấy lại dữ liệu sản phẩm sau khi đồng bộ
+          const updatedResponse = await axios.get(
+            `${API_URL}/product-detail/${listingId}`,
+            { headers: { "x-ethereum-address": account } }
+          );
+          setProduct(updatedResponse.data);
+          available =
+            updatedResponse.data.status === "Available" &&
+            updatedResponse.data.quantity > 0;
+
+          // Kiểm tra trạng thái blockchain
+          const productResponse = await contract.methods
+            .getListedProduct(listingId)
+            .call();
+          console.log("Trạng thái blockchain:", productResponse);
+          if (
+            !productResponse.isActive ||
+            parseInt(productResponse.quantity) === 0
+          ) {
+            available = false;
+            setProduct({
+              ...updatedResponse.data,
+              status: "Sold",
+              quantity: 0,
+            });
+          }
+        } catch (syncError) {
+          console.error("Lỗi khi đồng bộ sản phẩm:", syncError);
+          if (
+            syncError.response?.status === 404 ||
+            syncError.response?.status === 200
+          ) {
+            available = false;
+            setProduct({ ...response.data, status: "Sold", quantity: 0 });
+          } else {
+            throw syncError;
+          }
+        }
+      }
+
+      setIsAvailable(available);
+
+      // Lấy đánh giá
+      const ratingResponse = await axios.get(
+        `${API_URL}/products/${listingId}/rating`
+      );
+      setAverageRating(parseFloat(ratingResponse.data.average_rating) || 0);
+
+      if (user) {
+        const purchaseCheck = await axios.get(
+          `${API_URL}/orders/check-purchase`,
+          {
+            params: { customerId: user.id, listingId: listingId },
+            headers: { "x-ethereum-address": account },
+          }
+        );
+        setHasPurchased(purchaseCheck.data.hasPurchased);
+
+        if (purchaseCheck.data.hasPurchased) {
+          setUserRating(ratingResponse.data.user_rating || null);
+        }
+      }
+    } catch (err) {
+      console.error("Lỗi khi tải chi tiết sản phẩm:", err);
+      setError("Không thể tải thông tin sản phẩm. Vui lòng thử lại sau.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Gửi đánh giá sản phẩm
   const handleRatingSubmit = async (newRating) => {
     if (!hasPurchased) {
       setMessage({
@@ -202,20 +211,18 @@ const ProductDetail = () => {
 
     try {
       await axios.post(
-        `http://localhost:3000/products/${listingId}/rate`,
+        `${API_URL}/products/${listingId}/rate`,
         {
           userId: user.id,
           rating: newRating,
         },
-        {
-          headers: { "x-ethereum-address": account },
-        }
+        { headers: { "x-ethereum-address": account } }
       );
 
       setUserRating(newRating);
 
       const ratingResponse = await axios.get(
-        `http://localhost:3000/products/${listingId}/rating`
+        `${API_URL}/products/${listingId}/rating`
       );
       setAverageRating(parseFloat(ratingResponse.data.average_rating) || 0);
 
@@ -231,6 +238,7 @@ const ProductDetail = () => {
     }
   };
 
+  // Kiểm tra và mở modal thanh toán
   const handleOpenModal = () => {
     if (!user || !user.id) {
       setMessage({
@@ -267,6 +275,7 @@ const ProductDetail = () => {
     setOpenModal(true);
   };
 
+  // Xử lý giao dịch mua sản phẩm
   const handleBuyProduct = async () => {
     if (!paymentMethod) {
       setMessage({
@@ -288,14 +297,15 @@ const ProductDetail = () => {
     try {
       // Tính giá mỗi hộp dựa trên original_quantity
       const pricePerUnit =
-        parseFloat(product.price) / product.original_quantity; // 138 / 12 = 11.50
+        parseFloat(product.price) / product.original_quantity;
       const totalProductPrice = (pricePerUnit * quantityToBuy).toFixed(2);
+      console.log("Giá mỗi hộp:", pricePerUnit, "Tổng giá:", totalProductPrice);
 
       const buyData = {
         listingId: product.listing_id,
         customerId: user.id,
         quantity: quantityToBuy,
-        price: pricePerUnit.toFixed(2), // Đảm bảo giá mỗi hộp là 11.50
+        price: pricePerUnit.toFixed(2),
         deliveryHubId: product.delivery_hub_id,
         shippingAddress,
         shippingFee: SHIPPING_FEE,
@@ -328,6 +338,7 @@ const ProductDetail = () => {
             type: "error",
             text: `Sản phẩm không khả dụng hoặc số lượng không đủ trên blockchain! Còn lại: ${blockchainQuantity} hộp.`,
           });
+          await fetchProductDetail(); // Cập nhật giao diện
           setPurchaseLoading(false);
           return;
         }
@@ -335,6 +346,7 @@ const ProductDetail = () => {
         // Tính giá mỗi đơn vị (Wei) theo blockchain
         const pricePerUnitInWei = blockchainPrice / blockchainQuantity;
         const totalPriceInWei = pricePerUnitInWei * quantityToBuy;
+        console.log("Tổng giá (Wei):", totalPriceInWei);
 
         // Kiểm tra số dư ví
         const balance = await web3.eth.getBalance(account);
@@ -367,16 +379,32 @@ const ProductDetail = () => {
         transactionHash = transactionResult.transactionHash;
         console.log("Giao dịch thành công:", transactionHash);
         buyData.transactionHash = transactionHash;
+
+        // Kiểm tra lại trạng thái blockchain sau giao dịch
+        const postPurchaseResponse = await contract.methods
+          .getListedProduct(product.listing_id)
+          .call();
+        console.log(
+          "Trạng thái blockchain sau giao dịch:",
+          postPurchaseResponse
+        );
+        const postPurchaseQuantity = parseInt(postPurchaseResponse.quantity);
+        const expectedQuantity = blockchainQuantity - quantityToBuy;
+        if (postPurchaseQuantity !== expectedQuantity) {
+          setMessage({
+            type: "error",
+            text: `Giao dịch blockchain không khớp! Số lượng mong đợi: ${expectedQuantity}, số lượng thực tế: ${postPurchaseQuantity}.`,
+          });
+          await fetchProductDetail(); // Cập nhật giao diện
+          setPurchaseLoading(false);
+          return;
+        }
       }
 
       // Gửi yêu cầu đến backend
-      const response = await axios.post(
-        "http://localhost:3000/buy-product",
-        buyData,
-        {
-          headers: { "x-ethereum-address": account },
-        }
-      );
+      const response = await axios.post(`${API_URL}/buy-product`, buyData, {
+        headers: { "x-ethereum-address": account },
+      });
 
       setMessage({
         type: "success",
@@ -393,32 +421,45 @@ const ProductDetail = () => {
       await fetchProductDetail();
     } catch (error) {
       console.error("Lỗi khi mua sản phẩm:", error);
-      setMessage({
-        type: "error",
-        text: `Lỗi khi mua sản phẩm: ${
-          error.response?.data?.message || error.message || "Lỗi không xác định"
-        }`,
-      });
+      let errorMessage = "Lỗi khi mua sản phẩm.";
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message.includes("User denied transaction signature")) {
+        errorMessage = "Bạn đã từ chối ký giao dịch trên MetaMask.";
+      } else if (error.message.includes("insufficient funds")) {
+        errorMessage = "Số dư ví MetaMask không đủ.";
+      } else {
+        errorMessage += ` Chi tiết: ${error.message}`;
+      }
+      setMessage({ type: "error", text: errorMessage });
+      await fetchProductDetail(); // Cập nhật giao diện sau lỗi
     } finally {
       setPurchaseLoading(false);
     }
   };
 
+  // Xử lý thay đổi số lượng mua
   const handleQuantityChange = (e) => {
     const value = e.target.value;
-    setQuantityToBuy(value);
-
-    if (value === "" || isNaN(value)) {
-      setQuantityError("Vui lòng nhập số lượng hợp lệ!");
-    } else if (parseInt(value) < 1) {
-      setQuantityError("Số lượng phải lớn hơn hoặc bằng 1 hộp!");
-    } else if (parseInt(value) > product.quantity) {
+    const parsedValue = parseInt(value);
+    if (isNaN(parsedValue) || parsedValue < 1) {
+      setQuantityToBuy(1);
+      setQuantityError("Số lượng phải lớn hơn hoặc bằng 1!");
+    } else if (parsedValue > product.quantity) {
+      setQuantityToBuy(product.quantity);
       setQuantityError(`Số lượng tối đa là ${product.quantity} hộp!`);
     } else {
+      setQuantityToBuy(parsedValue);
       setQuantityError("");
     }
   };
 
+  // Gọi fetchProductDetail khi component được mount hoặc các dependency thay đổi
+  useEffect(() => {
+    fetchProductDetail();
+  }, [listingId, contract, user, account]);
+
+  // Trạng thái loading
   if (loading) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", my: 5 }}>
@@ -427,6 +468,7 @@ const ProductDetail = () => {
     );
   }
 
+  // Trạng thái lỗi
   if (error) {
     return (
       <Alert severity="error" sx={{ my: 2 }}>
@@ -435,6 +477,7 @@ const ProductDetail = () => {
     );
   }
 
+  // Nếu không tìm thấy sản phẩm
   if (!product) {
     return (
       <Typography variant="h6" sx={{ my: 2 }}>
@@ -443,8 +486,8 @@ const ProductDetail = () => {
     );
   }
 
-  // Tính giá mỗi hộp để hiển thị
-  const pricePerUnit = parseFloat(product.price) / product.quantity;
+  // Tính giá hiển thị
+  const pricePerUnit = parseFloat(product.price) / product.original_quantity;
   const totalProductPrice = (pricePerUnit * quantityToBuy).toFixed(2);
   const totalWithShipping = (
     parseFloat(totalProductPrice) + SHIPPING_FEE
@@ -495,19 +538,28 @@ const ProductDetail = () => {
               />
             </Box>
           )}
-          <Typography variant="body1" gutterBottom>
-            Số lượng còn lại: {product.quantity} hộp
-          </Typography>
-          <TextField
-            label="Số lượng muốn mua"
-            type="number"
-            value={quantityToBuy}
-            onChange={handleQuantityChange}
-            error={!!quantityError}
-            helperText={quantityError}
-            sx={{ mb: 2, width: "150px" }}
-            inputProps={{ step: 1 }}
-          />
+          {isAvailable ? (
+            <>
+              <Typography variant="body1" gutterBottom>
+                Số lượng còn lại: {product.quantity} hộp
+              </Typography>
+              <TextField
+                label="Số lượng muốn mua"
+                type="number"
+                value={quantityToBuy || 1}
+                onChange={handleQuantityChange}
+                error={!!quantityError}
+                helperText={quantityError}
+                sx={{ mb: 2, width: "150px" }}
+                inputProps={{ step: 1, min: 1, max: product.quantity }}
+                disabled={!isAvailable}
+              />
+            </>
+          ) : (
+            <Typography variant="body1" color="error" gutterBottom>
+              Sản phẩm đã bán hết hoặc không khả dụng!
+            </Typography>
+          )}
           <Typography variant="body1" gutterBottom>
             Mô tả: {product.description || "Không có mô tả"}
           </Typography>

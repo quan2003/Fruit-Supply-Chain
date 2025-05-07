@@ -57,25 +57,40 @@ const GovernmentPage = () => {
       setLoading(true);
       setError(null);
 
+      console.log("fetchInitialData started", {
+        authLoading,
+        user,
+        isGovernment,
+        account,
+      });
+
       try {
         if (authLoading) {
+          console.log("authLoading is true, returning early");
           return;
         }
 
         if (!user || !isGovernment) {
+          console.log("Redirecting to login due to !user || !isGovernment", {
+            user,
+            isGovernment,
+          });
           navigate("/login?role=Government");
           return;
         }
 
         if (!account) {
+          console.log("No account, setting error");
           setError("Vui lòng kết nối ví MetaMask để tiếp tục!");
           setLoading(false);
           return;
         }
 
-        console.log("User:", user);
-        console.log("IsGovernment:", isGovernment);
-        console.log("Account:", account);
+        console.log("Proceeding with data fetching", {
+          user,
+          isGovernment,
+          account,
+        });
 
         try {
           const farmsResponse = await axios.get(
@@ -84,9 +99,12 @@ const GovernmentPage = () => {
               headers: { "x-ethereum-address": account },
             }
           );
+          console.log("Farms response:", farmsResponse.data);
           setFarms(farmsResponse.data);
           if (farmsResponse.data.length > 0) {
             setSelectedFarmId(farmsResponse.data[0]);
+          } else {
+            console.log("No farms found");
           }
         } catch (farmError) {
           console.error("Lỗi khi lấy danh sách farm:", farmError);
@@ -104,9 +122,12 @@ const GovernmentPage = () => {
               headers: { "x-ethereum-address": account },
             }
           );
+          console.log("Provinces response:", provincesResponse.data);
           setProvinces(provincesResponse.data);
           if (provincesResponse.data.length > 0) {
             setSelectedProvince(provincesResponse.data[0]);
+          } else {
+            console.log("No provinces found");
           }
         } catch (provinceError) {
           console.error("Lỗi khi lấy danh sách tỉnh:", provinceError);
@@ -124,6 +145,7 @@ const GovernmentPage = () => {
         );
       } finally {
         setLoading(false);
+        console.log("fetchInitialData completed", { loading: false, error });
       }
     };
 
@@ -133,6 +155,13 @@ const GovernmentPage = () => {
   useEffect(() => {
     const fetchData = async () => {
       if (!selectedFarmId || !selectedProvince) {
+        console.log(
+          "Skipping fetchData due to missing selectedFarmId or selectedProvince",
+          {
+            selectedFarmId,
+            selectedProvince,
+          }
+        );
         setLoading(false);
         return;
       }
@@ -140,18 +169,28 @@ const GovernmentPage = () => {
       setLoading(true);
       setError(null);
 
+      console.log("fetchData started", {
+        selectedFarmId,
+        selectedProvince,
+        account,
+      });
+
       try {
         try {
-          await axios.post(
+          const syncResponse = await axios.post(
             "http://localhost:3000/government/sync-contracts",
             {},
             {
               headers: { "x-ethereum-address": account },
             }
           );
+          console.log("Sync contracts response:", syncResponse.data);
         } catch (syncError) {
           console.error("Lỗi khi đồng bộ hợp đồng:", syncError);
-          setError("Không thể đồng bộ hợp đồng. Vui lòng thử lại!");
+          setError(
+            syncError.response?.data?.message ||
+              "Không thể đồng bộ hợp đồng. Vui lòng thử lại!"
+          );
           setLoading(false);
           return;
         }
@@ -162,6 +201,7 @@ const GovernmentPage = () => {
             headers: { "x-ethereum-address": account },
           }
         );
+        console.log("Contracts response:", contractsResponse.data);
         setContracts(
           contractsResponse.data.map((contract) => ({
             ...contract,
@@ -179,6 +219,7 @@ const GovernmentPage = () => {
               headers: { "x-ethereum-address": account },
             }
           );
+          console.log("Farm stats response:", farmStatResponse.data);
           setFarmStats([
             {
               farmId: farmStatResponse.data.farmId,
@@ -210,6 +251,7 @@ const GovernmentPage = () => {
               headers: { "x-ethereum-address": account },
             }
           );
+          console.log("Province stats response:", provinceStatResponse.data);
           setProvinceStats([
             {
               province: provinceStatResponse.data.province,
@@ -242,6 +284,7 @@ const GovernmentPage = () => {
         );
       } finally {
         setLoading(false);
+        console.log("fetchData completed", { loading: false, error });
       }
     };
 
@@ -286,6 +329,7 @@ const GovernmentPage = () => {
         return;
       }
 
+      console.log("Creating new contract:", newContract);
       const response = await axios.post(
         "http://localhost:3000/government/create-contract",
         {
@@ -299,6 +343,7 @@ const GovernmentPage = () => {
           headers: { "x-ethereum-address": account },
         }
       );
+      console.log("Create contract response:", response.data);
 
       const { contractId } = response.data;
 
@@ -308,6 +353,7 @@ const GovernmentPage = () => {
           headers: { "x-ethereum-address": account },
         }
       );
+      console.log("Updated contracts response:", contractResponse.data);
       setContracts(
         contractResponse.data.map((contract) => ({
           ...contract,
@@ -325,6 +371,7 @@ const GovernmentPage = () => {
 
   const handleDownloadPDF = async (contractId) => {
     try {
+      console.log("Downloading PDF for contractId:", contractId);
       const response = await axios.get(
         `http://localhost:3000/government/contract/pdf/${contractId}`,
         {
@@ -340,9 +387,10 @@ const GovernmentPage = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
+      console.log("PDF downloaded successfully");
     } catch (err) {
       console.error("Lỗi khi tải PDF:", err);
-      setError("Không thể tải PDF hợp đồng!");
+      setError(err.response?.data?.message || "Không thể tải PDF hợp đồng!");
     }
   };
 

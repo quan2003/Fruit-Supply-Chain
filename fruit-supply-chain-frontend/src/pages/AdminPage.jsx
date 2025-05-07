@@ -1,4 +1,3 @@
-// fruit-supply-chain-frontend/src/pages/AdminPage.jsx
 import React, { useState, useEffect } from "react";
 import {
   Container,
@@ -36,7 +35,7 @@ const AdminPage = () => {
 
   const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [managers, setManagers] = useState([]);
+  const [users, setUsers] = useState([]); // Đổi tên từ managers thành users
   const [showAddForm, setShowAddForm] = useState(false);
   const [blockchainInfo, setBlockchainInfo] = useState(null);
   const [systemStats, setSystemStats] = useState(null);
@@ -46,38 +45,40 @@ const AdminPage = () => {
   // Dialog state
   const [openDialog, setOpenDialog] = useState(false);
   const [dialogAction, setDialogAction] = useState(null);
-  const [selectedManager, setSelectedManager] = useState(null);
+  const [selectedUser, setSelectedUser] = useState(null);
 
   useEffect(() => {
     const checkAdmin = async () => {
       try {
         setLoading(true);
-        // Check if current user is admin based on role
-        if (user && (user.role === "admin" || isManager)) {
+        if (user && (user.role === "Admin" || isManager)) {
           setIsAdmin(true);
 
-          // If admin, load manager data
-          const managersData = await getAllManagers();
-          setManagers(managersData);
+          // Load all users (not just managers)
+          const usersData = await getAllManagers();
+          console.log("Users data:", usersData);
+          setUsers(usersData || []);
 
           // Load blockchain info
           const blockchainData = await getBlockchainInfo();
+          console.log("Blockchain info:", blockchainData);
           setBlockchainInfo(blockchainData);
 
           // Load system statistics
           const stats = await getSystemStats();
+          console.log("System stats:", stats);
           setSystemStats(stats);
         } else {
           setIsAdmin(false);
           setErrorMessage("Bạn không có quyền truy cập vào trang quản trị");
         }
-        setLoading(false);
       } catch (error) {
         console.error("Error checking admin status:", error);
         setIsAdmin(false);
         setErrorMessage(
           "Có lỗi khi kiểm tra quyền truy cập. Vui lòng thử lại sau."
         );
+      } finally {
         setLoading(false);
       }
     };
@@ -97,47 +98,48 @@ const AdminPage = () => {
 
   const handleAddManagerClick = () => {
     setShowAddForm(true);
-    setTabValue(1); // Switch to managers tab if not already there
+    setTabValue(1);
   };
 
-  const handleManagerAdded = (newManager) => {
-    setManagers([...managers, newManager]);
+  const handleUserAdded = (newUser) => {
+    setUsers([...users, newUser]);
     setShowAddForm(false);
   };
 
-  // Dialog handlers
-  const openConfirmationDialog = (action, manager = null) => {
+  const openConfirmationDialog = (action, user) => {
     setDialogAction(action);
-    setSelectedManager(manager);
+    setSelectedUser(user);
     setOpenDialog(true);
   };
 
   const closeDialog = () => {
     setOpenDialog(false);
     setDialogAction(null);
-    setSelectedManager(null);
+    setSelectedUser(null);
   };
 
-  const handleRevokeManager = async (managerId) => {
+  const handleRevokeManager = async (walletAddress) => {
     try {
       setLoading(true);
-      await revokeManagerRole(managerId);
-      // Update managers list by removing the revoked manager
-      setManagers(managers.filter((manager) => manager.id !== managerId));
-      setLoading(false);
+      await revokeManagerRole(walletAddress); // Truyền wallet_address thay vì userId
+      setUsers(users.filter((user) => user.wallet_address !== walletAddress));
+      setErrorMessage("");
     } catch (error) {
       console.error("Error revoking manager role:", error);
+      setErrorMessage(
+        error.message || "Có lỗi xảy ra khi thu hồi quyền quản lý!"
+      );
+    } finally {
       setLoading(false);
     }
   };
 
   const handleDialogConfirm = () => {
-    if (dialogAction === "revoke" && selectedManager) {
-      handleRevokeManager(selectedManager.id);
+    if (dialogAction === "revoke" && selectedUser) {
+      handleRevokeManager(selectedUser.wallet_address); // Truyền wallet_address
     }
     closeDialog();
   };
-
   if (loading) {
     return <LoadingSpinner />;
   }
@@ -209,7 +211,7 @@ const AdminPage = () => {
                 <Typography variant="h5" gutterBottom>
                   Thống kê hệ thống
                 </Typography>
-                {systemStats && (
+                {systemStats ? (
                   <Grid container spacing={3}>
                     <Grid item xs={12} md={3}>
                       <Box
@@ -236,10 +238,42 @@ const AdminPage = () => {
                         }}
                       >
                         <Typography variant="subtitle2" color="text.secondary">
-                          Tổng số lô trái cây
+                          Tổng số sản phẩm đang bán
                         </Typography>
                         <Typography variant="h4">
-                          {systemStats.totalBatches}
+                          {systemStats.totalProductsListed}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <Box
+                        sx={{
+                          p: 2,
+                          border: "1px solid #e0e0e0",
+                          borderRadius: 1,
+                        }}
+                      >
+                        <Typography variant="subtitle2" color="text.secondary">
+                          Tổng số đơn hàng
+                        </Typography>
+                        <Typography variant="h4">
+                          {systemStats.totalOrders}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <Box
+                        sx={{
+                          p: 2,
+                          border: "1px solid #e0e0e0",
+                          borderRadius: 1,
+                        }}
+                      >
+                        <Typography variant="subtitle2" color="text.secondary">
+                          Tổng số lô hàng
+                        </Typography>
+                        <Typography variant="h4">
+                          {systemStats.totalShipments}
                         </Typography>
                       </Box>
                     </Grid>
@@ -287,38 +321,49 @@ const AdminPage = () => {
                           Hoạt động gần đây
                         </Typography>
                         <Box sx={{ mt: 2 }}>
-                          {systemStats.recentActivities.map(
-                            (activity, index) => (
-                              <Box
-                                key={index}
-                                sx={{
-                                  p: 1,
-                                  borderBottom:
-                                    index <
-                                    systemStats.recentActivities.length - 1
-                                      ? "1px solid #f0f0f0"
-                                      : "none",
-                                  "&:hover": { bgcolor: "#f9f9f9" },
-                                }}
-                              >
-                                <Typography variant="body2">
-                                  {activity.message}
-                                </Typography>
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
+                          {systemStats.recentActivities &&
+                          systemStats.recentActivities.length > 0 ? (
+                            systemStats.recentActivities.map(
+                              (activity, index) => (
+                                <Box
+                                  key={index}
+                                  sx={{
+                                    p: 1,
+                                    borderBottom:
+                                      index <
+                                      systemStats.recentActivities.length - 1
+                                        ? "1px solid #f0f0f0"
+                                        : "none",
+                                    "&:hover": { bgcolor: "#f9f9f9" },
+                                  }}
                                 >
-                                  {new Date(
-                                    activity.timestamp
-                                  ).toLocaleString()}
-                                </Typography>
-                              </Box>
+                                  <Typography variant="body2">
+                                    {activity.message}
+                                  </Typography>
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    {new Date(
+                                      activity.timestamp
+                                    ).toLocaleString()}
+                                  </Typography>
+                                </Box>
+                              )
                             )
+                          ) : (
+                            <Typography variant="body2">
+                              Không có hoạt động gần đây.
+                            </Typography>
                           )}
                         </Box>
                       </Box>
                     </Grid>
                   </Grid>
+                ) : (
+                  <Typography>
+                    Không có dữ liệu thống kê. Vui lòng kiểm tra kết nối API.
+                  </Typography>
                 )}
               </Paper>
             </Grid>
@@ -333,19 +378,33 @@ const AdminPage = () => {
                   <Typography variant="h5" gutterBottom>
                     Thêm quản lý mới
                   </Typography>
-                  <AddManagerForm onSuccess={handleManagerAdded} />
+                  {AddManagerForm ? (
+                    <AddManagerForm onSuccess={handleUserAdded} />
+                  ) : (
+                    <Typography>
+                      Lỗi: Không thể tải form thêm quản lý.
+                    </Typography>
+                  )}
                 </Paper>
               ) : (
                 <Paper sx={{ p: 3 }}>
                   <Typography variant="h5" gutterBottom>
-                    Danh sách quản lý
+                    Danh sách người dùng
                   </Typography>
-                  <ManagersList
-                    managers={managers}
-                    onRevokeManager={(manager) =>
-                      openConfirmationDialog("revoke", manager)
-                    }
-                  />
+                  {ManagersList && users.length > 0 ? (
+                    <ManagersList
+                      users={users} // Truyền tất cả người dùng
+                      onRevokeManager={(user) =>
+                        openConfirmationDialog("revoke", user)
+                      }
+                    />
+                  ) : (
+                    <Typography>
+                      {ManagersList
+                        ? "Không có người dùng nào."
+                        : "Lỗi: Không thể tải danh sách người dùng."}
+                    </Typography>
+                  )}
                 </Paper>
               )}
             </Grid>
@@ -359,7 +418,7 @@ const AdminPage = () => {
                 <Typography variant="h5" gutterBottom>
                   Thông tin Blockchain
                 </Typography>
-                {blockchainInfo && (
+                {blockchainInfo ? (
                   <Grid container spacing={3}>
                     <Grid item xs={12} md={4}>
                       <Box
@@ -467,6 +526,11 @@ const AdminPage = () => {
                       </Box>
                     </Grid>
                   </Grid>
+                ) : (
+                  <Typography>
+                    Không có thông tin Blockchain. Vui lòng kiểm tra kết nối
+                    API.
+                  </Typography>
                 )}
               </Paper>
             </Grid>
@@ -474,18 +538,17 @@ const AdminPage = () => {
         )}
       </Container>
 
-      {/* Confirmation Dialog */}
       <Dialog open={openDialog} onClose={closeDialog}>
         <DialogTitle>
           {dialogAction === "revoke" && "Thu hồi quyền quản lý"}
         </DialogTitle>
         <DialogContent>
-          {dialogAction === "revoke" && selectedManager && (
+          {dialogAction === "revoke" && selectedUser && (
             <Typography variant="body1">
               Bạn có chắc chắn muốn thu hồi quyền quản lý của{" "}
-              {selectedManager.name} (
-              {selectedManager.walletAddress.substring(0, 6)}...
-              {selectedManager.walletAddress.substring(38)})?
+              {selectedUser.name} (
+              {selectedUser.wallet_address?.substring(0, 6)}...
+              {selectedUser.wallet_address?.substring(38)})?
             </Typography>
           )}
         </DialogContent>

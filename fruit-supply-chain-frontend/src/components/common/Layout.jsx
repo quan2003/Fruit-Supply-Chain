@@ -11,6 +11,7 @@ import {
   Button,
   Menu,
   MenuItem,
+  CircularProgress,
 } from "@mui/material";
 import {
   Menu as MenuIcon,
@@ -23,6 +24,7 @@ import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useWeb3 } from "../../contexts/Web3Context";
+import { useAuth } from "../../contexts/AuthContext";
 
 const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -31,6 +33,7 @@ const Layout = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { account, connectWallet } = useWeb3();
+  const { user, error: authError, logout, login, loading } = useAuth();
 
   const [loginAnchorEl, setLoginAnchorEl] = useState(null);
   const [registerAnchorEl, setRegisterAnchorEl] = useState(null);
@@ -39,8 +42,15 @@ const Layout = ({ children }) => {
   const registerOpen = Boolean(registerAnchorEl);
   const userMenuOpen = Boolean(userMenuAnchorEl);
 
-  const user = JSON.parse(localStorage.getItem("user")) || {};
-  const isLoggedIn = !!user.email && !!user.role;
+  const isLoggedIn = !!user?.email && !!user?.role;
+
+  if (loading) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", my: 5 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   const menuItems = [
     { text: "Trang chủ", path: "/" },
@@ -83,7 +93,7 @@ const Layout = ({ children }) => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
+    logout();
     navigate("/");
     handleUserMenuClose();
   };
@@ -138,7 +148,6 @@ const Layout = ({ children }) => {
       <List>
         {menuItems.map((item) => (
           <ListItem
-            button
             key={item.text}
             component={Link}
             to={item.path}
@@ -157,7 +166,6 @@ const Layout = ({ children }) => {
         ))}
         {isLoggedIn && user.role === "Customer" && (
           <ListItem
-            button
             component={Link}
             to="/customer/orders"
             sx={{
@@ -175,7 +183,6 @@ const Layout = ({ children }) => {
         )}
         {isLoggedIn && (
           <ListItem
-            button
             onClick={handleLogout}
             sx={{
               borderBottom: "none",
@@ -284,6 +291,7 @@ const Layout = ({ children }) => {
                     <MenuItem
                       onClick={() => {
                         handleLoginClose();
+                        login();
                         navigate("/dang-nhap?role=Producer");
                       }}
                     >
@@ -292,6 +300,7 @@ const Layout = ({ children }) => {
                     <MenuItem
                       onClick={() => {
                         handleLoginClose();
+                        login();
                         navigate("/dang-nhap?role=Admin");
                       }}
                     >
@@ -300,6 +309,7 @@ const Layout = ({ children }) => {
                     <MenuItem
                       onClick={() => {
                         handleLoginClose();
+                        login();
                         navigate("/dang-nhap?role=Customer");
                       }}
                     >
@@ -308,6 +318,7 @@ const Layout = ({ children }) => {
                     <MenuItem
                       onClick={() => {
                         handleLoginClose();
+                        login();
                         navigate("/dang-nhap?role=Government");
                       }}
                     >
@@ -316,6 +327,7 @@ const Layout = ({ children }) => {
                     <MenuItem
                       onClick={() => {
                         handleLoginClose();
+                        login();
                         navigate("/dang-nhap?role=DeliveryHub");
                       }}
                     >
@@ -459,17 +471,34 @@ const Layout = ({ children }) => {
               </>
             )}
             {!isLoggedIn && (
-              <Button
-                variant="contained"
-                onClick={handleConnectWallet}
-                sx={{
-                  bgcolor: "#1976D2",
-                  "&:hover": { bgcolor: "#115293" },
-                  fontWeight: "bold",
-                }}
-              >
-                Kết nối ví
-              </Button>
+              <Box sx={{ display: "flex", alignItems: "center" }}>
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    login();
+                    navigate("/dang-nhap");
+                  }}
+                  sx={{
+                    bgcolor: "#42A5F5",
+                    color: "white",
+                    fontWeight: "bold",
+                    mr: 1,
+                  }}
+                >
+                  Đăng nhập
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={() => navigate("/dang-ky")}
+                  sx={{
+                    bgcolor: "#FF6F91",
+                    color: "white",
+                    fontWeight: "bold",
+                  }}
+                >
+                  Đăng ký
+                </Button>
+              </Box>
             )}
           </Box>
           <IconButton

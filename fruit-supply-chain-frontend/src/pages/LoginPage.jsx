@@ -11,6 +11,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  CircularProgress,
 } from "@mui/material";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Facebook, Twitter, Google } from "@mui/icons-material";
@@ -26,12 +27,14 @@ const LoginPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { connectWallet, account } = useWeb3();
-  const { login } = useAuth();
+  const { loginWithCredentials } = useAuth();
   const [role, setRole] = useState("Customer");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [walletConnected, setWalletConnected] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -39,84 +42,111 @@ const LoginPage = () => {
     if (roleFromQuery) {
       setRole(roleFromQuery);
     }
-  }, [location]);
+
+    // Đảm bảo người dùng đã đăng xuất trước khi đăng nhập lại
+    const ensureLoggedOut = async () => {
+      try {
+        await fetch("http://localhost:3000/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ walletAddress: account }),
+        });
+      } catch (error) {
+        console.error("Lỗi khi đăng xuất trước khi đăng nhập:", error);
+      }
+    };
+
+    ensureLoggedOut();
+  }, [location, account]);
 
   const handleRoleChange = (event) => {
     setRole(event.target.value);
     setError("");
+    setSuccess("");
   };
 
   const handleConnectWallet = async () => {
+    setLoading(true);
+    setError("");
+    setSuccess("");
     try {
       await connectWallet();
       if (!account) {
         setError("Không thể kết nối ví MetaMask! Vui lòng thử lại nhé! 😓");
+        setLoading(false);
         return;
       }
       setWalletConnected(true);
+      setSuccess("Ví MetaMask đã được kết nối thành công! 🎉");
     } catch (error) {
       console.error("Lỗi khi kết nối ví MetaMask:", error);
       setError(error.message || "Không thể kết nối ví MetaMask! 😓");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setLoading(true);
     setError("");
+    setSuccess("");
 
-    // Kiểm tra dữ liệu đầu vào
     if (!email.trim() || !password.trim() || !role.trim()) {
       setError("Vui lòng điền đầy đủ thông tin! 😅");
+      setLoading(false);
       return;
     }
 
-    // Kiểm tra định dạng email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       setError("Email không hợp lệ! 😅");
+      setLoading(false);
       return;
     }
 
-    // Yêu cầu kết nối ví trước khi đăng nhập
     if (!walletConnected || !account) {
       setError("Vui lòng kết nối ví MetaMask trước khi đăng nhập! 😅");
+      setLoading(false);
       return;
     }
 
     try {
       console.log("Dữ liệu gửi đi:", { email, password, role });
-      // Gọi hàm login từ useAuth
-      const userData = await login(email, password, role);
+      const userData = await loginWithCredentials(email, password, role);
+      console.log("User data received:", userData);
 
-      // Cập nhật walletAddress vào backend
-      const response = await fetch("http://localhost:3000/update-wallet", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, walletAddress: account }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Không thể cập nhật ví MetaMask!");
+      if (!userData || !userData.role) {
+        throw new Error("Dữ liệu người dùng không hợp lệ!");
       }
 
+      setSuccess("Đăng nhập thành công! Đang chuyển hướng... 🎉");
+
       // Chuyển hướng dựa trên vai trò
-      if (userData.role === "Producer") {
-        navigate("/farms");
-      } else if (userData.role === "Admin") {
-        navigate("/quan-ly");
-      } else if (userData.role === "Customer") {
-        navigate("/");
-      } else if (userData.role === "Government") {
-        navigate("/government");
-      } else if (userData.role === "DeliveryHub") {
-        navigate("/delivery-hub");
+      switch (userData.role) {
+        case "Producer":
+          navigate("/farms", { replace: true });
+          break;
+        case "Admin":
+          navigate("/quan-ly", { replace: true });
+          break;
+        case "Customer":
+          navigate("/", { replace: true });
+          break;
+        case "Government":
+          navigate("/government", { replace: true });
+          break;
+        case "DeliveryHub":
+          navigate("/delivery-hub", { replace: true });
+          break;
+        default:
+          throw new Error("Vai trò không hợp lệ!");
       }
     } catch (error) {
       console.error("Lỗi khi đăng nhập:", error);
       setError(error.message || "Đăng nhập thất bại! 😓");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -187,6 +217,14 @@ const LoginPage = () => {
                     {error}
                   </Typography>
                 )}
+                {success && (
+                  <Typography
+                    variant="body2"
+                    sx={{ color: "green", textAlign: "center", mb: 2 }}
+                  >
+                    {success}
+                  </Typography>
+                )}
 
                 <Box component="form" sx={{ maxWidth: "400px", mx: "auto" }}>
                   <TextField
@@ -197,6 +235,7 @@ const LoginPage = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    disabled={loading}
                   />
                   <TextField
                     fullWidth
@@ -207,6 +246,7 @@ const LoginPage = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    disabled={loading}
                   />
 
                   <FormControl fullWidth sx={{ mb: 2 }}>
@@ -216,6 +256,7 @@ const LoginPage = () => {
                       onChange={handleRoleChange}
                       label="Bạn là ai? 🌟"
                       required
+                      disabled={loading}
                     >
                       <MenuItem value="Producer">Người dân</MenuItem>
                       <MenuItem value="Admin">Nhà quản lý</MenuItem>
@@ -248,8 +289,13 @@ const LoginPage = () => {
                       "&:hover": { bgcolor: "#E65B7B" },
                       mb: 2,
                     }}
+                    disabled={loading}
                   >
-                    Kết Nối Ví MetaMask
+                    {loading ? (
+                      <CircularProgress size={24} color="inherit" />
+                    ) : (
+                      "Kết Nối Ví MetaMask"
+                    )}
                   </Button>
 
                   <Button
@@ -263,8 +309,13 @@ const LoginPage = () => {
                       fontWeight: "bold",
                       "&:hover": { bgcolor: "#1E88E5" },
                     }}
+                    disabled={loading}
                   >
-                    Đăng nhập ngay! 🚀
+                    {loading ? (
+                      <CircularProgress size={24} color="inherit" />
+                    ) : (
+                      "Đăng nhập ngay! 🚀"
+                    )}
                   </Button>
                 </Box>
               </>

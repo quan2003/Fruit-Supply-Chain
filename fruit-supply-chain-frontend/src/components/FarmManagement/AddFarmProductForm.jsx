@@ -106,6 +106,7 @@ const useWeb3Actions = () => {
       await ethereum.request({ method: "eth_requestAccounts" });
       await connectWallet();
     } catch (err) {
+      console.error("Lỗi khi kết nối ví MetaMask:", err);
       throw new Error("Không thể kết nối ví MetaMask: " + err.message);
     }
   };
@@ -219,82 +220,21 @@ const useImagePrediction = () => {
 
         let recommendation = "";
         let tip = "";
-        try {
-          console.log(`Gửi yêu cầu đến Gemini API cho quả ${i + 1}...`);
-          const geminiResponse = await axios({
-            method: "POST",
-            url: "https://api.google.ai/v1/models/gemini-1.5-pro:generateText",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer AIzaSyCFF_FW6_0DMkI4xAHLBUk4qB8eKEM2T7M`,
-            },
-            data: {
-              prompt: `Tôi có một ${category} với trạng thái chín là ${predictionResult}. Hãy đưa ra khuyến nghị bảo quản chi tiết bằng tiếng Việt theo định dạng sau:
-                            - Khuyến nghị: [chi tiết cách bảo quản, bao gồm nhiệt độ và thời gian]
-                            - Mẹo: [một mẹo cụ thể]
-                            Ví dụ:
-                            - Khuyến nghị: Bảo quản ở 5-10 độ C trong 2-3 tuần.
-                            - Mẹo: Bọc kín để tránh mùi.
-                            Trả về văn bản thuần, không chứa dấu * hoặc định dạng markdown.`,
-              maxTokens: 150,
-              temperature: 0.7,
-            },
-          });
-
-          let generatedText = geminiResponse.data?.candidates[0]?.output || "";
-          console.log(
-            `Phản hồi từ Gemini API cho quả ${i + 1}:`,
-            generatedText
-          );
-          if (!generatedText) {
-            throw new Error("Không nhận được phản hồi từ Gemini API.");
-          }
-
-          generatedText = generatedText.trim();
-          const recommendationMatch = generatedText.match(
-            /Khuyến nghị:\s*([^\n]+)/
-          );
-          const tipMatch = generatedText.match(/Mẹo:\s*([^\n]+)/);
-
-          recommendation = recommendationMatch
-            ? recommendationMatch[1].trim()
-            : "Bảo quản ở nhiệt độ phòng trong 1-2 tuần.";
-          tip = tipMatch ? tipMatch[1].trim() : "Giữ nơi khô ráo, thoáng mát.";
-        } catch (geminiError) {
-          console.log(
-            `Lỗi khi gọi Gemini API cho quả ${i + 1}:`,
-            geminiError.message
-          );
-          let errorMessage = "Không thể lấy khuyến nghị từ Gemini API.";
-          if (geminiError.response?.status === 404) {
-            errorMessage =
-              "Endpoint hoặc mô hình Gemini không tồn tại hoặc không khả dụng.";
-          } else if (geminiError.response?.status === 401) {
-            errorMessage =
-              "Xác thực thất bại: API key không hợp lệ. Kiểm tra lại key.";
-          } else if (geminiError.response?.status === 429) {
-            errorMessage =
-              "Đã vượt giới hạn yêu cầu của Gemini API. Vui lòng thử lại sau.";
-          } else if (geminiError.response?.status === 503) {
-            errorMessage = "Gemini API đang quá tải. Vui lòng thử lại sau.";
-          }
-          console.log(errorMessage);
-
-          if (predictionResult === "ripe") {
-            recommendation =
-              "Bảo quản ở 5-7 độ C trong tủ lạnh, sử dụng trong vòng 3-5 ngày để giữ độ tươi.";
-            tip =
-              "Bọc kín bằng màng bọc thực phẩm để tránh mùi lan sang các thực phẩm khác.";
-          } else if (predictionResult === "unripe") {
-            recommendation =
-              "Để ở nhiệt độ phòng (25-30 độ C) trong 3-5 ngày để quả chín tự nhiên, tránh ánh nắng trực tiếp.";
-            tip =
-              "Đặt gần các loại trái cây như chuối hoặc táo để đẩy nhanh quá trình chín nhờ khí ethylene.";
-          } else if (predictionResult === "semiripe") {
-            recommendation =
-              "Để ở nhiệt độ phòng (25-30 độ C) trong 1-2 ngày để quả chín hoàn toàn, sau đó bảo quản ở 5-7 độ C trong tủ lạnh.";
-            tip = "Kiểm tra độ mềm của quả mỗi ngày để tránh chín quá mức.";
-          }
+        // Bỏ gọi Gemini API do lỗi mạng và cung cấp khuyến nghị mặc định
+        if (predictionResult === "ripe") {
+          recommendation =
+            "Bảo quản ở 5-7 độ C trong tủ lạnh, sử dụng trong vòng 3-5 ngày để giữ độ tươi.";
+          tip =
+            "Bọc kín bằng màng bọc thực phẩm để tránh mùi lan sang các thực phẩm khác.";
+        } else if (predictionResult === "unripe") {
+          recommendation =
+            "Để ở nhiệt độ phòng (25-30 độ C) trong 3-5 ngày để quả chín tự nhiên, tránh ánh nắng trực tiếp.";
+          tip =
+            "Đặt gần các loại trái cây như chuối hoặc táo để đẩy nhanh quá trình chín nhờ khí ethylene.";
+        } else if (predictionResult === "semiripe") {
+          recommendation =
+            "Để ở nhiệt độ phòng (25-30 độ C) trong 1-2 ngày để quả chín hoàn toàn, sau đó bảo quản ở 5-7 độ C trong tủ lạnh.";
+          tip = "Kiểm tra độ mềm của quả mỗi ngày để tránh chín quá mức.";
         }
 
         const confidenceAdvice =
@@ -430,6 +370,7 @@ const ProductForm = ({
           <Select
             {...register("category", { required: "Loại trái cây là bắt buộc" })}
             error={!!errors.category}
+            defaultValue=""
           >
             <MenuItem value="" disabled>
               Chọn loại trái cây
@@ -578,7 +519,11 @@ const ProductForm = ({
           <Select
             {...register("farm_id", { required: "Farm là bắt buộc" })}
             error={!!errors.farm_id}
+            defaultValue=""
           >
+            <MenuItem value="" disabled>
+              Chọn farm
+            </MenuItem>
             {farms.map((farm) => (
               <MenuItem key={farm.id} value={farm.id}>
                 {farm.farm_name}
@@ -623,10 +568,11 @@ const AddFarmProductForm = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [farms, setFarms] = useState([]);
+  const [farmsLoading, setFarmsLoading] = useState(true);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [openConfirm, setOpenConfirm] = useState(false);
-  const [fruitId, setFruitId] = useState(null); // Thêm state để lưu fruitId
+  const [fruitId, setFruitId] = useState(null);
   const user = JSON.parse(localStorage.getItem("user")) || {};
 
   const {
@@ -641,8 +587,10 @@ const AddFarmProductForm = () => {
       price: "",
       quantity: "",
       description: "",
-      productiondate: "",
-      expirydate: "",
+      productiondate: new Date().toISOString().split("T")[0], // Giá trị mặc định là ngày hiện tại
+      expirydate: new Date(new Date().setMonth(new Date().getMonth() + 1))
+        .toISOString()
+        .split("T")[0], // Giá trị mặc định là 1 tháng sau
       farm_id: "",
     },
   });
@@ -658,6 +606,7 @@ const AddFarmProductForm = () => {
 
     const fetchFarms = async () => {
       try {
+        setFarmsLoading(true);
         const response = await fetch(
           `${BACKEND_URL}/farms/user?email=${user.email}`,
           {
@@ -680,6 +629,8 @@ const AddFarmProductForm = () => {
         }
       } catch (err) {
         setError("Không thể lấy danh sách farm: " + err.message);
+      } finally {
+        setFarmsLoading(false);
       }
     };
 
@@ -891,7 +842,7 @@ const AddFarmProductForm = () => {
       const fruitId =
         transactionResult.events.StepRecorded.returnValues.fruitId;
       console.log("Đã thu hoạch trái cây, fruitId:", fruitId);
-      return fruitId.toString(); // Chuyển BigInt thành string
+      return fruitId.toString();
     } catch (error) {
       console.error("Lỗi chi tiết khi gọi harvestFruit:", error);
       throw new Error(
@@ -901,8 +852,10 @@ const AddFarmProductForm = () => {
   };
 
   const onSubmit = async (data) => {
+    console.log("Bắt đầu onSubmit với dữ liệu:", data);
     if (!account || !contract) {
       setError("Vui lòng kết nối ví MetaMask và khởi tạo hợp đồng!");
+      console.log("Lỗi: Ví MetaMask hoặc hợp đồng chưa được khởi tạo.");
       return;
     }
 
@@ -919,36 +872,40 @@ const AddFarmProductForm = () => {
     ) {
       if (!prediction) {
         setError("Vui lòng chờ nhận diện hình ảnh trước khi thêm sản phẩm!");
+        console.log("Lỗi: Chưa nhận diện hình ảnh.");
         return;
       }
       if (prediction !== "ripe" && prediction !== "semiripe") {
         setError("Sản phẩm chưa chín! Vui lòng chọn sản phẩm đã chín để thêm.");
+        console.log("Lỗi: Sản phẩm chưa chín, prediction:", prediction);
         return;
       }
     }
 
     try {
-      // Kiểm tra vai trò Producer từ backend
+      console.log("Kiểm tra vai trò Producer từ backend...");
       const response = await axios.get("http://localhost:3000/check-role", {
         headers: { "x-ethereum-address": account },
       });
       const { role } = response.data;
+      console.log("Vai trò người dùng:", role);
       if (role !== "Producer") {
         throw new Error("Chỉ Producer mới có thể thu hoạch trái cây!");
       }
 
-      // Kiểm tra vai trò owner hoặc manager để gọi addFruitCatalog
+      console.log("Kiểm tra vai trò owner hoặc manager...");
       const owner = await contract.methods.owner().call();
       const isManager = await contract.methods
         .authorizedManagers(account)
         .call();
+      console.log("Owner:", owner, "Is Manager:", isManager);
       if (owner.toLowerCase() !== account.toLowerCase() && !isManager) {
         throw new Error(
           "Bạn không có quyền thêm loại trái cây vào catalog! Vui lòng yêu cầu owner hoặc manager thực hiện."
         );
       }
 
-      // Gọi harvestFruit để tạo Fruit và lấy fruitId
+      console.log("Gọi harvestFruit...");
       const farm = farms.find((f) => f.id === data.farm_id);
       const fruitId = await harvestFruit(
         data.category,
@@ -957,10 +914,12 @@ const AddFarmProductForm = () => {
         prediction || "ripe",
         parseInt(data.quantity)
       );
+      console.log("Fruit ID nhận được:", fruitId);
       setFruitId(fruitId);
       setOpenConfirm(true);
     } catch (error) {
-      setError(error.message);
+      console.error("Lỗi trong onSubmit:", error);
+      setError("Không thể thêm sản phẩm: " + error.message);
     }
   };
 
@@ -971,29 +930,39 @@ const AddFarmProductForm = () => {
     setSuccess(null);
 
     try {
+      console.log("Bắt đầu confirmSubmit với dữ liệu:", data);
       const productCode = generateProductCode(data.name);
+      console.log("Product Code:", productCode);
+
       const fruitType = data.category;
       let ipfsHash = imageFile
         ? await uploadToIPFS(imageFile)
         : fruitHashMapping[fruitType];
+      console.log("IPFS Hash:", ipfsHash);
       if (!ipfsHash) {
         throw new Error("Loại trái cây không được hỗ trợ!");
       }
 
+      console.log("Gọi setFruitHash trên blockchain...");
       let gasLimit;
       try {
         const gasEstimate = await contract.methods
           .setFruitHash(fruitType, ipfsHash)
           .estimateGas({ from: account });
         gasLimit = Math.floor(Number(gasEstimate) * 1.2);
+        console.log("Ước tính gas cho setFruitHash:", gasEstimate);
       } catch (err) {
         gasLimit = 1000000;
+        console.error("Lỗi ước tính gas, sử dụng mặc định:", err);
       }
 
-      await contract.methods.setFruitHash(fruitType, ipfsHash).send({
-        from: account,
-        gas: gasLimit,
-      });
+      const setFruitHashResult = await contract.methods
+        .setFruitHash(fruitType, ipfsHash)
+        .send({
+          from: account,
+          gas: gasLimit,
+        });
+      console.log("setFruitHash transaction result:", setFruitHashResult);
 
       const productData = {
         name: data.name,
@@ -1007,12 +976,18 @@ const AddFarmProductForm = () => {
         farm_id: data.farm_id,
         email: user.email,
         frontendHash: ipfsHash,
-        fruitId: fruitId, // fruitId đã là string
+        fruitId: fruitId,
       };
+      console.log("Dữ liệu gửi đến API /products:", productData);
 
-      await addFruitProduct(productData, { "x-ethereum-address": account });
+      const addProductResult = await addFruitProduct(productData, {
+        "x-ethereum-address": account,
+      });
+      console.log("Kết quả từ API /products:", addProductResult);
+
       setSuccess("Thêm sản phẩm thành công!");
     } catch (err) {
+      console.error("Lỗi trong confirmSubmit:", err);
       let errorMessage = "Không thể thêm sản phẩm. Vui lòng thử lại sau.";
       if (err.code === -32603) {
         errorMessage = "Lỗi giao dịch blockchain: Kiểm tra Hardhat node.";
@@ -1047,6 +1022,11 @@ const AddFarmProductForm = () => {
         {web3Loading && (
           <Alert severity="info" sx={{ mb: 3 }}>
             Đang khởi tạo Web3, vui lòng chờ...
+          </Alert>
+        )}
+        {farmsLoading && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Đang tải danh sách farm, vui lòng chờ...
           </Alert>
         )}
         {error && (
@@ -1108,43 +1088,59 @@ const AddFarmProductForm = () => {
             </Button>
           </Box>
         )}
+        {!contract && account && !web3Loading && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            Hợp đồng thông minh chưa được khởi tạo. Vui lòng kiểm tra Hardhat
+            node và khởi động lại ứng dụng.
+          </Alert>
+        )}
 
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <ProductForm
-            register={register}
-            errors={errors}
-            handleImageChange={handleImageChange}
-            farms={farms}
-            product={product}
-            imagePreview={imagePreview}
-            prediction={prediction}
-            predictionLoading={predictionLoading}
-            predictionError={predictionError}
-            formatConfidences={formatConfidences}
-          />
-          <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 3 }}>
-            <Button
-              type="submit"
-              variant="contained"
-              color="primary"
-              disabled={
-                loading ||
-                !account ||
-                !contract ||
-                web3Loading ||
-                predictionLoading
-              }
-              sx={{
-                textTransform: "none",
-                fontWeight: "bold",
-                bgcolor: "#1976D2",
-                "&:hover": { bgcolor: "#115293" },
-              }}
-            >
-              {loading ? <CircularProgress size={24} /> : "Thêm sản phẩm"}
-            </Button>
-          </Box>
-        </form>
+        {!farmsLoading && farms.length > 0 && (
+          <form onSubmit={handleSubmit(onSubmit)}>
+            <ProductForm
+              register={register}
+              errors={errors}
+              handleImageChange={handleImageChange}
+              farms={farms}
+              product={product}
+              imagePreview={imagePreview}
+              prediction={prediction}
+              predictionLoading={predictionLoading}
+              predictionError={predictionError}
+              formatConfidences={formatConfidences}
+            />
+            <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 3 }}>
+              {console.log("Trạng thái nút Thêm sản phẩm:", {
+                loading,
+                account,
+                contract,
+                web3Loading: web3Loading ?? false,
+                predictionLoading,
+              })}
+              <Button
+                type="submit"
+                variant="contained"
+                color="primary"
+                disabled={
+                  loading ||
+                  !account ||
+                  !contract ||
+                  (web3Loading ?? false) ||
+                  predictionLoading ||
+                  farmsLoading
+                }
+                sx={{
+                  textTransform: "none",
+                  fontWeight: "bold",
+                  bgcolor: "#1976D2",
+                  "&:hover": { bgcolor: "#115293" },
+                }}
+              >
+                {loading ? <CircularProgress size={24} /> : "Thêm sản phẩm"}
+              </Button>
+            </Box>
+          </form>
+        )}
       </Paper>
 
       {/* Dialog cho thông báo nhận diện */}

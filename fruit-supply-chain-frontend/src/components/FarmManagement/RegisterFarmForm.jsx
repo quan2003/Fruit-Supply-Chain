@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWeb3 } from "../../contexts/Web3Context";
+import { ethers } from "ethers";
 import {
   Box,
   Typography,
@@ -20,7 +21,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
 const RegisterFarmForm = () => {
   const navigate = useNavigate();
-  const { account, contract, web3 } = useWeb3();
+  const { account, fruitSupplyChain, web3 } = useWeb3();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -179,39 +180,43 @@ const RegisterFarmForm = () => {
     currentConditions
   ) => {
     try {
-      if (!contract) {
+      if (!fruitSupplyChain) {
         throw new Error("Hợp đồng thông minh chưa được khởi tạo!");
       }
       if (!account) {
         throw new Error("Ví MetaMask chưa được kết nối!");
       }
-      if (!contract.methods.isFarmRegistered) {
-        throw new Error(
-          "Hợp đồng thông minh không có phương thức isFarmRegistered!"
-        );
+
+      // Kiểm tra xem farm đã được đăng ký chưa
+      let farmExists = false;
+      try {
+        const farmData = await fruitSupplyChain.getFarmData(farmId);
+        farmExists = farmData[0].length > 0;
+      } catch (e) {
+        console.log("Farm chưa tồn tại, sẽ đăng ký mới:", e.message);
       }
 
-      console.log("Checking farm registration for ID:", farmId);
-      const farmExists = await contract.methods.isFarmRegistered(farmId).call();
-      console.log("Is farm registered?", farmExists);
       if (farmExists) {
         throw new Error("Farm ID đã được đăng ký trên blockchain!");
       }
 
-      const gasEstimate = await contract.methods
-        .registerFarm(farmId, location, climate, soil, currentConditions)
-        .estimateGas({ from: account });
-      console.log("Ước tính gas cho registerFarm:", gasEstimate);
+      // Kết nối hợp đồng với signer
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contractWithSigner = fruitSupplyChain.connect(signer);
 
-      const transactionResult = await contract.methods
-        .registerFarm(farmId, location, climate, soil, currentConditions)
-        .send({
-          from: account,
-          gas: Math.floor(Number(gasEstimate) * 1.5),
-        });
+      // Gọi hàm registerFarm
+      const tx = await contractWithSigner.registerFarm(
+        farmId,
+        location,
+        climate,
+        soil,
+        currentConditions
+      );
+      const receipt = await tx.wait();
 
-      console.log("Đã đăng ký farm trên blockchain:", transactionResult);
-      return transactionResult;
+      console.log("Đã đăng ký farm trên blockchain:", receipt);
+      return receipt;
     } catch (error) {
       console.error("Lỗi khi đăng ký farm trên blockchain:", error);
       throw new Error(
@@ -226,7 +231,7 @@ const RegisterFarmForm = () => {
     setError(null);
     setSuccess(null);
 
-    if (!account || !contract) {
+    if (!account || !fruitSupplyChain) {
       setError("Vui lòng kết nối ví MetaMask và khởi tạo hợp đồng!");
       setLoading(false);
       return;

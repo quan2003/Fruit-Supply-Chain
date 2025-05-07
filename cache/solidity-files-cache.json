@@ -41,8 +41,8 @@
       ]
     },
     "D:\\fruit-supply-chain\\contracts\\GovernmentRegulator.sol": {
-      "lastModificationDate": 1745672893860,
-      "contentHash": "798a36f5d56a1edca2b2a9235a00698b",
+      "lastModificationDate": 1746649986362,
+      "contentHash": "8b33f1c168ade8985999dc5ae111524e",
       "sourceName": "contracts/GovernmentRegulator.sol",
       "solcConfig": {
         "version": "0.8.28",
