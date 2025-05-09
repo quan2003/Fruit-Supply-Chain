@@ -25,6 +25,7 @@ const OrdersPage = () => {
   const [error, setError] = useState("");
   const [message, setMessage] = useState({ type: "", text: "" });
   const [shippingLoading, setShippingLoading] = useState({});
+  const [cancelLoading, setCancelLoading] = useState({});
 
   const fetchOrders = async () => {
     try {
@@ -45,23 +46,9 @@ const OrdersPage = () => {
     }
   };
 
-  useEffect(() => {
-    if (user && account) {
-      fetchOrders();
-    }
-  }, [user, account]);
-
   const handleShipOrder = async (order) => {
     setShippingLoading((prev) => ({ ...prev, [order.id]: true }));
     try {
-      console.log("Dữ liệu đơn hàng trước khi gửi:", order);
-      console.log("Dữ liệu gửi đến /ship-to-customer:", {
-        productId: order.product_id,
-        deliveryHubId: user.id,
-        customerId: order.customer_id,
-        quantity: order.quantity,
-      });
-
       const response = await axios.post(
         "http://localhost:3000/ship-to-customer",
         {
@@ -100,6 +87,47 @@ const OrdersPage = () => {
       setShippingLoading((prev) => ({ ...prev, [order.id]: false }));
     }
   };
+
+  const handleCancelOrder = async (order) => {
+    setCancelLoading((prev) => ({ ...prev, [order.id]: true }));
+    try {
+      const response = await axios.post(
+        "http://localhost:3000/cancel-order",
+        { orderId: order.id },
+        { headers: { "x-ethereum-address": account } }
+      );
+
+      setMessage({
+        type: "success",
+        text: "Hủy đơn hàng thành công!",
+      });
+
+      await fetchOrders();
+    } catch (error) {
+      console.error("Lỗi khi hủy đơn hàng:", error);
+      let errorMessage = "Lỗi khi hủy đơn hàng: Lỗi không xác định";
+      if (error.response) {
+        errorMessage =
+          error.response.data.message ||
+          error.response.data.error ||
+          errorMessage;
+      } else {
+        errorMessage = error.message || errorMessage;
+      }
+      setMessage({
+        type: "error",
+        text: errorMessage,
+      });
+    } finally {
+      setCancelLoading((prev) => ({ ...prev, [order.id]: false }));
+    }
+  };
+
+  useEffect(() => {
+    if (user && account) {
+      fetchOrders();
+    }
+  }, [user, account]);
 
   if (loading) {
     return (
@@ -161,27 +189,64 @@ const OrdersPage = () => {
                   <TableCell>{order.shipping_address}</TableCell>
                   <TableCell>{order.status}</TableCell>
                   <TableCell>
-                    {order.status === "Pending" &&
-                    order.available_quantity > 0 ? (
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        onClick={() => handleShipOrder(order)}
-                        disabled={shippingLoading[order.id]}
-                        sx={{
-                          backgroundColor: "#4caf50",
-                          "&:hover": { backgroundColor: "#45a049" },
-                        }}
-                      >
-                        {shippingLoading[order.id] ? (
-                          <CircularProgress size={24} />
+                    {order.status === "Pending" ? (
+                      <>
+                        {order.available_quantity >= order.quantity ? (
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            onClick={() => handleShipOrder(order)}
+                            disabled={shippingLoading[order.id]}
+                            sx={{
+                              backgroundColor: "#4caf50",
+                              "&:hover": { backgroundColor: "#45a049" },
+                              mr: 1,
+                            }}
+                          >
+                            {shippingLoading[order.id] ? (
+                              <CircularProgress size={24} />
+                            ) : (
+                              "Vận Chuyển"
+                            )}
+                          </Button>
                         ) : (
-                          "Vận Chuyển"
+                          <Typography
+                            variant="body2"
+                            color="error"
+                            sx={{ mr: 1, display: "inline" }}
+                          >
+                            Không đủ hàng (Còn: {order.available_quantity})
+                          </Typography>
                         )}
-                      </Button>
+                        <Button
+                          variant="contained"
+                          color="secondary"
+                          onClick={() => handleCancelOrder(order)}
+                          disabled={cancelLoading[order.id]}
+                          sx={{
+                            backgroundColor: "#f44336",
+                            "&:hover": { backgroundColor: "#d32f2f" },
+                          }}
+                        >
+                          {cancelLoading[order.id] ? (
+                            <CircularProgress size={24} />
+                          ) : (
+                            "Hủy"
+                          )}
+                        </Button>
+                      </>
                     ) : (
-                      <Typography variant="body2" color="error">
-                        Sản phẩm không còn khả dụng
+                      <Typography
+                        variant="body2"
+                        color={
+                          order.status === "Cancelled"
+                            ? "error"
+                            : "textSecondary"
+                        }
+                      >
+                        {order.status === "Cancelled"
+                          ? "Đã hủy"
+                          : "Đã vận chuyển"}
                       </Typography>
                     )}
                   </TableCell>

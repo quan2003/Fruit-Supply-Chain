@@ -295,11 +295,37 @@ const ProductDetail = () => {
 
     setPurchaseLoading(true);
     try {
-      // Tính giá mỗi hộp dựa trên original_quantity
+      // Đồng bộ dữ liệu sản phẩm trước khi thực hiện giao dịch
+      const syncResponse = await axios.post(
+        `${API_URL}/sync-product`,
+        { listingId: product.listing_id },
+        { headers: { "x-ethereum-address": account } }
+      );
+      console.log("Kết quả đồng bộ trước giao dịch:", syncResponse.data);
+
+      // Cập nhật lại product với dữ liệu đã đồng bộ
+      const updatedResponse = await axios.get(
+        `${API_URL}/product-detail/${product.listing_id}`,
+        { headers: { "x-ethereum-address": account } }
+      );
+      setProduct(updatedResponse.data);
+
+      if (
+        updatedResponse.data.quantity < quantityToBuy ||
+        updatedResponse.data.status !== "Available"
+      ) {
+        setMessage({
+          type: "error",
+          text: `Sản phẩm không khả dụng hoặc số lượng không đủ! Còn lại: ${updatedResponse.data.quantity} hộp.`,
+        });
+        setPurchaseLoading(false);
+        return;
+      }
+
+      // Tiếp tục với logic mua sản phẩm
       const pricePerUnit =
         parseFloat(product.price) / product.original_quantity;
       const totalProductPrice = (pricePerUnit * quantityToBuy).toFixed(2);
-      console.log("Giá mỗi hộp:", pricePerUnit, "Tổng giá:", totalProductPrice);
 
       const buyData = {
         listingId: product.listing_id,
@@ -311,10 +337,10 @@ const ProductDetail = () => {
         shippingFee: SHIPPING_FEE,
         paymentMethod,
       };
-      console.log("Dữ liệu gửi đến /buy-product:", buyData);
 
       let transactionHash;
       if (paymentMethod === "MetaMask") {
+        // Kiểm tra kết nối ví
         if (!account || !web3 || !contract) {
           setMessage({
             type: "error",
@@ -324,33 +350,28 @@ const ProductDetail = () => {
           return;
         }
 
-        // Kiểm tra trạng thái sản phẩm trên blockchain
+        // Kiểm tra trạng thái blockchain
         const productResponse = await contract.methods
           .getListedProduct(product.listing_id)
           .call();
         const blockchainQuantity = parseInt(productResponse.quantity);
         const isActive = productResponse.isActive;
-        const blockchainPrice = parseInt(productResponse.price);
-        console.log("Trạng thái sản phẩm trên blockchain:", productResponse);
 
         if (!isActive || blockchainQuantity < quantityToBuy) {
           setMessage({
             type: "error",
             text: `Sản phẩm không khả dụng hoặc số lượng không đủ trên blockchain! Còn lại: ${blockchainQuantity} hộp.`,
           });
-          await fetchProductDetail(); // Cập nhật giao diện
+          await fetchProductDetail();
           setPurchaseLoading(false);
           return;
         }
 
-        // Tính giá mỗi đơn vị (Wei) theo blockchain
-        const pricePerUnitInWei = blockchainPrice / blockchainQuantity;
+        const pricePerUnitInWei =
+          parseInt(productResponse.price) / blockchainQuantity;
         const totalPriceInWei = pricePerUnitInWei * quantityToBuy;
-        console.log("Tổng giá (Wei):", totalPriceInWei);
 
-        // Kiểm tra số dư ví
         const balance = await web3.eth.getBalance(account);
-        console.log("Số dư ví:", web3.utils.fromWei(balance, "ether"), "ETH");
         if (BigInt(balance) < BigInt(totalPriceInWei)) {
           setMessage({
             type: "error",
@@ -360,14 +381,12 @@ const ProductDetail = () => {
           return;
         }
 
-        // Thực hiện giao dịch
         const gasEstimate = await contract.methods
           .purchaseProduct(product.listing_id, quantityToBuy)
           .estimateGas({
             from: account,
             value: totalPriceInWei,
           });
-        console.log("Ước tính gas:", gasEstimate);
 
         const transactionResult = await contract.methods
           .purchaseProduct(product.listing_id, quantityToBuy)
@@ -377,28 +396,7 @@ const ProductDetail = () => {
             gas: Math.floor(Number(gasEstimate) * 1.5),
           });
         transactionHash = transactionResult.transactionHash;
-        console.log("Giao dịch thành công:", transactionHash);
         buyData.transactionHash = transactionHash;
-
-        // Kiểm tra lại trạng thái blockchain sau giao dịch
-        const postPurchaseResponse = await contract.methods
-          .getListedProduct(product.listing_id)
-          .call();
-        console.log(
-          "Trạng thái blockchain sau giao dịch:",
-          postPurchaseResponse
-        );
-        const postPurchaseQuantity = parseInt(postPurchaseResponse.quantity);
-        const expectedQuantity = blockchainQuantity - quantityToBuy;
-        if (postPurchaseQuantity !== expectedQuantity) {
-          setMessage({
-            type: "error",
-            text: `Giao dịch blockchain không khớp! Số lượng mong đợi: ${expectedQuantity}, số lượng thực tế: ${postPurchaseQuantity}.`,
-          });
-          await fetchProductDetail(); // Cập nhật giao diện
-          setPurchaseLoading(false);
-          return;
-        }
       }
 
       // Gửi yêu cầu đến backend
@@ -410,7 +408,7 @@ const ProductDetail = () => {
         type: "success",
         text: "Mua sản phẩm thành công!",
       });
-      setIsAvailable(product.quantity - quantityToBuy > 0);
+      setIsAvailable(updatedResponse.data.quantity - quantityToBuy > 0);
       setHasPurchased(true);
       setOpenModal(false);
 
@@ -432,7 +430,7 @@ const ProductDetail = () => {
         errorMessage += ` Chi tiết: ${error.message}`;
       }
       setMessage({ type: "error", text: errorMessage });
-      await fetchProductDetail(); // Cập nhật giao diện sau lỗi
+      await fetchProductDetail();
     } finally {
       setPurchaseLoading(false);
     }

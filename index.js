@@ -2870,7 +2870,6 @@ app.post(
 
       console.log("Dữ liệu nhận được từ /buy-product:", req.body);
 
-      // Kiểm tra các trường bắt buộc
       if (
         !listingId ||
         !customerId ||
@@ -2883,7 +2882,6 @@ app.post(
         throw new Error("Vui lòng cung cấp đầy đủ thông tin!");
       }
 
-      // Đồng bộ dữ liệu với blockchain
       let productResponse;
       try {
         productResponse = await contract.methods.getListedProduct(listingId).call();
@@ -2904,7 +2902,6 @@ app.post(
       const blockchainQuantity = parseInt(productResponse.quantity);
       const blockchainPrice = parseInt(productResponse.price);
 
-      // Khóa hàng trong outgoing_products
       const outgoingProductResult = await client.query(
         "SELECT * FROM outgoing_products WHERE listing_id = $1 AND status = 'Available' FOR UPDATE",
         [listingId]
@@ -2914,7 +2911,6 @@ app.post(
       }
       let outgoingProduct = outgoingProductResult.rows[0];
 
-      // Đồng bộ số lượng từ blockchain
       if (outgoingProduct.quantity !== blockchainQuantity) {
         console.warn(
           `Bất đồng bộ trong /buy-product: listingId=${listingId}, database quantity=${outgoingProduct.quantity}, blockchain quantity=${blockchainQuantity}`
@@ -2926,19 +2922,14 @@ app.post(
         outgoingProduct.quantity = blockchainQuantity;
       }
 
-      // Kiểm tra số lượng khả dụng, nhưng cho phép giao dịch nếu transactionHash hợp lệ
       let allowTransaction = false;
       if (isActive && blockchainQuantity >= quantity) {
         allowTransaction = true;
       } else if (transactionHash && paymentMethod === "MetaMask") {
-        // Kiểm tra giao dịch blockchain
         const expectedQuantity = outgoingProduct.quantity - quantity;
-        if (
-          blockchainQuantity === expectedQuantity &&
-          (!isActive || blockchainQuantity === 0)
-        ) {
+        if (blockchainQuantity === expectedQuantity || (blockchainQuantity === 0 && expectedQuantity <= 0)) {
           console.log(
-            `Giao dịch transactionHash=${transactionHash} đã cập nhật blockchain: quantity=${expectedQuantity}`
+            `Giao dịch transactionHash=${transactionHash} đã cập nhật blockchain: quantity=${blockchainQuantity}, expected=${expectedQuantity}`
           );
           allowTransaction = true;
         } else {
@@ -2958,26 +2949,23 @@ app.post(
         );
       }
 
-      // Kiểm tra số lượng trong outgoing_products
       if (outgoingProduct.quantity < quantity) {
         throw new Error(
           `Số lượng sản phẩm không đủ để mua! Số lượng khả dụng: ${outgoingProduct.quantity}`
         );
       }
 
-      // Xác thực giá mỗi hộp
       const expectedPricePerUnit = parseFloat(
         (parseFloat(outgoingProduct.price) / outgoingProduct.original_quantity).toFixed(2)
       );
       const requestedPrice = parseFloat(price);
-      const tolerance = 0.05; // Tăng độ sai số lên 0.05 AGT
+      const tolerance = 0.05;
       if (Math.abs(requestedPrice - expectedPricePerUnit) > tolerance) {
         throw new Error(
           `Giá mỗi hộp không khớp! Giá mong đợi: ${expectedPricePerUnit.toFixed(2)} AGT/hộp, giá gửi lên: ${requestedPrice} AGT/hộp`
         );
       }
 
-      // Kiểm tra sản phẩm
       const productResult = await client.query(
         "SELECT * FROM products WHERE id = $1",
         [outgoingProduct.product_id]
@@ -2986,7 +2974,6 @@ app.post(
         throw new Error("Sản phẩm không tồn tại trong danh mục sản phẩm!");
       }
 
-      // Kiểm tra khách hàng
       const customerResult = await client.query(
         "SELECT * FROM users WHERE id = $1 AND role = 'Customer'",
         [customerId]
@@ -2995,7 +2982,6 @@ app.post(
         throw new Error("Khách hàng không tồn tại!");
       }
 
-      // Kiểm tra trung tâm phân phối
       const deliveryHubResult = await client.query(
         "SELECT * FROM users WHERE id = $1 AND role = 'DeliveryHub'",
         [deliveryHubId]
@@ -3004,7 +2990,6 @@ app.post(
         throw new Error("Trung tâm phân phối không tồn tại!");
       }
 
-      // Cập nhật số lượng trong outgoing_products
       const newQuantity = outgoingProduct.quantity - quantity;
       const newStatus = newQuantity === 0 ? "Sold" : "Available";
       await client.query(
@@ -3012,7 +2997,20 @@ app.post(
         [newQuantity, newStatus, listingId]
       );
 
-      // Kiểm tra và thêm sản phẩm vào inventory nếu cần
+      const totalOrderPrice = (expectedPricePerUnit * quantity).toFixed(2);
+      const orderResult = await client.query(
+        "INSERT INTO orders (product_id, customer_id, quantity, price, order_date, status, shipping_address, transaction_hash) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, 'Pending', $5, $6) RETURNING *",
+        [
+          outgoingProduct.product_id,
+          customerId,
+          quantity,
+          totalOrderPrice,
+          shippingAddress,
+          transactionHash || null,
+        ]
+      );
+      const order = orderResult.rows[0];
+
       const inventoryResult = await client.query(
         "SELECT * FROM inventory WHERE product_id = $1 AND delivery_hub_id = $2",
         [outgoingProduct.product_id, deliveryHubId]
@@ -3042,23 +3040,6 @@ app.post(
         );
       }
 
-      // Tính tổng giá cho đơn hàng
-      const totalOrderPrice = (expectedPricePerUnit * quantity).toFixed(2);
-
-      // Tạo đơn hàng với giá tổng
-      const orderResult = await client.query(
-        "INSERT INTO orders (product_id, customer_id, quantity, price, order_date, status, shipping_address, transaction_hash) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, 'Pending', $5, $6) RETURNING *",
-        [
-          outgoingProduct.product_id,
-          customerId,
-          quantity,
-          totalOrderPrice,
-          shippingAddress,
-          transactionHash || null,
-        ]
-      );
-      const order = orderResult.rows[0];
-
       await client.query("COMMIT");
 
       res.status(200).json({
@@ -3069,7 +3050,6 @@ app.post(
       await client.query("ROLLBACK");
       console.error("Lỗi khi mua sản phẩm:", error);
 
-      // Đồng bộ lại database để đảm bảo nhất quán
       try {
         const productResponse = await contract.methods.getListedProduct(listingId).call();
         const isActive = productResponse.isActive;
@@ -3473,20 +3453,6 @@ app.get(
       const deliveryHubId = req.user.id;
       console.log(`Lấy danh sách đơn hàng cho DeliveryHub ID: ${deliveryHubId}`);
 
-      // Cập nhật trạng thái đơn hàng nếu sản phẩm không còn khả dụng
-      await client.query(
-        `
-        UPDATE orders o
-        SET status = 'Cancelled'
-        FROM outgoing_products op
-        WHERE o.product_id = op.product_id
-        AND op.delivery_hub_id = $1
-        AND o.status = 'Pending'
-        AND op.quantity = 0
-        `,
-        [deliveryHubId]
-      );
-
       const ordersResult = await client.query(
         `
         SELECT o.*, 
@@ -3499,8 +3465,6 @@ app.get(
         JOIN products p ON o.product_id = p.id
         JOIN users u ON o.customer_id = u.id
         WHERE op.delivery_hub_id = $1
-        AND o.status = 'Pending'
-        AND op.quantity > 0
         ORDER BY o.order_date DESC
         `,
         [deliveryHubId]
@@ -3532,72 +3496,6 @@ app.get(
         error: "Lỗi máy chủ nội bộ",
         details: error.message,
       });
-    } finally {
-      client.release();
-    }
-  }
-);
-app.post(
-  "/receive-order",
-  checkAuth,
-  checkRole(["Customer"]),
-  async (req, res) => {
-    const { orderId } = req.body;
-    const customerId = req.user.id; // Lấy customerId từ thông tin người dùng đã xác thực
-    const client = await pool.connect();
-
-    try {
-      await client.query("BEGIN");
-
-      // Kiểm tra đơn hàng có tồn tại và thuộc về khách hàng này không
-      const orderResult = await client.query(
-        "SELECT * FROM orders WHERE id = $1 AND customer_id = $2 AND status = 'Shipped'",
-        [orderId, customerId]
-      );
-      if (orderResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return res.status(404).json({
-          message: `Đơn hàng không tồn tại hoặc không thể nhận! Order ID: ${orderId} 😅`,
-        });
-      }
-      const order = orderResult.rows[0];
-
-      // Tìm lô hàng tương ứng
-      const shipmentResult = await client.query(
-        "SELECT * FROM shipments WHERE recipient_id = $1 AND recipient_type = 'Customer' AND status = 'In Transit' AND id IN (SELECT shipment_id FROM shipment_products WHERE product_id = $2)",
-        [customerId, order.product_id]
-      );
-      if (shipmentResult.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return res.status(404).json({
-          message: "Lô hàng không tồn tại hoặc không thể nhận! 😅",
-        });
-      }
-      const shipment = shipmentResult.rows[0];
-
-      // Cập nhật trạng thái lô hàng thành Delivered và ghi lại thời gian nhận
-      await client.query(
-        "UPDATE shipments SET status = 'Delivered', received_date = CURRENT_TIMESTAMP WHERE id = $1",
-        [shipment.id]
-      );
-
-      // Cập nhật trạng thái đơn hàng thành Delivered
-      await client.query(
-        "UPDATE orders SET status = 'Delivered' WHERE id = $1",
-        [orderId]
-      );
-
-      await client.query("COMMIT");
-
-      res.status(200).json({
-        message: "Bạn đã nhận hàng thành công! 🎉",
-      });
-    } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Lỗi khi nhận đơn hàng:", error);
-      res
-        .status(500)
-        .json({ error: "Lỗi máy chủ nội bộ", details: error.message });
     } finally {
       client.release();
     }
