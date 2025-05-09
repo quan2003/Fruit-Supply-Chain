@@ -1,4 +1,4 @@
-# Hệ thống Quản lý Chuỗi Cung ứng Trái cây trên Blockchain
+# ỨNG DỤNG BLOCKCHAIN VÀ AI TRONG VIỆC TẠO CHUỖI CUNG ỨNG VÀ NHẬN DIỆN TRÁI CÂY CHÍN
 
 ## Giới thiệu
 Hệ thống này sử dụng công nghệ Blockchain để quản lý và theo dõi chuỗi cung ứng trái cây, đảm bảo tính minh bạch, không thể chỉnh sửa và dễ dàng truy xuất nguồn gốc. Người dùng có thể biết rõ từng loại trái cây được thu hoạch từ đâu, ai trồng và trải qua các khâu nào trước khi đến tay họ.
