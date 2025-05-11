@@ -690,11 +690,12 @@ app.post("/login", async (req, res) => {
 app.post("/logout", async (req, res) => {
   const { walletAddress } = req.body;
 
-  try {
-    if (!walletAddress) {
-      return res.status(400).json({ message: "Yêu cầu cung cấp walletAddress!" });
-    }
+  if (!walletAddress) {
+    console.log("Không có walletAddress, trả về thành công vì người dùng có thể đã đăng xuất");
+    return res.status(200).json({ message: "Không cần đăng xuất, không có walletAddress!" });
+  }
 
+  try {
     const normalizedAddress = walletAddress.toLowerCase();
     const user = await pool.query(
       "SELECT * FROM users WHERE LOWER(wallet_address) = $1",
@@ -3968,6 +3969,18 @@ app.get("/government/farm-stats/:farmId", checkAuth, checkRole(["Government"]), 
   const { farmId } = req.params;
 
   try {
+    // Kiểm tra xem farmId có tồn tại trong bảng farms không
+    const farmCheck = await pool.query(
+      "SELECT * FROM farms WHERE farm_name = $1",
+      [farmId]
+    );
+    if (farmCheck.rows.length === 0) {
+      return res.status(404).json({
+        message: `Nông trại với ID ${farmId} không tồn tại`,
+        suggestion: "Vui lòng kiểm tra ID nông trại hoặc đăng ký nông trại mới qua API /farm"
+      });
+    }
+
     // Kiểm tra trong database trước
     const farmStatsResult = await pool.query(
       "SELECT * FROM farm_statistics WHERE farm_id = $1",
@@ -3984,20 +3997,40 @@ app.get("/government/farm-stats/:farmId", checkAuth, checkRole(["Government"]), 
         lastUpdate: Number(farmStatsResult.rows[0].last_update),
       };
     } else {
-      // Nếu không có trong database, đồng bộ từ blockchain
-      stats = await syncFarmStats(farmId);
+      // Đồng bộ từ blockchain nếu không có trong database
+      try {
+        stats = await syncFarmStats(farmId);
+      } catch (syncError) {
+        console.error(`Lỗi khi đồng bộ thống kê farm ${farmId}:`, syncError);
+        stats = {
+          farmId,
+          totalFruitHarvested: 0,
+          totalContractsCreated: 0,
+          totalContractsCompleted: 0,
+          lastUpdate: 0,
+        };
+      }
     }
 
     if (stats.totalContractsCreated === 0) {
-      return res.status(404).json({
-        message: `Không tìm thấy dữ liệu thống kê cho farm ${farmId}`,
+      return res.status(200).json({
+        farmId,
+        totalFruitHarvested: 0,
+        totalContractsCreated: 0,
+        totalContractsCompleted: 0,
+        lastUpdate: 0,
+        message: `Chưa có dữ liệu thống kê cho farm ${farmId}. Có thể chưa có hợp đồng nào được tạo.`
       });
     }
 
     res.status(200).json(stats);
   } catch (error) {
     console.error("Lỗi khi lấy thống kê farm:", error);
-    res.status(500).json({ error: "Lỗi máy chủ nội bộ", details: error.message });
+    res.status(500).json({
+      error: "Lỗi máy chủ nội bộ",
+      details: error.message,
+      suggestion: "Vui lòng kiểm tra kết nối blockchain hoặc log server."
+    });
   }
 });
 
@@ -4409,6 +4442,57 @@ app.get("/contract/signed/pdf/:contractId", checkAuth, async (req, res) => {
               details: error.message,
           });
       }
+  }
+});
+// API lấy danh sách hợp đồng gợi ý
+app.get("/government/suggested-contracts", checkAuth, checkRole(["Government"]), async (req, res) => {
+  try {
+    // Lấy danh sách sản phẩm đang bán từ bảng products
+    const productsResult = await pool.query(
+      `SELECT p.id, p.farm_id, p.quantity, p.price, f.farm_name
+       FROM products p
+       JOIN farms f ON p.farm_id = f.id
+       WHERE p.quantity > 0`
+    );
+
+    const suggestedContracts = [];
+    let suggestionId = 1;
+
+    for (const product of productsResult.rows) {
+      // Tìm đại lý quan tâm (giả sử đại lý đã mua hoặc có giao dịch liên quan trong outgoing_products)
+      const outgoingResult = await pool.query(
+        `SELECT op.delivery_hub_id, u.wallet_address
+         FROM outgoing_products op
+         JOIN users u ON op.delivery_hub_id = u.id
+         WHERE op.product_id = $1 AND u.role = 'DeliveryHub' LIMIT 1`,
+        [product.id]
+      );
+
+      if (outgoingResult.rows.length > 0) {
+        const deliveryHub = outgoingResult.rows[0];
+        suggestedContracts.push({
+          suggestionId: suggestionId++,
+          farmId: product.farm_name,
+          deliveryHubWalletAddress: deliveryHub.wallet_address.toLowerCase(),
+          totalQuantity: Number(product.quantity),
+          pricePerUnit: Number(product.price) / Number(product.quantity), // Giá mỗi đơn vị
+          validityPeriod: 30 // Mặc định 30 ngày
+        });
+      }
+    }
+
+    if (suggestedContracts.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    res.status(200).json(suggestedContracts);
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách hợp đồng gợi ý:", error);
+    res.status(500).json({
+      error: "Lỗi máy chủ nội bộ",
+      details: error.message,
+      suggestion: "Vui lòng kiểm tra log server để biết thêm chi tiết."
+    });
   }
 });
 // Phục vụ file tĩnh từ thư mục uploads

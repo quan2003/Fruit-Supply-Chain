@@ -21,7 +21,15 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
 const RegisterFarmForm = () => {
   const navigate = useNavigate();
-  const { account, fruitSupplyChain, web3 } = useWeb3();
+  const {
+    account,
+    fruitSupplyChain,
+    web3,
+    isInitialized,
+    connectWallet,
+    loading: web3Loading,
+    walletError,
+  } = useWeb3();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -69,6 +77,15 @@ const RegisterFarmForm = () => {
 
     fetchProvinces();
   }, []);
+
+  useEffect(() => {
+    // Tự động kết nối ví nếu chưa khởi tạo
+    if (!isInitialized && !web3Loading) {
+      connectWallet().catch((err) => {
+        setError("Không thể kết nối ví MetaMask: " + err.message);
+      });
+    }
+  }, [isInitialized, web3Loading, connectWallet]);
 
   const fetchWeatherData = async (location) => {
     try {
@@ -190,8 +207,10 @@ const RegisterFarmForm = () => {
       // Kiểm tra xem farm đã được đăng ký chưa
       let farmExists = false;
       try {
-        const farmData = await fruitSupplyChain.getFarmData(farmId);
-        farmExists = farmData[0].length > 0;
+        const farmData = await fruitSupplyChain.methods
+          .getFarmData(farmId)
+          .call();
+        farmExists = farmData[0].length > 0; // Kiểm tra location (farmData[0]) có dữ liệu không
       } catch (e) {
         console.log("Farm chưa tồn tại, sẽ đăng ký mới:", e.message);
       }
@@ -203,7 +222,11 @@ const RegisterFarmForm = () => {
       // Kết nối hợp đồng với signer
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-      const contractWithSigner = fruitSupplyChain.connect(signer);
+      const contractWithSigner = new ethers.Contract(
+        fruitSupplyChain.options.address,
+        fruitSupplyChain.options.jsonInterface,
+        signer
+      );
 
       // Gọi hàm registerFarm
       const tx = await contractWithSigner.registerFarm(
@@ -231,9 +254,34 @@ const RegisterFarmForm = () => {
     setError(null);
     setSuccess(null);
 
-    if (!account || !fruitSupplyChain) {
-      setError("Vui lòng kết nối ví MetaMask và khởi tạo hợp đồng!");
+    console.log("Web3 State:", {
+      account,
+      fruitSupplyChain,
+      isInitialized,
+      web3Loading,
+    });
+
+    if (!isInitialized) {
+      setError("Hợp đồng chưa được khởi tạo. Vui lòng thử lại!");
       setLoading(false);
+      await connectWallet().catch((err) => {
+        setError("Không thể kết nối ví MetaMask: " + err.message);
+      });
+      return;
+    }
+
+    if (!account) {
+      setError("Ví MetaMask chưa được kết nối!");
+      setLoading(false);
+      return;
+    }
+
+    if (!fruitSupplyChain) {
+      setError("Hợp đồng FruitSupplyChain chưa được khởi tạo!");
+      setLoading(false);
+      await connectWallet().catch((err) => {
+        setError("Không thể khởi tạo hợp đồng: " + err.message);
+      });
       return;
     }
 
@@ -248,6 +296,9 @@ const RegisterFarmForm = () => {
       const response = await fetch("http://localhost:3000/check-role", {
         headers: { "x-ethereum-address": account },
       });
+      if (!response.ok) {
+        throw new Error("Không thể kiểm tra vai trò!");
+      }
       const { role } = await response.json();
       if (role !== "Producer") {
         throw new Error("Chỉ Producer mới có thể đăng ký farm!");
@@ -332,6 +383,44 @@ const RegisterFarmForm = () => {
   const handleCloseSnack = () => {
     setSnackOpen(false);
   };
+
+  if (web3Loading) {
+    return (
+      <Box
+        sx={{ p: 3, maxWidth: "600px", margin: "0 auto", textAlign: "center" }}
+      >
+        <CircularProgress />
+        <Typography variant="h6" sx={{ mt: 2 }}>
+          Đang khởi tạo ví MetaMask và hợp đồng...
+        </Typography>
+      </Box>
+    );
+  }
+
+  if (!isInitialized) {
+    return (
+      <Box
+        sx={{ p: 3, maxWidth: "600px", margin: "0 auto", textAlign: "center" }}
+      >
+        {walletError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {walletError}
+          </Alert>
+        )}
+        <Typography variant="h6" sx={{ mb: 2 }}>
+          Bạn cần kết nối ví MetaMask để tiếp tục.
+        </Typography>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={connectWallet}
+          sx={{ mt: 2 }}
+        >
+          Kết nối ví MetaMask
+        </Button>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3, maxWidth: "600px", margin: "0 auto" }}>

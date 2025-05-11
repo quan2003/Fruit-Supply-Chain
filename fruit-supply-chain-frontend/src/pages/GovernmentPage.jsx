@@ -3,7 +3,6 @@ import {
   Container,
   Typography,
   Box,
-  Grid,
   Button,
   TextField,
   Table,
@@ -34,6 +33,7 @@ const GovernmentPage = () => {
   const navigate = useNavigate();
   const { user, isGovernment, loading: authLoading, account } = useAuth();
   const [contracts, setContracts] = useState([]);
+  const [suggestedContracts, setSuggestedContracts] = useState([]);
   const [farmStats, setFarmStats] = useState([]);
   const [provinceStats, setProvinceStats] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +57,7 @@ const GovernmentPage = () => {
       setLoading(true);
       setError(null);
 
-      console.log("fetchInitialData started", {
+      console.log("Bắt đầu lấy dữ liệu ban đầu", {
         authLoading,
         user,
         isGovernment,
@@ -66,32 +66,36 @@ const GovernmentPage = () => {
 
       try {
         if (authLoading) {
-          console.log("authLoading is true, returning early");
+          console.log("Đang tải thông tin xác thực, tạm dừng");
           return;
         }
 
         if (!user || !isGovernment) {
-          console.log("Redirecting to login due to !user || !isGovernment", {
-            user,
-            isGovernment,
-          });
+          console.log(
+            "Chuyển hướng đến trang đăng nhập do thiếu user hoặc không phải chính phủ",
+            {
+              user,
+              isGovernment,
+            }
+          );
           navigate("/login?role=Government");
           return;
         }
 
         if (!account) {
-          console.log("No account, setting error");
+          console.log("Không có tài khoản, hiển thị lỗi");
           setError("Vui lòng kết nối ví MetaMask để tiếp tục!");
           setLoading(false);
           return;
         }
 
-        console.log("Proceeding with data fetching", {
+        console.log("Tiếp tục lấy dữ liệu", {
           user,
           isGovernment,
           account,
         });
 
+        // Lấy danh sách nông trại
         try {
           const farmsResponse = await axios.get(
             "http://localhost:3000/government/farms",
@@ -99,22 +103,26 @@ const GovernmentPage = () => {
               headers: { "x-ethereum-address": account },
             }
           );
-          console.log("Farms response:", farmsResponse.data);
+          console.log("Danh sách nông trại:", farmsResponse.data);
           setFarms(farmsResponse.data);
           if (farmsResponse.data.length > 0) {
             setSelectedFarmId(farmsResponse.data[0]);
           } else {
-            console.log("No farms found");
+            console.log("Không tìm thấy nông trại");
+            setError(
+              "Không tìm thấy nông trại nào. Vui lòng đăng ký nông trại trước!"
+            );
           }
         } catch (farmError) {
-          console.error("Lỗi khi lấy danh sách farm:", farmError);
+          console.error("Lỗi khi lấy danh sách nông trại:", farmError);
           setError(
             farmError.response?.data?.message ||
-              "Không thể lấy danh sách farm từ backend!"
+              "Không thể lấy danh sách nông trại từ backend!"
           );
           setFarms([]);
         }
 
+        // Lấy danh sách tỉnh
         try {
           const provincesResponse = await axios.get(
             "http://localhost:3000/government/provinces",
@@ -122,12 +130,15 @@ const GovernmentPage = () => {
               headers: { "x-ethereum-address": account },
             }
           );
-          console.log("Provinces response:", provincesResponse.data);
+          console.log("Danh sách tỉnh:", provincesResponse.data);
           setProvinces(provincesResponse.data);
           if (provincesResponse.data.length > 0) {
             setSelectedProvince(provincesResponse.data[0]);
           } else {
-            console.log("No provinces found");
+            console.log("Không tìm thấy tỉnh");
+            setError(
+              "Không tìm thấy tỉnh nào. Vui lòng đăng ký nông trại với thông tin tỉnh!"
+            );
           }
         } catch (provinceError) {
           console.error("Lỗi khi lấy danh sách tỉnh:", provinceError);
@@ -137,6 +148,24 @@ const GovernmentPage = () => {
           );
           setProvinces([]);
         }
+
+        // Lấy danh sách hợp đồng gợi ý
+        try {
+          const suggestedContractsResponse = await axios.get(
+            "http://localhost:3000/government/suggested-contracts",
+            {
+              headers: { "x-ethereum-address": account },
+            }
+          );
+          console.log(
+            "Danh sách hợp đồng gợi ý:",
+            suggestedContractsResponse.data
+          );
+          setSuggestedContracts(suggestedContractsResponse.data);
+        } catch (suggestedError) {
+          console.error("Lỗi khi lấy hợp đồng gợi ý:", suggestedError);
+          setSuggestedContracts([]);
+        }
       } catch (err) {
         console.error("Lỗi khi lấy dữ liệu ban đầu:", err);
         setError(
@@ -145,7 +174,7 @@ const GovernmentPage = () => {
         );
       } finally {
         setLoading(false);
-        console.log("fetchInitialData completed", { loading: false, error });
+        console.log("Hoàn tất lấy dữ liệu ban đầu", { loading: false, error });
       }
     };
 
@@ -154,28 +183,17 @@ const GovernmentPage = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!selectedFarmId || !selectedProvince) {
-        console.log(
-          "Skipping fetchData due to missing selectedFarmId or selectedProvince",
-          {
-            selectedFarmId,
-            selectedProvince,
-          }
-        );
-        setLoading(false);
-        return;
-      }
-
       setLoading(true);
       setError(null);
 
-      console.log("fetchData started", {
+      console.log("Bắt đầu lấy dữ liệu chi tiết", {
         selectedFarmId,
         selectedProvince,
         account,
       });
 
       try {
+        // Đồng bộ hợp đồng
         try {
           const syncResponse = await axios.post(
             "http://localhost:3000/government/sync-contracts",
@@ -184,24 +202,23 @@ const GovernmentPage = () => {
               headers: { "x-ethereum-address": account },
             }
           );
-          console.log("Sync contracts response:", syncResponse.data);
+          console.log("Kết quả đồng bộ hợp đồng:", syncResponse.data);
         } catch (syncError) {
           console.error("Lỗi khi đồng bộ hợp đồng:", syncError);
           setError(
             syncError.response?.data?.message ||
               "Không thể đồng bộ hợp đồng. Vui lòng thử lại!"
           );
-          setLoading(false);
-          return;
         }
 
+        // Lấy danh sách hợp đồng
         const contractsResponse = await axios.get(
           "http://localhost:3000/government/contracts",
           {
             headers: { "x-ethereum-address": account },
           }
         );
-        console.log("Contracts response:", contractsResponse.data);
+        console.log("Danh sách hợp đồng:", contractsResponse.data);
         setContracts(
           contractsResponse.data.map((contract) => ({
             ...contract,
@@ -212,86 +229,103 @@ const GovernmentPage = () => {
           }))
         );
 
-        try {
-          const farmStatResponse = await axios.get(
-            `http://localhost:3000/government/farm-stats/${selectedFarmId}`,
-            {
-              headers: { "x-ethereum-address": account },
-            }
-          );
-          console.log("Farm stats response:", farmStatResponse.data);
-          setFarmStats([
-            {
-              farmId: farmStatResponse.data.farmId,
-              totalFruitHarvested: farmStatResponse.data.totalFruitHarvested,
-              totalContractsCreated:
-                farmStatResponse.data.totalContractsCreated,
-              totalContractsCompleted:
-                farmStatResponse.data.totalContractsCompleted,
-              lastUpdate: farmStatResponse.data.lastUpdate
-                ? new Date(farmStatResponse.data.lastUpdate).toLocaleString(
-                    "vi-VN"
-                  )
-                : "Chưa cập nhật",
-            },
-          ]);
-        } catch (farmStatError) {
-          console.error("Lỗi khi lấy thống kê farm:", farmStatError);
-          setFarmStats([]);
-          setError(
-            farmStatError.response?.data?.message ||
-              "Không thể lấy thống kê farm!"
-          );
+        // Lấy thống kê nông trại
+        if (selectedFarmId) {
+          try {
+            const farmStatResponse = await axios.get(
+              `http://localhost:3000/government/farm-stats/${selectedFarmId}`,
+              {
+                headers: { "x-ethereum-address": account },
+              }
+            );
+            console.log("Thống kê nông trại:", farmStatResponse.data);
+            setFarmStats([
+              {
+                farmId: farmStatResponse.data.farmId,
+                totalFruitHarvested: farmStatResponse.data.totalFruitHarvested,
+                totalContractsCreated:
+                  farmStatResponse.data.totalContractsCreated,
+                totalContractsCompleted:
+                  farmStatResponse.data.totalContractsCompleted,
+                lastUpdate: farmStatResponse.data.lastUpdate
+                  ? new Date(farmStatResponse.data.lastUpdate).toLocaleString(
+                      "vi-VN"
+                    )
+                  : "Chưa cập nhật",
+              },
+            ]);
+          } catch (farmStatError) {
+            console.error("Lỗi khi lấy thống kê nông trại:", farmStatError);
+            setFarmStats([]);
+          }
         }
 
-        try {
-          const provinceStatResponse = await axios.get(
-            `http://localhost:3000/government/province-stats/${selectedProvince}`,
-            {
-              headers: { "x-ethereum-address": account },
-            }
-          );
-          console.log("Province stats response:", provinceStatResponse.data);
-          setProvinceStats([
-            {
-              province: provinceStatResponse.data.province,
-              totalFruitHarvested:
-                provinceStatResponse.data.totalFruitHarvested,
-              totalContractsCreated:
-                provinceStatResponse.data.totalContractsCreated,
-              totalContractsCompleted:
-                provinceStatResponse.data.totalContractsCompleted,
-              farmCount: provinceStatResponse.data.farmCount,
-              lastUpdate: provinceStatResponse.data.lastUpdate
-                ? new Date(provinceStatResponse.data.lastUpdate).toLocaleString(
-                    "vi-VN"
-                  )
-                : "Chưa cập nhật",
-            },
-          ]);
-        } catch (provinceError) {
-          console.error("Lỗi khi lấy thống kê tỉnh:", provinceError);
-          setProvinceStats([]);
-          setError(
-            provinceError.response?.data?.message ||
-              "Không thể lấy thống kê tỉnh!"
-          );
+        // Lấy thống kê tỉnh
+        if (selectedProvince) {
+          try {
+            const provinceStatResponse = await axios.get(
+              `http://localhost:3000/government/province-stats/${selectedProvince}`,
+              {
+                headers: { "x-ethereum-address": account },
+              }
+            );
+            console.log("Thống kê tỉnh:", provinceStatResponse.data);
+            setProvinceStats([
+              {
+                province: provinceStatResponse.data.province,
+                totalFruitHarvested:
+                  provinceStatResponse.data.totalFruitHarvested,
+                totalContractsCreated:
+                  provinceStatResponse.data.totalContractsCreated,
+                totalContractsCompleted:
+                  provinceStatResponse.data.totalContractsCompleted,
+                farmCount: provinceStatResponse.data.farmCount,
+                lastUpdate: provinceStatResponse.data.lastUpdate
+                  ? new Date(
+                      provinceStatResponse.data.lastUpdate
+                    ).toLocaleString("vi-VN")
+                  : "Chưa cập nhật",
+              },
+            ]);
+          } catch (provinceError) {
+            console.error("Lỗi khi lấy thống kê tỉnh:", provinceError);
+            setProvinceStats([]);
+          }
         }
       } catch (err) {
-        console.error("Lỗi khi lấy dữ liệu:", err);
+        console.error("Lỗi khi lấy dữ liệu chi tiết:", err);
         setError(
           err.response?.data?.message || "Không thể lấy dữ liệu từ backend!"
         );
       } finally {
         setLoading(false);
-        console.log("fetchData completed", { loading: false, error });
+        console.log("Hoàn tất lấy dữ liệu chi tiết", { loading: false, error });
       }
     };
 
-    fetchData();
+    if (selectedFarmId || selectedProvince) {
+      fetchData();
+    }
   }, [selectedFarmId, selectedProvince, account]);
 
-  const handleOpenDialog = () => {
+  const handleOpenDialog = (suggestedContract = null) => {
+    if (suggestedContract) {
+      setNewContract({
+        farmId: suggestedContract.farmId,
+        deliveryHubWalletAddress: suggestedContract.deliveryHubWalletAddress,
+        validityPeriod: suggestedContract.validityPeriod || 30,
+        totalQuantity: suggestedContract.totalQuantity || 0,
+        pricePerUnit: suggestedContract.pricePerUnit || 0,
+      });
+    } else {
+      setNewContract({
+        farmId: "",
+        deliveryHubWalletAddress: "",
+        validityPeriod: 30,
+        totalQuantity: 0,
+        pricePerUnit: 0,
+      });
+    }
     setOpenDialog(true);
   };
 
@@ -329,7 +363,7 @@ const GovernmentPage = () => {
         return;
       }
 
-      console.log("Creating new contract:", newContract);
+      console.log("Tạo hợp đồng mới:", newContract);
       const response = await axios.post(
         "http://localhost:3000/government/create-contract",
         {
@@ -343,7 +377,7 @@ const GovernmentPage = () => {
           headers: { "x-ethereum-address": account },
         }
       );
-      console.log("Create contract response:", response.data);
+      console.log("Kết quả tạo hợp đồng:", response.data);
 
       const { contractId } = response.data;
 
@@ -353,7 +387,7 @@ const GovernmentPage = () => {
           headers: { "x-ethereum-address": account },
         }
       );
-      console.log("Updated contracts response:", contractResponse.data);
+      console.log("Danh sách hợp đồng cập nhật:", contractResponse.data);
       setContracts(
         contractResponse.data.map((contract) => ({
           ...contract,
@@ -361,6 +395,20 @@ const GovernmentPage = () => {
           expiryDate: new Date(contract.expiryDate).toLocaleString("vi-VN"),
         }))
       );
+
+      // Làm mới danh sách hợp đồng gợi ý
+      try {
+        const suggestedContractsResponse = await axios.get(
+          "http://localhost:3000/government/suggested-contracts",
+          {
+            headers: { "x-ethereum-address": account },
+          }
+        );
+        setSuggestedContracts(suggestedContractsResponse.data);
+      } catch (suggestedError) {
+        console.error("Lỗi khi làm mới hợp đồng gợi ý:", suggestedError);
+        setSuggestedContracts([]);
+      }
 
       handleCloseDialog();
     } catch (err) {
@@ -371,7 +419,7 @@ const GovernmentPage = () => {
 
   const handleDownloadPDF = async (contractId) => {
     try {
-      console.log("Downloading PDF for contractId:", contractId);
+      console.log("Tải PDF cho hợp đồng ID:", contractId);
       const response = await axios.get(
         `http://localhost:3000/government/contract/pdf/${contractId}`,
         {
@@ -387,7 +435,7 @@ const GovernmentPage = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      console.log("PDF downloaded successfully");
+      console.log("Tải PDF thành công");
     } catch (err) {
       console.error("Lỗi khi tải PDF:", err);
       setError(err.response?.data?.message || "Không thể tải PDF hợp đồng!");
@@ -402,7 +450,7 @@ const GovernmentPage = () => {
             variant="h4"
             sx={{ fontWeight: "bold", mb: 4, textAlign: "center" }}
           >
-            Trang Cơ Quan Quản Lý
+            Trang Quản Lý Cơ Quan Nhà Nước
           </Typography>
 
           {loading ? (
@@ -426,7 +474,7 @@ const GovernmentPage = () => {
                 <Button
                   variant="contained"
                   color="primary"
-                  onClick={handleOpenDialog}
+                  onClick={() => handleOpenDialog()}
                 >
                   Tạo Hợp Đồng Ba Bên
                 </Button>
@@ -440,6 +488,53 @@ const GovernmentPage = () => {
               </Box>
 
               <Typography variant="h5" sx={{ mb: 2 }}>
+                Danh Sách Hợp Đồng Gợi Ý
+              </Typography>
+              <TableContainer component={Paper} sx={{ mb: 4 }}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>ID Nông Trại</TableCell>
+                      <TableCell>Địa Chỉ Đại Lý</TableCell>
+                      <TableCell>Tổng Số Lượng (hộp)</TableCell>
+                      <TableCell>Giá Mỗi Đơn Vị (ETH)</TableCell>
+                      <TableCell>Hành Động</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {suggestedContracts.length > 0 ? (
+                      suggestedContracts.map((contract) => (
+                        <TableRow key={contract.suggestionId}>
+                          <TableCell>{contract.farmId}</TableCell>
+                          <TableCell>
+                            {contract.deliveryHubWalletAddress}
+                          </TableCell>
+                          <TableCell>{contract.totalQuantity}</TableCell>
+                          <TableCell>{contract.pricePerUnit}</TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outlined"
+                              color="primary"
+                              onClick={() => handleOpenDialog(contract)}
+                            >
+                              Xem & Tạo
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center">
+                          Không có hợp đồng gợi ý nào. Vui lòng kiểm tra danh
+                          sách sản phẩm hoặc thêm sản phẩm mới!
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <Typography variant="h5" sx={{ mb: 2 }}>
                 Danh Sách Hợp Đồng Ba Bên
               </Typography>
               <TableContainer component={Paper} sx={{ mb: 4 }}>
@@ -447,8 +542,8 @@ const GovernmentPage = () => {
                   <TableHead>
                     <TableRow>
                       <TableCell>ID Hợp Đồng</TableCell>
-                      <TableCell>Farm ID</TableCell>
-                      <TableCell>DeliveryHub Address</TableCell>
+                      <TableCell>ID Nông Trại</TableCell>
+                      <TableCell>Địa Chỉ Đại Lý</TableCell>
                       <TableCell>Ngày Tạo</TableCell>
                       <TableCell>Ngày Hết Hạn</TableCell>
                       <TableCell>Tổng Số Lượng (hộp)</TableCell>
@@ -456,7 +551,7 @@ const GovernmentPage = () => {
                       <TableCell>Điều Khoản</TableCell>
                       <TableCell>Trạng Thái</TableCell>
                       <TableCell>Đã Hoàn Thành</TableCell>
-                      <TableCell>Hành động</TableCell>
+                      <TableCell>Hành Động</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -497,7 +592,7 @@ const GovernmentPage = () => {
                     ) : (
                       <TableRow>
                         <TableCell colSpan={11} align="center">
-                          Không có hợp đồng nào.
+                          Không có hợp đồng nào. Vui lòng tạo hợp đồng mới!
                         </TableCell>
                       </TableRow>
                     )}
@@ -506,11 +601,11 @@ const GovernmentPage = () => {
               </TableContainer>
 
               <Typography variant="h5" sx={{ mb: 2 }}>
-                Thống Kê Farm
+                Thống Kê Nông Trại
               </Typography>
               <Box sx={{ mb: 2 }}>
                 <FormControl fullWidth>
-                  <InputLabel>Chọn Farm</InputLabel>
+                  <InputLabel>Chọn Nông Trại</InputLabel>
                   <Select
                     value={selectedFarmId}
                     onChange={(e) => setSelectedFarmId(e.target.value)}
@@ -522,7 +617,7 @@ const GovernmentPage = () => {
                         </MenuItem>
                       ))
                     ) : (
-                      <MenuItem disabled>Không có farm nào</MenuItem>
+                      <MenuItem disabled>Không có nông trại nào</MenuItem>
                     )}
                   </Select>
                 </FormControl>
@@ -531,7 +626,7 @@ const GovernmentPage = () => {
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell>Farm ID</TableCell>
+                      <TableCell>ID Nông Trại</TableCell>
                       <TableCell>Tổng Sản Lượng (hộp)</TableCell>
                       <TableCell>Hợp Đồng Đã Tạo</TableCell>
                       <TableCell>Hợp Đồng Đã Hoàn Thành</TableCell>
@@ -552,7 +647,9 @@ const GovernmentPage = () => {
                     ) : (
                       <TableRow>
                         <TableCell colSpan={5} align="center">
-                          Không có dữ liệu thống kê farm.
+                          {selectedFarmId
+                            ? `Không có dữ liệu thống kê cho nông trại ${selectedFarmId}. Vui lòng tạo hợp đồng để có dữ liệu!`
+                            : "Vui lòng chọn một nông trại để xem thống kê."}
                         </TableCell>
                       </TableRow>
                     )}
@@ -590,7 +687,7 @@ const GovernmentPage = () => {
                       <TableCell>Tổng Sản Lượng (hộp)</TableCell>
                       <TableCell>Hợp Đồng Đã Tạo</TableCell>
                       <TableCell>Hợp Đồng Đã Hoàn Thành</TableCell>
-                      <TableCell>Số Lượng Farm</TableCell>
+                      <TableCell>Số Lượng Nông Trại</TableCell>
                       <TableCell>Cập Nhật Lần Cuối</TableCell>
                     </TableRow>
                   </TableHead>
@@ -609,9 +706,9 @@ const GovernmentPage = () => {
                     ) : (
                       <TableRow>
                         <TableCell colSpan={6} align="center">
-                          Không có dữ liệu thống kê tỉnh. Vui lòng kiểm tra lại
-                          dữ liệu trên blockchain hoặc tạo thêm hợp đồng cho
-                          tỉnh đã chọn.
+                          {selectedProvince
+                            ? `Không có dữ liệu thống kê cho tỉnh ${selectedProvince}. Vui lòng tạo hợp đồng để có dữ liệu!`
+                            : "Vui lòng chọn một tỉnh để xem thống kê."}
                         </TableCell>
                       </TableRow>
                     )}
@@ -631,7 +728,7 @@ const GovernmentPage = () => {
               )}
               <TextField
                 fullWidth
-                label="Farm ID"
+                label="ID Nông Trại"
                 name="farmId"
                 value={newContract.farmId}
                 onChange={handleInputChange}
@@ -640,7 +737,7 @@ const GovernmentPage = () => {
               />
               <TextField
                 fullWidth
-                label="Địa Chỉ DeliveryHub (Ví MetaMask)"
+                label="Địa Chỉ Ví Đại Lý (MetaMask)"
                 name="deliveryHubWalletAddress"
                 value={newContract.deliveryHubWalletAddress}
                 onChange={handleInputChange}

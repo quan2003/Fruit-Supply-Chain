@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Container,
   Typography,
@@ -27,7 +27,7 @@ const LoginPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { connectWallet, account } = useWeb3();
-  const { loginWithCredentials } = useAuth();
+  const { loginWithCredentials, logout, user } = useAuth();
   const [role, setRole] = useState("Customer");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,6 +35,7 @@ const LoginPage = () => {
   const [success, setSuccess] = useState("");
   const [walletConnected, setWalletConnected] = useState(false);
   const [loading, setLoading] = useState(false);
+  const hasLoggedOut = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -43,21 +44,29 @@ const LoginPage = () => {
       setRole(roleFromQuery);
     }
 
-    // Đảm bảo người dùng đã đăng xuất trước khi đăng nhập lại
     const ensureLoggedOut = async () => {
+      // Chỉ gọi logout nếu chưa đăng nhập và chưa gọi logout trước đó
+      if (user || hasLoggedOut.current) {
+        console.log(
+          "Người dùng đã đăng nhập hoặc đã đăng xuất, bỏ qua đăng xuất"
+        );
+        return;
+      }
+
       try {
-        await fetch("http://localhost:3000/logout", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ walletAddress: account }),
-        });
+        await logout();
+        console.log("Đăng xuất thành công trước khi đăng nhập");
+        hasLoggedOut.current = true;
       } catch (error) {
-        console.error("Lỗi khi đăng xuất trước khi đăng nhập:", error);
+        console.error("Lỗi khi đăng xuất trước khi đăng nhập:", error.message);
       }
     };
 
-    ensureLoggedOut();
-  }, [location, account]);
+    // Chỉ gọi ensureLoggedOut nếu chưa đăng nhập
+    if (!user) {
+      ensureLoggedOut();
+    }
+  }, [user, logout]); // Chỉ phụ thuộc vào user và logout
 
   const handleRoleChange = (event) => {
     setRole(event.target.value);
@@ -122,7 +131,6 @@ const LoginPage = () => {
 
       setSuccess("Đăng nhập thành công! Đang chuyển hướng... 🎉");
 
-      // Chuyển hướng dựa trên vai trò
       switch (userData.role) {
         case "Producer":
           navigate("/farms", { replace: true });

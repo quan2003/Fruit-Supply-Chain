@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 import { useWeb3 } from "./Web3Context";
 
 const AuthContext = createContext();
@@ -13,10 +19,8 @@ export const AuthProvider = ({ children }) => {
   const [isUserLoaded, setIsUserLoaded] = useState(false);
   const [shouldLoadUser, setShouldLoadUser] = useState(true);
 
-  // Tính isGovernment từ user.role
   const isGovernment = authState.user?.role === "Government";
 
-  // Tải dữ liệu từ localStorage khi khởi tạo
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     const storedAccount = localStorage.getItem("account");
@@ -43,16 +47,16 @@ export const AuthProvider = ({ children }) => {
       shouldLoadUser,
     });
 
-    if (!shouldLoadUser || !account || web3Loading || isUserLoaded) {
-      console.log("Bỏ qua loadUserFromApi do không thỏa mãn điều kiện:", {
-        account,
-        web3Loading,
-        isUserLoaded,
-        shouldLoadUser,
+    if (!account) {
+      console.log("Bỏ qua loadUserFromApi: Thiếu account");
+      setAuthState({
+        user: null,
+        error: null,
+        loading: false,
       });
-      if (!web3Loading && account && !isUserLoaded) {
-        setAuthState((prev) => ({ ...prev, loading: false }));
-      }
+      setIsUserLoaded(false);
+      localStorage.removeItem("user");
+      localStorage.removeItem("account");
       return;
     }
 
@@ -60,16 +64,26 @@ export const AuthProvider = ({ children }) => {
       setAuthState((prev) => ({ ...prev, loading: true }));
       console.log("Bắt đầu gọi API /auth/user với walletAddress:", account);
 
+      const headers = {
+        "x-ethereum-address": account,
+      };
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       const response = await fetch(
         `http://localhost:3000/auth/user?walletAddress=${account}`,
-        { signal: controller.signal }
+        { headers, signal: controller.signal }
       );
       clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
+        if (response.status === 401) {
+          localStorage.removeItem("user");
+          localStorage.removeItem("account");
+          setIsUserLoaded(false);
+          setShouldLoadUser(true);
+        }
         throw new Error(`Không tìm thấy người dùng: ${errorText}`);
       }
 
@@ -98,27 +112,54 @@ export const AuthProvider = ({ children }) => {
         error: error.message,
         loading: false,
       }));
-      setIsUserLoaded(true);
+      setIsUserLoaded(false);
     }
   };
 
   useEffect(() => {
-    if (account && !shouldLoadUser) {
-      setShouldLoadUser(true);
+    if (account && !web3Loading && shouldLoadUser) {
+      loadUserFromApi();
+    } else {
+      setAuthState({
+        user: null,
+        error: null,
+        loading: false,
+      });
+      setIsUserLoaded(false);
+      localStorage.removeItem("user");
+      localStorage.removeItem("account");
+    }
+  }, [account, web3Loading, shouldLoadUser]);
+
+  const logout = useCallback(async () => {
+    if (!account) {
+      console.log("Không có account, bỏ qua gọi /logout");
+      setAuthState({
+        user: null,
+        error: null,
+        loading: false,
+      });
+      setIsUserLoaded(false);
+      setShouldLoadUser(false);
+      localStorage.removeItem("user");
+      localStorage.removeItem("account");
+      // Không gọi resetAccount ở đây
+      return;
     }
 
-    loadUserFromApi();
-  }, [account, web3Loading, isUserLoaded, shouldLoadUser]);
-
-  const logout = async () => {
     try {
-      await fetch("http://localhost:3000/logout", {
+      const response = await fetch("http://localhost:3000/logout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ walletAddress: account }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Lỗi khi đăng xuất");
+      }
     } catch (error) {
-      console.error("Lỗi khi đăng xuất:", error);
+      console.error("Lỗi khi đăng xuất:", error.message);
     }
 
     setAuthState({
@@ -130,8 +171,8 @@ export const AuthProvider = ({ children }) => {
     setShouldLoadUser(false);
     localStorage.removeItem("user");
     localStorage.removeItem("account");
-    resetAccount();
-  };
+    // Chỉ gọi resetAccount nếu cần thiết, ví dụ khi người dùng thực sự đăng xuất thủ công
+  }, [account]);
 
   const login = () => {
     setShouldLoadUser(true);
@@ -155,7 +196,6 @@ export const AuthProvider = ({ children }) => {
       const data = await response.json();
       const userData = data.user;
 
-      // Cập nhật walletAddress vào backend
       const updateResponse = await fetch(
         "http://localhost:3000/update-wallet",
         {
@@ -172,7 +212,6 @@ export const AuthProvider = ({ children }) => {
         throw new Error(errorData.message || "Không thể cập nhật ví MetaMask!");
       }
 
-      // Cập nhật trạng thái user trong AuthContext
       const updatedUser = {
         ...userData,
         walletAddress: account,
@@ -188,10 +227,9 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem("account", account);
       setIsUserLoaded(true);
 
-      // Gọi lại loadUserFromApi để đảm bảo trạng thái được đồng bộ
       await loadUserFromApi();
 
-      return userData; // Trả về dữ liệu người dùng để sử dụng trong LoginPage
+      return userData;
     } catch (error) {
       setAuthState((prev) => ({
         ...prev,

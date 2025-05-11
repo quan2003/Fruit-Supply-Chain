@@ -215,23 +215,37 @@ export const Web3Provider = ({ children }) => {
   };
 
   useEffect(() => {
+    let isMounted = true;
+
     const init = async () => {
-      if (window.ethereum) {
-        try {
-          const accounts = await window.ethereum.request({
-            method: "eth_accounts",
-          });
-          if (accounts.length > 0) {
-            await connectWallet();
-          } else {
-            setWeb3State((prev) => ({
-              ...prev,
-              loading: false,
-              isInitialized: false,
-            }));
-          }
-        } catch (error) {
-          console.error("Lỗi khi khởi tạo Web3:", error);
+      if (!window.ethereum) {
+        if (isMounted) {
+          setWeb3State((prev) => ({
+            ...prev,
+            walletError: "MetaMask không được cài đặt!",
+            loading: false,
+            isInitialized: false,
+          }));
+        }
+        return;
+      }
+
+      try {
+        const accounts = await window.ethereum.request({
+          method: "eth_accounts",
+        });
+        if (accounts.length > 0 && isMounted) {
+          await connectWallet();
+        } else if (isMounted) {
+          setWeb3State((prev) => ({
+            ...prev,
+            loading: false,
+            isInitialized: false,
+          }));
+        }
+      } catch (error) {
+        console.error("Lỗi khi khởi tạo Web3:", error);
+        if (isMounted) {
           setWeb3State((prev) => ({
             ...prev,
             walletError: error.message,
@@ -239,59 +253,64 @@ export const Web3Provider = ({ children }) => {
             isInitialized: false,
           }));
         }
+      }
 
-        // Xử lý sự kiện accountsChanged
-        window.ethereum.on("accountsChanged", async (accounts) => {
-          console.log("Accounts changed:", accounts);
-          if (accounts.length === 0) {
-            console.log("No accounts available, resetting...");
-            resetAccount();
-          } else {
-            try {
-              await connectWallet();
-            } catch (error) {
-              console.error("Lỗi khi xử lý accountsChanged:", error);
-              resetAccount();
-            }
-          }
-        });
+      const handleAccountsChanged = async (accounts) => {
+        console.log("Accounts changed:", accounts);
+        if (!isMounted) return;
 
-        // Xử lý sự kiện chainChanged
-        window.ethereum.on("chainChanged", async () => {
-          console.log("Chain changed, resetting state and reconnecting...");
+        if (accounts.length === 0) {
+          console.log("No accounts available, resetting...");
           resetAccount();
+        } else if (accounts[0] !== web3State.account) {
           try {
             await connectWallet();
           } catch (error) {
-            console.error("Lỗi khi xử lý chainChanged:", error);
+            console.error("Lỗi khi xử lý accountsChanged:", error);
             resetAccount();
           }
-        });
-      } else {
-        setWeb3State((prev) => ({
-          ...prev,
-          walletError: "MetaMask không được cài đặt!",
-          loading: false,
-          isInitialized: false,
-        }));
+        }
+      };
+
+      const handleChainChanged = async () => {
+        console.log("Chain changed, resetting state and reconnecting...");
+        if (!isMounted) return;
+
+        resetAccount();
+        try {
+          await connectWallet();
+        } catch (error) {
+          console.error("Lỗi khi xử lý chainChanged:", error);
+          resetAccount();
+        }
+      };
+
+      if (window.ethereum) {
+        window.ethereum.on("accountsChanged", handleAccountsChanged);
+        window.ethereum.on("chainChanged", handleChainChanged);
       }
+
+      return () => {
+        isMounted = false;
+        if (window.ethereum) {
+          window.ethereum.removeListener(
+            "accountsChanged",
+            handleAccountsChanged
+          );
+          window.ethereum.removeListener("chainChanged", handleChainChanged);
+        }
+      };
     };
 
     init();
-
-    // Cleanup listeners on unmount
-    return () => {
-      if (window.ethereum) {
-        window.ethereum.removeAllListeners("accountsChanged");
-        window.ethereum.removeAllListeners("chainChanged");
-      }
-    };
   }, []);
 
   return (
     <Web3Context.Provider
       value={{
         ...web3State,
+        fruitSupplyChain: web3State.contract, // Đổi tên contract thành fruitSupplyChain
+        governmentRegulatorContract: web3State.governmentRegulator, // Đổi tên governmentRegulator thành governmentRegulatorContract
         connectWallet,
         updateWalletAddress,
         resetAccount,
