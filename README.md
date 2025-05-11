@@ -37,7 +37,7 @@ Hệ thống ghi nhận và quản lý các giai đoạn sau trên Blockchain:
 ## Công nghệ sử dụng
 - **Blockchain**: Dựa trên Ethereum để lưu trữ dữ liệu bất biến.
 - **Smart Contract**: Tự động hóa giao dịch và cập nhật trạng thái chuỗi cung ứng với Hardhat.
-- **Web3.js**: Kết nối ứng dụng web với Blockchain.
+- **Ethers.js**: Kết nối ứng dụng web với Blockchain.
 - **React.js**: Giao diện người dùng frontend.
 - **Node.js / Express.js**: API backend.
 - **IPFS (qua Pinata)**: Lưu trữ phi tập trung cho hình ảnh và metadata sản phẩm.
