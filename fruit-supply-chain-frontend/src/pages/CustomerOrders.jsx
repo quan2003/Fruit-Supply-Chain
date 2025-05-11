@@ -43,7 +43,7 @@ const StatusTypography = styled(Typography)(({ theme, status }) => ({
       ? theme.palette.success.main
       : status === "Shipped"
       ? theme.palette.info.main
-      : status === "Processing"
+      : status === "Pending"
       ? theme.palette.warning.main
       : theme.palette.error.main,
   fontWeight: "bold",
@@ -142,6 +142,7 @@ const CustomerOrders = () => {
         setAlertMessage({
           type: "error",
           message:
+            error.response?.data?.message ||
             error.response?.data?.error ||
             "Không thể tải danh sách đơn hàng. Vui lòng thử lại sau.",
         });
@@ -184,10 +185,13 @@ const CustomerOrders = () => {
       });
 
       // Lấy lại danh sách đơn hàng sau khi nhận hàng thành công
-      const updatedOrders = await axios.get(`${API_URL}/customer/orders`, {
-        headers: { "x-ethereum-address": account },
-      });
-      setOrders(updatedOrders.data);
+      const updatedOrdersResponse = await axios.get(
+        `${API_URL}/customer/orders`,
+        {
+          headers: { "x-ethereum-address": account },
+        }
+      );
+      setOrders(updatedOrdersResponse.data);
     } catch (error) {
       console.error("Lỗi khi xác nhận nhận hàng:", error);
       let errorMessage = "Lỗi khi xác nhận nhận hàng: Lỗi không xác định";
@@ -281,7 +285,8 @@ const CustomerOrders = () => {
             <CardContent>
               <Box sx={{ mb: 2 }}>
                 <Typography variant="body1">
-                  Trung tâm phân phối: {order.delivery_hub_name}
+                  Trung tâm phân phối:{" "}
+                  {order.delivery_hub_name || "Không có thông tin"}
                 </Typography>
                 <StatusTypography variant="body1" status={order.status}>
                   Trạng thái:
@@ -301,7 +306,7 @@ const CustomerOrders = () => {
               <List dense>
                 <ListItem>
                   <ListItemText
-                    primary={`${order.product_name}`}
+                    primary={`${order.product_name || "Không có tên sản phẩm"}`}
                     secondary={`Số lượng: ${order.quantity} - Giá: ${
                       order.price ? `${order.price} AGT` : "Giá không khả dụng"
                     }`}
@@ -318,7 +323,9 @@ const CustomerOrders = () => {
                   <StyledButton
                     variant="contained"
                     onClick={() => handleReceiveOrder(order.id)}
-                    disabled={receiveLoading[order.id]}
+                    disabled={
+                      receiveLoading[order.id] || order.status !== "Shipped"
+                    }
                   >
                     {receiveLoading[order.id] ? (
                       <CircularProgress size={24} />

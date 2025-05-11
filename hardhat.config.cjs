@@ -9,7 +9,7 @@ module.exports = {
         runs: 200, // Giá trị thấp để ưu tiên giảm kích thước bytecode
       },
       debug: {
-        revertStrings: "strip", // Tắt revert strings để giảm kích thước bytecode
+        revertStrings: "debug", // Tắt revert strings để giảm kích thước bytecode
       },
     },
   },

@@ -136,7 +136,7 @@ const LoginPage = () => {
           navigate("/farms", { replace: true });
           break;
         case "Admin":
-          navigate("/quan-ly", { replace: true });
+          navigate("/admin", { replace: true });
           break;
         case "Customer":
           navigate("/", { replace: true });

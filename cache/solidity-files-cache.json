@@ -13,7 +13,7 @@
             "runs": 200
           },
           "debug": {
-            "revertStrings": "strip"
+            "revertStrings": "debug"
           },
           "evmVersion": "paris",
           "outputSelection": {
@@ -52,7 +52,7 @@
             "runs": 200
           },
           "debug": {
-            "revertStrings": "strip"
+            "revertStrings": "debug"
           },
           "evmVersion": "paris",
           "outputSelection": {
