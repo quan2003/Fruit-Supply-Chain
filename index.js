@@ -1296,7 +1296,7 @@ app.post(
   checkAuth,
   checkRole(["DeliveryHub"]),
   async (req, res) => {
-      const { inventoryId, quantity, price, transactionHash, fruitId, listingId } = req.body;
+      const { inventoryId, quantity, price, transactionHash, fruitId } = req.body;
 
       try {
           console.log("Nhận yêu cầu đăng bán sản phẩm:", {
@@ -1305,15 +1305,16 @@ app.post(
               price,
               transactionHash,
               fruitId,
-              listingId,
           });
 
-          if (!inventoryId || !quantity || quantity <= 0 || !listingId) {
+          // Kiểm tra các trường bắt buộc, không yêu cầu listingId nữa
+          if (!inventoryId || !quantity || quantity <= 0) {
               return res
                   .status(400)
-                  .json({ message: "Vui lòng cung cấp đầy đủ thông tin, bao gồm listingId! 😅" });
+                  .json({ message: "Vui lòng cung cấp đầy đủ thông tin! 😅" });
           }
 
+          // Lấy thông tin inventory
           let inventoryResult = await pool.query(
               "SELECT i.*, p.quantity as product_quantity FROM inventory i JOIN products p ON i.product_id = p.id WHERE i.id = $1",
               [inventoryId]
@@ -1325,10 +1326,12 @@ app.post(
           }
           const inventoryItem = inventoryResult.rows[0];
 
+          // Kiểm tra quyền truy cập
           if (req.user.id !== inventoryItem.delivery_hub_id) {
               return res.status(403).json({ message: "Không có quyền truy cập! 😅" });
           }
 
+          // Kiểm tra số lượng
           const productQuantity = inventoryItem.product_quantity;
           if (quantity !== productQuantity) {
               console.log(
@@ -1348,7 +1351,16 @@ app.post(
 
           const sellingPrice = price || inventoryItem.price;
 
-          // Thêm bản ghi vào outgoing_products với original_quantity
+          // Tạo listing_id duy nhất
+          const maxListingIdResult = await pool.query(
+              "SELECT MAX(CAST(listing_id AS INTEGER)) as max_id FROM outgoing_products"
+          );
+          const maxListingId = parseInt(maxListingIdResult.rows[0].max_id) || 0;
+          const newListingId = (maxListingId + 1).toString();
+
+          console.log(`Tạo listing_id mới: ${newListingId}`);
+
+          // Thêm bản ghi vào outgoing_products với listing_id tự động tạo
           const outgoingResult = await pool.query(
               "INSERT INTO outgoing_products (product_id, delivery_hub_id, quantity, original_quantity, price, listed_date, status, transaction_hash, listing_id, fruit_id) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, 'Available', $6, $7, $8) RETURNING *",
               [
@@ -1358,11 +1370,12 @@ app.post(
                   quantity, // Lưu original_quantity bằng số lượng ban đầu
                   sellingPrice,
                   transactionHash || null,
-                  listingId,
+                  newListingId,
                   fruitId || null,
               ]
           );
 
+          // Cập nhật số lượng trong inventory
           const newQuantity = inventoryItem.quantity - quantity;
           console.log(
               `Cập nhật số lượng trong inventory: inventoryId=${inventoryId}, oldQuantity=${inventoryItem.quantity}, quantityToSell=${quantity}, newQuantity=${newQuantity}`
