@@ -1,0 +1,74 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - REACT_APP_CONTRACT_ADDRESS=${REACT_APP_CONTRACT_ADDRESS}
+      - DB_HOST=db
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_PORT=${DB_PORT}
+      - PORT=${PORT}
+      - REACT_APP_ROBOFLOW_API_KEY=${REACT_APP_ROBOFLOW_API_KEY}
+      - REACT_APP_GEMINI_API_KEY=${REACT_APP_GEMINI_API_KEY}
+      - PINATA_API_KEY=${PINATA_API_KEY}
+      - PINATA_API_SECRET=${PINATA_API_SECRET}
+      - API_URL=http://localhost:3000
+    volumes:
+      - ./Uploads:/app/uploads
+      - ./contract-addresses.json:/app/contract-addresses.json
+      - ./artifacts:/app/artifacts
+      - ./fonts:/app/fonts
+    depends_on:
+      - db
+      - hardhat
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  db:
+    image: postgres:14
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app-network
+
+  hardhat:
+    image: node:18
+    working_dir: /app-hardhat
+    volumes:
+      - .:/app-hardhat
+    command: npx hardhat node
+    ports:
+      - "8545:8545"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  pgdata:

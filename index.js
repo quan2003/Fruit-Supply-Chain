@@ -77,7 +77,7 @@ const validRoles = [
 let CONTRACT_ADDRESS = "";
 let GOVERNMENT_REGULATOR_ADDRESS = "";
 try {
-  const contractAddressesPath = "D:/fruit-supply-chain/contract-addresses.json";
+  const contractAddressesPath = path.join(__dirname, "contract-addresses.json");
   if (fs.existsSync(contractAddressesPath)) {
     const contractAddresses = JSON.parse(fs.readFileSync(contractAddressesPath, "utf8"));
     CONTRACT_ADDRESS = contractAddresses.FruitSupplyChain;
