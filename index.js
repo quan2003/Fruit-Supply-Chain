@@ -40,6 +40,97 @@ app.set("views", path.join(__dirname, "views"));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cors());
+// === Proxy Gemini advice (server-side) ===
+app.post("/ai/gemini/advice", async (req, res) => {
+  try {
+    const { category, predictions, model = "gemini-2.5-flash" } = req.body || {};
+    const API_KEY = process.env.GOOGLE_GEMINI_API_KEY;
+
+    if (!API_KEY) {
+      return res.status(500).json({ error: "Thiếu GOOGLE_GEMINI_API_KEY trên server" });
+    }
+    if (!category || !Array.isArray(predictions)) {
+      return res.status(400).json({ error: "Thiếu category hoặc predictions" });
+    }
+
+    // chỉ gửi dữ liệu tối thiểu lên Gemini
+    const slimPredictions = predictions.map((p, idx) => ({
+      fruitIndex: idx,
+      state: p.mappedClass,              // "ripe" | "semiripe" | "unripe"
+      confidencePct: Math.round((p.confidence ?? 0) * 100),
+    }));
+
+    const prompt = `
+Bạn là chuyên gia sau thu hoạch và bảo quản nông sản. Nhiệm vụ: dựa vào kết quả dự đoán trạng thái chín của trái cây từ hệ thống nhận diện hình ảnh, hãy đưa ra lời khuyên CHI TIẾT, cụ thể và dễ hiểu bằng TIẾNG VIỆT.
+
+Loại trái cây: ${category}
+
+Dữ liệu dự đoán (JSON):
+${JSON.stringify(slimPredictions, null, 2)}
+
+YÊU CẦU:
+1. Phải trả về đúng JSON với schema:
+{
+  "summary_vi": "Tóm tắt tổng quan, dài ít nhất 2–3 câu, giải thích tình trạng chung của lô trái cây, mức độ chính xác và gợi ý sơ bộ về bảo quản, tiêu thụ hoặc xử lý.",
+  "items": [
+    {
+      "fruitIndex": <số thứ tự 0-based>,
+      "state": "ripe|semiripe|unripe",
+      "confidencePct": <0-100>,
+      "storageAdvice_vi": "Hướng dẫn bảo quản cụ thể, có con số rõ ràng (nhiệt độ, số ngày, điều kiện môi trường). Nên viết ít nhất 1–2 câu.",
+      "tip_vi": "Mẹo chi tiết để giữ chất lượng hoặc thúc chín nhanh hơn. Có thể thêm giải thích lý do tại sao cách này hữu ích.",
+      "caution_vi": "Cảnh báo ngắn gọn nếu có rủi ro (ẩm mốc, thối nhanh, lẫn quả chín và chưa chín...). Nếu không có thì null."
+    }
+  ],
+  "mixedBatchAdvice_vi": "Nếu trong lô có quả chín và chưa chín thì viết một đoạn khuyên ít nhất 2 câu về cách tách riêng và bảo quản hợp lý."
+}
+
+2. Bắt buộc phải có số liệu cụ thể:
+- ripe: bảo quản ở 5–7°C trong tủ lạnh, nên tiêu thụ trong 3–5 ngày.
+- semiripe: để nhiệt độ phòng 1–2 ngày cho chín hoàn toàn, sau đó bảo quản 5–7°C trong tủ lạnh.
+- unripe: để nhiệt độ phòng 3–5 ngày, tránh nắng gắt; có thể đặt cạnh chuối/táo để thúc chín nhờ ethylene.
+
+3. Văn phong: rõ ràng, thực tế, dễ áp dụng. Viết nhiều hơn 1 câu cho mỗi phần khuyến nghị để người đọc cảm thấy đầy đủ thông tin.
+
+4. KHÔNG trả về văn bản ngoài JSON. Kết quả phải có thể parse được bằng JSON.parse.
+`.trim();
+
+
+    const body = {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.6, maxOutputTokens: 800 },
+    };
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      model
+    )}:generateContent?key=${encodeURIComponent(API_KEY)}`;
+
+    const { data } = await axios.post(url, body, {
+      headers: { "Content-Type": "application/json" },
+      timeout: 15000,
+    });
+
+    const text =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ||
+      data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data ||
+      "";
+
+    const jsonText = text.replace(/^```json|```$/g, "").trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      return res.status(502).json({ error: "Gemini trả về không phải JSON hợp lệ." });
+    }
+
+    return res.json(parsed);
+  } catch (err) {
+    const status = err.response?.status || 500;
+    const message = err.response?.data?.error?.message || err.message || "Gemini error";
+    return res.status(status).json({ error: `Gemini proxy error: ${message}` });
+  }
+});
 
 // Tạo thư mục uploads nếu chưa tồn tại
 const uploadDir = path.join(__dirname, "uploads");

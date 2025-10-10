@@ -26,14 +26,12 @@ import "../FruitCatalog/CatalogStyles.css";
 import MetaMaskSDK from "@metamask/sdk";
 import { ethers } from "ethers";
 
-// Định nghĩa BACKEND_URL từ biến môi trường
+// ====== ENV ======
 const BACKEND_URL =
   process.env.REACT_APP_BACKEND_URL || "http://localhost:3000";
-
-// Định nghĩa IPFS Gateway (Pinata)
 const IPFS_GATEWAY = "https://gateway.pinata.cloud/ipfs/";
 
-// Cấu hình nhận diện hình ảnh
+// ====== Roboflow config ======
 const predictionConfig = {
   "Dua Hau": {
     endpoint: "https://serverless.roboflow.com/watermelon-xztju/5",
@@ -66,7 +64,7 @@ const predictionConfig = {
   },
 };
 
-// Cập nhật fruitHashMapping với CID mới từ Pinata
+// ====== IPFS CID mặc định ======
 const fruitHashMapping = {
   Thom: "bafkreialmzlmexrfgud3tp6kg3yced537auuvzioxzbjak44nxuhqg37gy",
   "Vu Sua": "bafkreibqvvcnsclx4lk4mtbw3eczguyxp7xm3bky6t37bfifonlp2ihr3y",
@@ -77,7 +75,7 @@ const fruitHashMapping = {
   "Trai Xoai": "bafkreibwq5ir7riyrmy5zz7p2l2xukn2agx7gfh42yyplmdbui6lavr4ki",
 };
 
-// Khởi tạo MetaMask SDK
+// ====== MetaMask SDK ======
 const MMSDK = new MetaMaskSDK({
   dappMetadata: {
     name: "Fruit Supply Chain",
@@ -85,7 +83,7 @@ const MMSDK = new MetaMaskSDK({
   },
 });
 
-// Hook xử lý Web3
+// ====== Web3 hook ======
 const useWeb3Actions = () => {
   const {
     account,
@@ -125,7 +123,22 @@ const useWeb3Actions = () => {
   };
 };
 
-// Hook xử lý nhận diện hình ảnh
+// ====== GỌI GEMINI QUA BACKEND (proxy) ======
+async function callGeminiAdviceBackend({ category, predictions }) {
+  const resp = await fetch(`${BACKEND_URL}/ai/gemini/advice`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // Bạn có thể đổi model ở backend, ở đây cứ gửi mặc định:
+    body: JSON.stringify({ category, predictions, model: "gemini-1.5-flash" }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || `Gemini proxy HTTP ${resp.status}`);
+  }
+  return await resp.json();
+}
+
+// ====== Hook nhận diện ảnh + gọi Gemini ======
 const useImagePrediction = () => {
   const [prediction, setPrediction] = useState(null);
   const [predictionLoading, setPredictionLoading] = useState(false);
@@ -153,26 +166,21 @@ const useImagePrediction = () => {
         reader.readAsDataURL(file);
       });
 
-      console.log("Roboflow API Key:", process.env.REACT_APP_ROBOFLOW_API_KEY);
       if (!process.env.REACT_APP_ROBOFLOW_API_KEY) {
         throw new Error(
-          "API key cho Roboflow không được định nghĩa. Đảm bảo tệp .env nằm trong thư mục gốc của frontend (cùng cấp với package.json) và ứng dụng đã được khởi động lại."
+          "Thiếu REACT_APP_ROBOFLOW_API_KEY trong .env (frontend). Hãy thêm và khởi động lại."
         );
       }
 
-      console.log("Gửi yêu cầu đến Roboflow API:", config.endpoint);
       const roboflowResponse = await axios({
         method: "POST",
         url: config.endpoint,
-        params: {
-          api_key: process.env.REACT_APP_ROBOFLOW_API_KEY,
-        },
+        params: { api_key: process.env.REACT_APP_ROBOFLOW_API_KEY },
         data: base64Image,
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
 
       const roboflowResult = roboflowResponse.data;
-      console.log("Phản hồi từ Roboflow API:", roboflowResult);
 
       if (
         !roboflowResult.predictions ||
@@ -183,123 +191,143 @@ const useImagePrediction = () => {
         );
       }
 
+      // Chuẩn hóa class
       const predictions = roboflowResult.predictions.map((pred) => {
         let predictionResult = pred.class;
         if (config.classMapping && config.classMapping[predictionResult]) {
           predictionResult = config.classMapping[predictionResult];
         }
         if (!config.validClasses.includes(predictionResult)) {
-          console.log(
-            `Trạng thái không hợp lệ cho quả tại vị trí (${pred.x}, ${pred.y}): ${predictionResult}, sử dụng trạng thái mặc định: unripe`
-          );
           predictionResult = "unripe";
         }
         return { ...pred, mappedClass: predictionResult };
       });
 
+      // Tính confidence trung bình theo loại
       const confidence =
         predictions.length > 0
-          ? (predictions.reduce((sum, pred) => sum + pred.confidence, 0) /
+          ? (predictions.reduce(
+              (sum, pred) => sum + (pred.confidence ?? 0),
+              0
+            ) /
               predictions.length) *
             100
           : 0;
       const roundedConfidence = confidence.toFixed(0);
-
       setFruitConfidences((prev) => ({
         ...prev,
         [category]: roundedConfidence,
       }));
 
-      let formattedMessage = `<div style="line-height: 1.5; max-height: 400px; overflow-y: auto;">`;
-      formattedMessage += `<strong style="color: #1976D2;">Hình ảnh chứa ${predictions.length} quả. Dưới đây là trạng thái và khuyến nghị bảo quản:</strong><br /><br />`;
-
-      for (let i = 0; i < predictions.length; i++) {
-        const pred = predictions[i];
-        const predictionResult = pred.mappedClass;
-        const confidence = pred.confidence.toFixed(2);
-
-        let recommendation = "";
-        let tip = "";
-        // Bỏ gọi Gemini API do lỗi mạng và cung cấp khuyến nghị mặc định
-        if (predictionResult === "ripe") {
-          recommendation =
-            "Bảo quản ở 5-7 độ C trong tủ lạnh, sử dụng trong vòng 3-5 ngày để giữ độ tươi.";
-          tip =
-            "Bọc kín bằng màng bọc thực phẩm để tránh mùi lan sang các thực phẩm khác.";
-        } else if (predictionResult === "unripe") {
-          recommendation =
-            "Để ở nhiệt độ phòng (25-30 độ C) trong 3-5 ngày để quả chín tự nhiên, tránh ánh nắng trực tiếp.";
-          tip =
-            "Đặt gần các loại trái cây như chuối hoặc táo để đẩy nhanh quá trình chín nhờ khí ethylene.";
-        } else if (predictionResult === "semiripe") {
-          recommendation =
-            "Để ở nhiệt độ phòng (25-30 độ C) trong 1-2 ngày để quả chín hoàn toàn, sau đó bảo quản ở 5-7 độ C trong tủ lạnh.";
-          tip = "Kiểm tra độ mềm của quả mỗi ngày để tránh chín quá mức.";
-        }
-
-        const confidenceAdvice =
-          confidence >= 0.85
-            ? `Với phần trăm cao (${(confidence * 100).toFixed(
-                0
-              )}%), bạn có thể yên tâm áp dụng phương pháp bảo quản này mà không cần kiểm tra thêm.`
-            : confidence >= 0.7
-            ? `Với phần trăm trung bình (${(confidence * 100).toFixed(
-                0
-              )}%), bạn nên kiểm tra thủ công để xác nhận trạng thái trước khi bảo quản.`
-            : `Với phần trăm thấp (${(confidence * 100).toFixed(
-                0
-              )}%), kết quả có thể không chính xác, hãy kiểm tra thủ công để xác nhận.`;
-
-        formattedMessage += `
-                  <strong style="color: #1976D2;">Quả ${i + 1}:</strong><br />
-                  Trạng thái: ${
-                    predictionResult === "ripe"
-                      ? "Đã chín"
-                      : predictionResult === "semiripe"
-                      ? "Chín một phần"
-                      : "Chưa chín"
-                  } (${(confidence * 100).toFixed(0)}%)<br />
-                  Khuyến nghị: ${recommendation}<br />
-                  Mẹo: ${tip}<br />
-                  Lời khuyên: ${confidenceAdvice}<br /><br />
-                `;
+      // ===== gọi Gemini qua BACKEND để lấy lời khuyên =====
+      let geminiAdvice = null;
+      try {
+        geminiAdvice = await callGeminiAdviceBackend({
+          category,
+          predictions,
+        });
+      } catch (e) {
+        console.warn("Gemini advice (proxy) failed, fallback default tips:", e);
       }
 
-      const hasRipe = predictions.some((pred) => pred.mappedClass === "ripe");
+      // ===== Render message =====
+      let html = `<div style="line-height:1.5; max-height: 420px; overflow-y:auto;">`;
+
+      if (geminiAdvice?.summary_vi) {
+        html += `<strong style="color:#1976D2">Tóm tắt:</strong> ${geminiAdvice.summary_vi}<br/><br/>`;
+      } else {
+        html += `<strong style="color:#1976D2">${predictions.length} quả được nhận diện — khuyến nghị bảo quản:</strong><br/><br/>`;
+      }
+
+      if (geminiAdvice?.items?.length) {
+        for (const it of geminiAdvice.items) {
+          const idx = (it.fruitIndex ?? 0) + 1;
+          const viState =
+            it.state === "ripe"
+              ? "Đã chín"
+              : it.state === "semiripe"
+              ? "Chín một phần"
+              : "Chưa chín";
+          html += `
+            <strong style="color:#1976D2">Quả ${idx}:</strong><br/>
+            Trạng thái: ${viState} (${Math.round(it.confidencePct || 0)}%)<br/>
+            Khuyến nghị: ${it.storageAdvice_vi || ""}<br/>
+            Mẹo: ${it.tip_vi || ""}<br/>
+            ${it.caution_vi ? `Lưu ý: ${it.caution_vi}<br/>` : ""}
+            <br/>
+          `;
+        }
+      } else {
+        // Fallback mặc định theo mappedClass từng quả
+        predictions.forEach((pred, i) => {
+          const viState =
+            pred.mappedClass === "ripe"
+              ? "Đã chín"
+              : pred.mappedClass === "semiripe"
+              ? "Chín một phần"
+              : "Chưa chín";
+          const pct = Math.round((pred.confidence ?? 0) * 100);
+
+          let recommendation = "";
+          let tip = "";
+          if (pred.mappedClass === "ripe") {
+            recommendation =
+              "Bảo quản ở 5–7°C trong tủ lạnh, dùng trong 3–5 ngày.";
+            tip = "Bọc kín bằng màng bọc để tránh ám mùi.";
+          } else if (pred.mappedClass === "semiripe") {
+            recommendation =
+              "Để nhiệt độ phòng 1–2 ngày cho chín hoàn toàn rồi mới làm lạnh (5–7°C).";
+            tip = "Kiểm tra độ mềm mỗi ngày để tránh chín quá.";
+          } else {
+            recommendation =
+              "Để ở nhiệt độ phòng 3–5 ngày, tránh nắng trực tiếp.";
+            tip = "Đặt gần chuối/táo để đẩy nhanh quá trình chín (ethylene).";
+          }
+
+          html += `
+            <strong style="color:#1976D2">Quả ${i + 1}:</strong><br/>
+            Trạng thái: ${viState} (${pct}%)<br/>
+            Khuyến nghị: ${recommendation}<br/>
+            Mẹo: ${tip}<br/><br/>
+          `;
+        });
+      }
+
+      const hasRipe = predictions.some((p) => p.mappedClass === "ripe");
       const hasUnripe = predictions.some(
-        (pred) =>
-          pred.mappedClass === "unripe" || pred.mappedClass === "semiripe"
+        (p) => p.mappedClass === "unripe" || p.mappedClass === "semiripe"
       );
 
-      if (hasRipe && hasUnripe) {
-        formattedMessage += `
-                  <strong style="color: #1976D2;">Hướng dẫn bổ sung:</strong><br />
-                  Hình ảnh chứa cả quả chín và chưa chín. Hãy tách các quả chín để bảo quản riêng trong tủ lạnh (5-7 độ C), và để các quả chưa chín ở nhiệt độ phòng (25-30 độ C) để tiếp tục chín tự nhiên.<br />
-                `;
+      const mixedAdvice =
+        geminiAdvice?.mixedBatchAdvice_vi ||
+        (hasRipe && hasUnripe
+          ? "Ảnh có cả quả chín và chưa chín. Hãy tách riêng: quả chín cho vào tủ lạnh (5–7°C), quả chưa chín để ở nhiệt độ phòng cho chín tự nhiên."
+          : null);
+
+      if (mixedAdvice) {
+        html += `<strong style="color:#1976D2">Hướng dẫn bổ sung:</strong><br/>${mixedAdvice}<br/>`;
       }
 
-      formattedMessage += `</div>`;
+      html += `</div>`;
 
-      setFormattedMessage(formattedMessage);
+      setFormattedMessage(html);
       setDialogOpen(true);
 
-      const firstPrediction = predictions[0].mappedClass;
-      setPrediction(firstPrediction);
-      return firstPrediction;
+      // Giữ logic cũ: dùng mappedClass của quả đầu tiên làm "prediction"
+      setPrediction(predictions[0].mappedClass);
+      return predictions[0].mappedClass;
     } catch (error) {
       let errorMessage =
         "Không thể nhận diện hoặc tạo khuyến nghị: " + error.message;
       if (error.response?.status === 401) {
         errorMessage =
-          "Xác thực thất bại: API key không hợp lệ hoặc không được cung cấp. Kiểm tra biến REACT_APP_ROBOFLOW_API_KEY trong .env.";
+          "Roboflow 401: API key không hợp lệ hoặc thiếu. Kiểm tra REACT_APP_ROBOFLOW_API_KEY.";
       } else if (error.response?.status === 429) {
-        errorMessage =
-          "Đã vượt giới hạn yêu cầu của Roboflow. Vui lòng thử lại sau.";
+        errorMessage = "Roboflow 429: Vượt giới hạn, thử lại sau.";
       } else if (error.response?.status === 503) {
-        errorMessage = "Roboflow API đang quá tải. Vui lòng thử lại sau.";
-      } else if (error.message.includes("Network Error")) {
-        errorMessage =
-          "Lỗi mạng: Có thể do CORS. Kiểm tra quyền truy cập từ Roboflow.";
+        errorMessage = "Roboflow 503: Dịch vụ quá tải, thử lại sau.";
+      } else if (error.message?.includes("Network Error")) {
+        errorMessage = "Lỗi mạng: có thể do CORS hoặc kết nối.";
       }
       setPredictionError(errorMessage);
       setFormattedMessage(errorMessage);
@@ -329,7 +357,7 @@ const useImagePrediction = () => {
   };
 };
 
-// Component Form
+// ====== Form con ======
 const ProductForm = ({
   register,
   errors,
@@ -450,7 +478,7 @@ const ProductForm = ({
         {predictionLoading && (
           <Alert severity="info" sx={{ mt: 2 }}>
             <CircularProgress size={20} sx={{ mr: 1 }} />
-            Đang nhận diện hình ảnh, vui lòng chờ...
+            Đang nhận diện & xin lời khuyên...
           </Alert>
         )}
         {predictionError && (
@@ -539,7 +567,7 @@ const ProductForm = ({
   );
 };
 
-// Component chính
+// ====== Component chính ======
 const AddFarmProductForm = () => {
   const navigate = useNavigate();
   const {
@@ -587,10 +615,10 @@ const AddFarmProductForm = () => {
       price: "",
       quantity: "",
       description: "",
-      productiondate: new Date().toISOString().split("T")[0], // Giá trị mặc định là ngày hiện tại
+      productiondate: new Date().toISOString().split("T")[0],
       expirydate: new Date(new Date().setMonth(new Date().getMonth() + 1))
         .toISOString()
-        .split("T")[0], // Giá trị mặc định là 1 tháng sau
+        .split("T")[0],
       farm_id: "",
     },
   });
@@ -657,6 +685,7 @@ const AddFarmProductForm = () => {
       }
       setImageFile(file);
       setImagePreview(URL.createObjectURL(file));
+
       if (
         [
           "Dua Hau",
@@ -667,7 +696,7 @@ const AddFarmProductForm = () => {
           "Thom",
         ].includes(product.category)
       ) {
-        const result = await predict(file, product.category);
+        await predict(file, product.category);
       }
     }
   };
@@ -759,8 +788,6 @@ const AddFarmProductForm = () => {
         )
         .estimateGas({ from: account });
 
-      console.log("Ước tính gas cho addFruitCatalog:", gasEstimate);
-
       const transactionResult = await contract.methods
         .addFruitCatalog(
           fruitType,
@@ -775,62 +802,43 @@ const AddFarmProductForm = () => {
           gas: Math.floor(Number(gasEstimate) * 1.5),
         });
 
-      console.log("Đã thêm fruitType vào catalog:", fruitType);
       return transactionResult;
     } catch (error) {
-      console.error("Lỗi khi thêm fruitType vào catalog:", error);
       throw new Error("Không thể thêm fruitType vào catalog: " + error.message);
     }
   };
 
   const harvestFruit = async (fruitType, origin, farmId, quality, quantity) => {
     try {
-      console.log("Tham số gọi harvestFruit:", {
-        fruitType,
-        origin,
-        farmId,
-        quality,
-        quantity,
-        account,
-      });
-
       // Kiểm tra farmId đã được đăng ký chưa
       let farmExists = false;
       try {
         const farmData = await contract.methods.getFarmData(farmId).call();
-        console.log("Farm Data:", farmData);
         farmExists = farmData[0].length > 0;
       } catch (error) {
-        console.log("Farm chưa tồn tại:", error.message);
         throw new Error("Farm chưa được đăng ký trên blockchain!");
       }
-
       if (!farmExists) {
         throw new Error("Farm chưa được đăng ký trên blockchain!");
       }
 
-      // Kiểm tra xem fruitType đã tồn tại trong fruitCatalog chưa
+      // Kiểm tra catalog
       let catalogExists = false;
       try {
         const catalog = await contract.methods
           .getFruitCatalog(fruitType)
           .call();
-        console.log("Fruit Catalog Data:", catalog);
         catalogExists = catalog[0].length > 0;
-      } catch (error) {
-        console.log("Fruit type chưa tồn tại trong catalog:", error.message);
-      }
+      } catch {}
 
       if (!catalogExists) {
-        console.log("Đang thêm fruitType vào catalog...");
         await addFruitCatalog(fruitType);
       }
 
-      // Gọi harvestFruit với tham số quantity
+      // Gọi harvestFruit
       const gasEstimate = await contract.methods
         .harvestFruit(fruitType, origin, farmId, quality, quantity)
         .estimateGas({ from: account });
-      console.log("Ước tính gas cho harvestFruit:", gasEstimate);
 
       const transactionResult = await contract.methods
         .harvestFruit(fruitType, origin, farmId, quality, quantity)
@@ -841,10 +849,8 @@ const AddFarmProductForm = () => {
 
       const fruitId =
         transactionResult.events.StepRecorded.returnValues.fruitId;
-      console.log("Đã thu hoạch trái cây, fruitId:", fruitId);
       return fruitId.toString();
     } catch (error) {
-      console.error("Lỗi chi tiết khi gọi harvestFruit:", error);
       throw new Error(
         "Không thể thu hoạch trái cây trên blockchain: " + error.message
       );
@@ -852,10 +858,8 @@ const AddFarmProductForm = () => {
   };
 
   const onSubmit = async (data) => {
-    console.log("Bắt đầu onSubmit với dữ liệu:", data);
     if (!account || !contract) {
       setError("Vui lòng kết nối ví MetaMask và khởi tạo hợp đồng!");
-      console.log("Lỗi: Ví MetaMask hoặc hợp đồng chưa được khởi tạo.");
       return;
     }
 
@@ -872,40 +876,34 @@ const AddFarmProductForm = () => {
     ) {
       if (!prediction) {
         setError("Vui lòng chờ nhận diện hình ảnh trước khi thêm sản phẩm!");
-        console.log("Lỗi: Chưa nhận diện hình ảnh.");
         return;
       }
       if (prediction !== "ripe" && prediction !== "semiripe") {
         setError("Sản phẩm chưa chín! Vui lòng chọn sản phẩm đã chín để thêm.");
-        console.log("Lỗi: Sản phẩm chưa chín, prediction:", prediction);
         return;
       }
     }
 
     try {
-      console.log("Kiểm tra vai trò Producer từ backend...");
-      const response = await axios.get("http://localhost:3000/check-role", {
+      // kiểm tra role từ backend
+      const response = await axios.get(`${BACKEND_URL}/check-role`, {
         headers: { "x-ethereum-address": account },
       });
       const { role } = response.data;
-      console.log("Vai trò người dùng:", role);
       if (role !== "Producer") {
         throw new Error("Chỉ Producer mới có thể thu hoạch trái cây!");
       }
 
-      console.log("Kiểm tra vai trò owner hoặc manager...");
       const owner = await contract.methods.owner().call();
       const isManager = await contract.methods
         .authorizedManagers(account)
         .call();
-      console.log("Owner:", owner, "Is Manager:", isManager);
       if (owner.toLowerCase() !== account.toLowerCase() && !isManager) {
         throw new Error(
           "Bạn không có quyền thêm loại trái cây vào catalog! Vui lòng yêu cầu owner hoặc manager thực hiện."
         );
       }
 
-      console.log("Gọi harvestFruit...");
       const farm = farms.find((f) => f.id === data.farm_id);
       const fruitId = await harvestFruit(
         data.category,
@@ -914,11 +912,10 @@ const AddFarmProductForm = () => {
         prediction || "ripe",
         parseInt(data.quantity)
       );
-      console.log("Fruit ID nhận được:", fruitId);
+
       setFruitId(fruitId);
       setOpenConfirm(true);
     } catch (error) {
-      console.error("Lỗi trong onSubmit:", error);
       setError("Không thể thêm sản phẩm: " + error.message);
     }
   };
@@ -930,39 +927,29 @@ const AddFarmProductForm = () => {
     setSuccess(null);
 
     try {
-      console.log("Bắt đầu confirmSubmit với dữ liệu:", data);
       const productCode = generateProductCode(data.name);
-      console.log("Product Code:", productCode);
-
       const fruitType = data.category;
       let ipfsHash = imageFile
         ? await uploadToIPFS(imageFile)
         : fruitHashMapping[fruitType];
-      console.log("IPFS Hash:", ipfsHash);
       if (!ipfsHash) {
         throw new Error("Loại trái cây không được hỗ trợ!");
       }
 
-      console.log("Gọi setFruitHash trên blockchain...");
+      // setFruitHash
       let gasLimit;
       try {
         const gasEstimate = await contract.methods
           .setFruitHash(fruitType, ipfsHash)
           .estimateGas({ from: account });
         gasLimit = Math.floor(Number(gasEstimate) * 1.2);
-        console.log("Ước tính gas cho setFruitHash:", gasEstimate);
-      } catch (err) {
+      } catch {
         gasLimit = 1000000;
-        console.error("Lỗi ước tính gas, sử dụng mặc định:", err);
       }
-
-      const setFruitHashResult = await contract.methods
-        .setFruitHash(fruitType, ipfsHash)
-        .send({
-          from: account,
-          gas: gasLimit,
-        });
-      console.log("setFruitHash transaction result:", setFruitHashResult);
+      await contract.methods.setFruitHash(fruitType, ipfsHash).send({
+        from: account,
+        gas: gasLimit,
+      });
 
       const productData = {
         name: data.name,
@@ -978,26 +965,20 @@ const AddFarmProductForm = () => {
         frontendHash: ipfsHash,
         fruitId: fruitId,
       };
-      console.log("Dữ liệu gửi đến API /products:", productData);
 
-      const addProductResult = await addFruitProduct(productData, {
-        "x-ethereum-address": account,
-      });
-      console.log("Kết quả từ API /products:", addProductResult);
-
+      await addFruitProduct(productData, { "x-ethereum-address": account });
       setSuccess("Thêm sản phẩm thành công!");
     } catch (err) {
-      console.error("Lỗi trong confirmSubmit:", err);
       let errorMessage = "Không thể thêm sản phẩm. Vui lòng thử lại sau.";
       if (err.code === -32603) {
         errorMessage = "Lỗi giao dịch blockchain: Kiểm tra Hardhat node.";
-      } else if (err.message.includes("out of gas")) {
+      } else if (String(err.message || "").includes("out of gas")) {
         errorMessage = "Giao dịch hết gas.";
-      } else if (err.message.includes("revert")) {
+      } else if (String(err.message || "").includes("revert")) {
         errorMessage = "Hợp đồng từ chối giao dịch.";
-      } else if (err.message.includes("Failed to fetch")) {
+      } else if (String(err.message || "").includes("Failed to fetch")) {
         errorMessage = "Không thể kết nối đến backend.";
-      } else if (err.message.includes("IPFS")) {
+      } else if (String(err.message || "").includes("IPFS")) {
         errorMessage = err.message;
       }
       setError(errorMessage);
@@ -1110,13 +1091,6 @@ const AddFarmProductForm = () => {
               formatConfidences={formatConfidences}
             />
             <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 3 }}>
-              {console.log("Trạng thái nút Thêm sản phẩm:", {
-                loading,
-                account,
-                contract,
-                web3Loading: web3Loading ?? false,
-                predictionLoading,
-              })}
               <Button
                 type="submit"
                 variant="contained"
@@ -1143,7 +1117,7 @@ const AddFarmProductForm = () => {
         )}
       </Paper>
 
-      {/* Dialog cho thông báo nhận diện */}
+      {/* Dialog kết quả nhận diện + lời khuyên */}
       <Dialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
@@ -1151,7 +1125,9 @@ const AddFarmProductForm = () => {
         fullWidth
       >
         <DialogTitle>
-          <strong style={{ color: "#1976D2" }}>Kết quả nhận diện</strong>
+          <strong style={{ color: "#1976D2" }}>
+            Kết quả nhận diện & Lời khuyên
+          </strong>
         </DialogTitle>
         <DialogContent dividers>
           <div dangerouslySetInnerHTML={{ __html: formattedMessage }} />
